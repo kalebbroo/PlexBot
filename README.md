@@ -1,17 +1,18 @@
-Plex Music Bot
+# Plex Music Bot
 This Discord bot allows users to play audio from their Plex library and YouTube videos in a voice channel.
 
-Features
+# Features
 Search for and play songs from a Plex library
 Play audio from YouTube videos
 Manage a song queue with play, pause, resume, skip, and shuffle functionality
 Display the current song and queue
-Prerequisites
+
+# Prerequisites
 Python 3.7 or higher
 A Discord bot token
 A Plex server with valid credentials
 
-Installation
+# Installation
 Clone this repository or download it as a ZIP file and extract it.
 
 git clone https://github.com/yourusername/your-repo.git
