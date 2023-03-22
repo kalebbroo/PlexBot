@@ -135,24 +135,6 @@ async def play(ctx, *, song_name):
     # Play the next song in the queue if there is one
     await play_next_song(ctx)
 
-@bot.command(name='pause', help='Pause the current song')
-async def pause(ctx):
-    voice_client = ctx.voice_client
-    if voice_client and voice_client.is_playing():
-        voice_client.pause()
-        await ctx.send("⏸ Paused the current song.")
-    else:
-        await ctx.send("❌ There is no song currently playing.")
-
-@bot.command(name='resume', help='Resume the paused song')
-async def resume(ctx):
-    voice_client = ctx.voice_client
-    if voice_client and voice_client.is_paused():
-        voice_client.resume()
-        await ctx.send("▶ Resumed the current song.")
-    else:
-        await ctx.send("❌ The song is not paused.")
-
 @bot.command(name='skip', help='Skip the current song')
 async def skip(ctx):
     voice_client = ctx.voice_client
@@ -186,16 +168,6 @@ async def shuffle(ctx):
         await ctx.send("🔀 Shuffled the current queue.")
     else:
         await ctx.send("❌ There are no songs in the queue to shuffle.")
-
-@bot.command(name='now_playing', help='Show the currently playing song')
-async def now_playing(ctx):
-    global current_song_title
-    global current_song_duration
-    if ctx.voice_client is not None and ctx.voice_client.is_playing():
-        duration = str(datetime.timedelta(seconds=int(current_song_duration)))
-        await ctx.send(f"🎵 Currently playing: {current_song_title} ({duration})")
-    else:
-        await ctx.send("❌ There is no song currently playing.")
 
 @bot.event
 async def on_command_error(ctx, error):
