@@ -204,5 +204,17 @@ async def youtube(ctx, *, video_url):
     # Play the extracted audio in the voice channel
     await play_song(ctx, audio_url, f"📺 {title}", duration * 1000)  # Convert seconds to milliseconds
 
+@bot.command(name='stop', help='Stop playing music and disconnect from the voice channel')
+async def stop(ctx):
+    global queue
+    voice_client = ctx.voice_client
+    if voice_client and (voice_client.is_playing() or voice_client.is_paused()):
+        voice_client.stop()
+        queue = []
+        await ctx.send("⏹ Stopped playing music and cleared the queue.")
+        await voice_client.disconnect()
+    else:
+        await ctx.send("❌ There is no song currently playing or paused.")
+
 
 bot.run(TOKEN)
