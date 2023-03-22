@@ -15,7 +15,7 @@ A Plex server with valid credentials
 # Installation
 Clone this repository or download it as a ZIP file and extract it.
 
-git clone https://github.com/yourusername/your-repo.git
+git clone https://github.com/kalebbroo/plex_music_bot.git
 Change the working directory to the project folder.
 
 cd your-repo
@@ -45,7 +45,7 @@ set PLEX_PASSWORD=your-plex-password
 Modify the bot script to use the environment variables instead of hardcoded values:
 
 # ...
-Running the bot
+# Running the bot
 Ensure that the virtual environment is activated.
 
 source venv/bin/activate  # For Windows: venv\Scripts\activate
@@ -72,5 +72,5 @@ Restart the bot by stopping the current instance and running it again.
 python plex_music_bot.py
 
 
-Contributing
+# Contributing
 Feel free to submit issues, feature requests, or pull requests to contribute to this project.
