@@ -1,0 +1,4 @@
+discord.py==1.7.3
+plexapi==4.8.0
+yt-dlp==2021.12.25
+python-dotenv==0.19.2
