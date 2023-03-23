@@ -73,53 +73,43 @@ async def play_song(ctx, url, song_info, song_duration, queue_song=False):
         # Disconnect after the song has finished playing
         await disconnect_after(ctx, song_duration / 1000)  # Convert milliseconds to seconds
 
-
-@bot.command(name='show_queue', help='Show the current queue')
-async def show_queue(ctx):
-    if not queue and (ctx.voice_client is None or not ctx.voice_client.is_playing()):
-        await ctx.send("❌ There are no songs in the queue.")
-    else:
-        # Include the currently playing song
-        if ctx.voice_client.is_playing():
-            current_duration = str(datetime.timedelta(seconds=int(current_song_duration/1000)))
-            queue_list = [f"🔊 Currently Playing: {current_song_title} ({current_duration})"]
-        else:
-            queue_list = []
-        
-        # Add the rest of the songs in the queue with their duration
-        for idx, (track, title, duration) in enumerate(queue, start=1):
-            duration = str(datetime.timedelta(seconds=int(duration/1000)))
-            queue_list.append(f"{idx}. {title} ({duration})")
-
-        queue_text = "\n".join(queue_list)
-        await ctx.send(f"🎵 Current Queue:\n{queue_text}")
-
-@bot.command(name='play', help='Play a song by title')
-async def play(ctx, *, song_name):
+@bot.command(name='play', help='Play a song by title and artist')
+async def play(ctx, *, query):
     # Search for the song in the Plex library
-    results = plex.search(song_name)
+    results = plex.search(query)
     tracks = [item for item in results if item.type == 'track']
 
     if tracks:
-        if len(tracks) > 1:
+        matching_tracks = []
+
+        # Find tracks with both the song title and artist in the query
+        for track in tracks:
+            if all(word.lower() in (track.title + " " + track.grandparentTitle).lower() for word in query.split()):
+                matching_tracks.append(track)
+
+        if not matching_tracks:
+            matching_tracks = tracks[:10]
+
+        if len(matching_tracks) > 1:
             # Display the list of found tracks with numbers
-            track_list = "\n".join([f"{idx + 1}. {track.grandparentTitle} - {track.title}" for idx, track in enumerate(tracks)])
-            await ctx.send(f"🔍 Found multiple songs with the title '{song_name}':\n{track_list}\nPlease type the number of the song you want to play.")
+            track_list = [f"{idx + 1}. {track.grandparentTitle} - {track.title}" for idx, track in enumerate(matching_tracks)]
+            embed = discord.Embed(title="🔍 Found multiple songs for your query", description="\n".join(track_list), color=0x00b0f0)
+            query_msg = await ctx.send(embed=embed)
             
             def check(msg):
-                return msg.author == ctx.author and msg.content.isdigit() and 1 <= int(msg.content) <= len(tracks)
+                return msg.author == ctx.author and msg.content.isdigit() and 1 <= int(msg.content) <= len(track_list)
             
             try:
                 # Wait for the user's response with the selected song's number
                 response = await bot.wait_for("message", timeout=60.0, check=check)
-                track = tracks[int(response.content) - 1]
+                track = matching_tracks[int(response.content) - 1]
             except asyncio.TimeoutError:
                 return await ctx.send("❌ No response received. Please try again.")
 
         else:
-            track = tracks[0]
+            track = matching_tracks[0]
 
-        await ctx.send(f"🔍 Found a song with the title '{song_name}'.")
+        await ctx.send(f"🔍 Found a song for '{query}'.")
 
         is_playing = ctx.voice_client is not None and ctx.voice_client.is_playing()
         
@@ -130,10 +120,87 @@ async def play(ctx, *, song_name):
             await ctx.send(f"🎵 Added to queue: {track.grandparentTitle} - {track.title}")
 
     else:
-        await ctx.send(f"❌ Couldn't find a song with the title '{song_name}'.")
+        await ctx.send(f"❌ Couldn't find a song for '{query}'.")
 
     # Play the next song in the queue if there is one
     await play_next_song(ctx)
+
+async def send_queue(queue_list, page):
+    start = (page - 1) * 10
+    end = start + 10
+    embed = discord.Embed(title="🎵 Current Queue", description="\n".join(queue_list[start:end]), color=0x00b0f0)
+    embed.set_footer(text=f"Page {page}/{(len(queue_list) - 1) // 10 + 1}")
+    return embed
+
+def reaction_check(reaction, user):
+    return user != bot.user and str(reaction.emoji) in ["⬅️", "➡️"]
+
+@bot.command(name='show_queue', help='Show the current queue')
+async def show_queue(ctx, page: int = 1):
+    if not queue and (ctx.voice_client is None or not ctx.voice_client.is_playing()):
+        await ctx.send("❌ There are no songs in the queue.")
+    else:
+        # Include the currently playing song
+        if ctx.voice_client.is_playing():
+            current_duration = str(datetime.timedelta(seconds=int(current_song_duration/1000)))
+            queue_list = [f"🔊 Currently Playing: {current_song_title} ({current_duration})"]
+        else:
+            queue_list = []
+
+        # Add the rest of the songs in the queue with their duration
+        for idx, (track, title, duration) in enumerate(queue, start=1):
+            duration = str(datetime.timedelta(seconds=int(duration/1000)))
+            queue_list.append(f"{idx}. {title} ({duration})")
+
+        num_pages = (len(queue_list) - 1) // 10 + 1
+
+    if 1 <= page <= num_pages:
+        queue_msg = await ctx.send(embed=await send_queue(queue_list, page))
+        await queue_msg.add_reaction("⬅️")
+        await queue_msg.add_reaction("➡️")
+
+        while True:
+            try:
+                reaction, user = await bot.wait_for("reaction_add", check=reaction_check, timeout=60)
+            except asyncio.TimeoutError:
+                break
+
+            if str(reaction.emoji) == "⬅️" and page > 1:
+                page -= 1
+            elif str(reaction.emoji) == "➡️" and page < num_pages:
+                page += 1
+            else:
+                await queue_msg.remove_reaction(reaction, user)
+                continue
+
+            await queue_msg.edit(embed=await send_queue(queue_list, page))
+            await queue_msg.remove_reaction(reaction, user)
+
+    else:
+        await ctx.send(f"❌ Invalid page number. The queue has {num_pages} page(s).")
+
+
+
+@bot.event
+async def on_reaction_add(reaction, user):
+    if user == bot.user:
+        return
+
+    ctx = await bot.get_context(reaction.message)
+    if ctx.command and ctx.command.name == "show_queue":
+        embed = reaction.message.embeds[0]
+        page = int(embed.footer.text.split(" ")[1].split("/")[0])
+        queue_list = embed.description.split("\n")
+
+        if reaction.emoji == "⬅️" and page > 1:
+            new_page = page - 1
+        elif reaction.emoji == "➡️" and page < ((len(queue_list) - 1) // 10 + 1):
+            new_page = page + 1
+        else:
+            return
+
+        await reaction.remove(user)
+        await reaction.message.edit(embed=await send_queue(queue_list, new_page))
 
 @bot.command(name='skip', help='Skip the current song')
 async def skip(ctx):
@@ -199,10 +266,43 @@ async def youtube(ctx, *, video_url):
             title = info_dict['title']
             duration = info_dict['duration']
         except Exception as e:
-            return await ctx.send(f"❌ Error extracting audio from YouTube video: {e}")
+            print(f"Error extracting audio from YouTube video: {e}")
+            return await ctx.send("❌ This is not a valid YouTube video link.")
 
     # Play the extracted audio in the voice channel
     await play_song(ctx, audio_url, f"📺 {title}", duration * 1000)  # Convert seconds to milliseconds
+
+@bot.command(name='playlist', help='List all playlists and play songs from the chosen playlist')
+async def playlist(ctx):
+    # Get all the playlists on the Plex server
+    playlists = plex.playlists()
+
+    # Send a list of playlists with their numbers
+    playlist_list = "\n".join([f"{idx + 1}. {pl.title}" for idx, pl in enumerate(playlists)])
+    await ctx.send(f"🎵 Available Playlists:\n{playlist_list}\nPlease type the number of the playlist you want to play.")
+
+    # Check if the user's response is a valid playlist number
+    def check(msg):
+        return msg.author == ctx.author and msg.content.isdigit() and 1 <= int(msg.content) <= len(playlists)
+
+    try:
+        # Wait for the user's response with the selected playlist's number
+        response = await bot.wait_for("message", timeout=60.0, check=check)
+        chosen_playlist = playlists[int(response.content) - 1]
+    except asyncio.TimeoutError:
+        return await ctx.send("❌ No response received. Please try again.")
+
+    # Load all the songs in the chosen playlist into the queue
+    tracks = chosen_playlist.items()
+    for track in tracks:
+        queue.append((track.getStreamURL(), f"{track.grandparentTitle} - {track.title}", track.duration))
+
+    await ctx.send(f"🎵 Loaded {len(tracks)} songs from the '{chosen_playlist.title}' playlist into the queue.")
+
+    # Start playing the queue if not already playing
+    if not (ctx.voice_client and ctx.voice_client.is_playing()):
+        await play_next_song(ctx)
+
 
 @bot.command(name='stop', help='Stop playing music and disconnect from the voice channel')
 async def stop(ctx):
@@ -215,5 +315,34 @@ async def stop(ctx):
         await voice_client.disconnect()
     else:
         await ctx.send("❌ There is no song currently playing or paused.")
+
+bot.remove_command('help')
+
+@bot.command(name='help', help='Show the help information')
+async def help(ctx, *args):
+    if args:
+        command = bot.get_command(args[0])
+        if command:
+            embed = discord.Embed(
+                title=f"Command: !{command.name}",
+                description=command.help,
+                color=discord.Color.blue()
+            )
+            embed.set_footer(text="<> indicates a required argument. [] indicates an optional argument.")
+            await ctx.send(embed=embed)
+        else:
+            await ctx.send(f"❌ Command '{args[0]}' not found.")
+    else:
+        embed = discord.Embed(
+            title="Plex Music Bot Commands",
+            description="Here are the available commands:",
+            color=discord.Color.blue()
+        )
+        
+        for command in bot.commands:
+            embed.add_field(name=f"!{command.name}", value=command.help, inline=False)
+        
+        embed.set_footer(text="Type !help <command> for more info on a command.")
+        await ctx.send(embed=embed)
 
 bot.run(TOKEN)
