@@ -7,6 +7,7 @@ from plexapi.myplex import MyPlexAccount
 import asyncio
 import datetime
 import math
+import sys
 
 current_song_title = ""
 current_song_duration = 0
@@ -253,20 +254,44 @@ async def on_command_error(ctx, error):
     else:
         await ctx.send(f"❌ Error: {error}")
 
-@bot.command(name='youtube', help='Play audio from a YouTube link')
-async def youtube(ctx, *, video_url):
-    # Check if the URL is a valid YouTube video URL
-    if "youtube.com" not in video_url and "youtu.be" not in video_url:
-        return await ctx.send("❌ Invalid YouTube link. Please provide a valid YouTube video URL.")
-    
-    # Extract audio information and download URL
+async def display_youtube_search_results(ctx, search_results):
+    search_list = "\n".join([f"{idx + 1}. {result['title']}" for idx, result in enumerate(search_results)])
+    embed = discord.Embed(title="🎵 YouTube Search Results", description=search_list)
+    message = await ctx.send(embed=embed)
+    return message
+
+@bot.command(name='youtube', help='Play audio from a YouTube link or search for a video')
+async def youtube(ctx, *, query):
     ydl_opts = {
         'format': 'bestaudio/best',
         'noplaylist': True,
-        'outtmpl': 'downloads/%(title)s.%(ext)s',
         'quiet': True,
     }
-    
+
+    # Check if the URL is a valid YouTube video URL
+    if "youtube.com" in query or "youtu.be" in query:
+        video_url = query
+    else:  # Perform a search
+        ydl_opts["default_search"] = "ytsearch10"
+        search_message = await ctx.send("🔍 Searching YouTube for videos, one moment...")
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            try:
+                info_dict = ydl.extract_info(query, download=False)
+                search_results = info_dict["entries"]
+                await search_message.delete()  # Delete the search message
+                message = await display_youtube_search_results(ctx, search_results)
+                await ctx.send("Please type the number of the video you want to play.")
+
+                def check(msg):
+                    return msg.author == ctx.author and msg.content.isdigit() and 1 <= int(msg.content) <= len(search_results)
+
+                response = await bot.wait_for("message", timeout=60.0, check=check)
+                chosen_video = search_results[int(response.content) - 1]
+                video_url = chosen_video["webpage_url"]
+            except Exception as e:
+                print(f"Error searching YouTube videos: {e}")
+                return await ctx.send("❌ Error searching YouTube videos. Please try again.")
+
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         try:
             info_dict = ydl.extract_info(video_url, download=False)
@@ -279,6 +304,7 @@ async def youtube(ctx, *, video_url):
 
     # Play the extracted audio in the voice channel
     await play_song(ctx, audio_url, f"📺 {title}", duration * 1000)  # Convert seconds to milliseconds
+
 
 async def display_playlists_page(ctx, page, max_pages, playlists):
     start_idx = page * 10
@@ -395,5 +421,13 @@ async def help(ctx, *args):
         
         embed.set_footer(text="Type !help <command> for more info on a command.")
         await ctx.send(embed=embed)
+
+@bot.event
+async def on_command_error(ctx, error):
+    if isinstance(error, commands.CommandInvokeError):
+        print(f"Error in command '{ctx.command}', {error}")
+        await ctx.send("⚠️ Hang tight, I encountered an error so I'm resetting to clear them.")
+        await bot.logout()
+        os.execv(sys.executable, ['python'] + sys.argv)
 
 bot.run(TOKEN)
