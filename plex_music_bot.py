@@ -55,7 +55,7 @@ async def play_song(ctx, url, song_info, song_duration, queue_song=False):
     # If the bot is already playing a song, add the new song to the queue
     if voice_client.is_playing():
         queue.append((url, song_info, song_duration))
-        embed = discord.Embed(title=f"🎵 Added to queue: {song_info, song_duration / 2000}", color=0x00b0f0)
+        embed = discord.Embed(title=f"🎵 Added to queue: {song_info, song_duration / 1000}", color=0x00b0f0)
         await ctx.send(embed=embed)
     else:
         # Play the song
@@ -76,8 +76,8 @@ async def play_song(ctx, url, song_info, song_duration, queue_song=False):
             embed = discord.Embed(title=f"🎵 Now playing: {song_info} ({formatted_duration})", color=0x00b0f0)
             await ctx.send(embed=embed)
 
-        # Disconnect after the song has finished playing
-        await disconnect_after(ctx, song_duration / 2000)  # Convert milliseconds to seconds
+        # Disconnect after the song has finished playing and wait 2 minutes
+        await disconnect_after(ctx, duration_seconds + 120)  # Add 120 seconds (2 minutes) to the duration
 
 @bot.command(name='play', help='Play a song by title and artist')
 async def play(ctx, *, query):
