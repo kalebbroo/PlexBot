@@ -1,5 +1,5 @@
-discord.py==2.0.0
+discord.py==2.2.2
 plexapi==4.8.0
-yt-dlp==2023.4.1
+yt-dlp==2023.03.04
 #python-dotenv==0.19.2 
 Pillow==8.4.0
