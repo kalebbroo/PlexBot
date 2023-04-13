@@ -44,7 +44,7 @@ This Discord bot allows users to play audio from their Plex library and YouTube 
 - `!help <command>`: Show more detailed information on a specific command.
 
 # Prerequisites
-Python 3.7 or higher
+Python 3.11 or higher
 A Discord bot token
 A Plex server with valid credentials
 
@@ -65,9 +65,12 @@ source venv/bin/activate  # For Windows: venv\Scripts\activate
 
 # Install the required dependencies.
 
-pip install -r requirements.txt
+1. Install ffmpeg. Depending on your operating system, you may be able to install ffmpeg using your package manager. For example, on Ubuntu or Debian, you can run 'sudo apt-get install ffmpeg' to install ffmpeg. On macOS, you can use Homebrew by running 'brew install ffmpeg'.
 
-Enter your cridentials into config.py or use environment variables.
+2. Install the Python dependencies by running pip install -r requirements.txt.
+
+3. Enter your credentials into config.py or set them as environment variables.
+
 
 # Environment Variables
 (This is optional if you use the config.py you dont need to do this)
