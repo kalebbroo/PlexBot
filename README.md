@@ -1,6 +1,6 @@
 # Plex Music Bot (BETA) v0.5
 This Discord bot allows users to play audio from their Plex library and YouTube videos in a voice channel.
-![Now Playing!](images/embed.png)
+![Now Playing!](images/embed.PNG)
 
 # Features
 - Search for and play songs from a Plex library
