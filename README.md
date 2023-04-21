@@ -129,4 +129,6 @@ python plex_music_bot.py
 # Contributing
 Feel free to submit issues, feature requests, or pull requests to contribute to this project.
 
-# Join the Discord 
+# Join the Discord and test the bot
+
+https://discord.gg/CmrFZgZVEE
