@@ -1,4 +1,4 @@
-# Plex Music Bot (BETA) v0.5
+# Plex Music Bot (BETA) v0.6
 This Discord bot allows users to play audio from their Plex library and YouTube videos in a voice channel.
 ![Now Playing!](images/embed.PNG)
 
@@ -23,16 +23,14 @@ This Discord bot allows users to play audio from their Plex library and YouTube 
 
 - `!playlist`: List all available playlists and play songs from the chosen playlist by selecting its number.
 (This is one of the most powerful commands because you can setup playlists in Plex then quickly start playing them.)
-(Some issues I have with this command are songs repeating until they get skipped not sure why yet. I may make it so they get shuffled)
 
-- `!show_queue`: Display the current song queue with song titles and artists.
+- `!queue`: Display the current song queue with song titles and artists.
 
 - `!shuffle`: Randomly shuffle the current song queue.
 
 - `!artist <artist name>`: Queue all songs by the specified artist from your Plex library.
 
 - `!skip`: Skip the current song and play the next song in the queue.
-(I am having a strange issue where it will skip the song but then the next song after that gets added to the bottom of the queue)
 
 - `!youtube <YouTube URL or search query>`: Play audio from a YouTube video using its URL, or search for a video or playlist and play the first result. 
 (Youtube search is very slow and buggy. providing a link is the best option. Playlists are currently broken dont try to play them.)
@@ -44,9 +42,10 @@ This Discord bot allows users to play audio from their Plex library and YouTube 
 - `!help <command>`: Show more detailed information on a specific command.
 
 # Prerequisites
-Python 3.11 or higher
+Python 3.11.2 or higher
 A Discord bot token
 A Plex server with valid credentials
+(I have moved to using a plex token and base-url for cridentials. I have left the option to login using username and password you just have to uncomment it.)
 
 # Installation
 Clone this repository or download it as a ZIP file and extract it.
@@ -55,6 +54,8 @@ git clone https://github.com/kalebbroo/plex_music_bot.git
 
 Change the working directory to the project folder.
 
+Add your cridentials to the config.py or set them up how you like. 
+
 cd your-repo
 
 (only do the below steps if you are using a virtual environment)
@@ -62,15 +63,31 @@ Create a virtual environment and activate it.
 python -m venv venv
 source venv/bin/activate  # For Windows: venv\Scripts\activate
 
+# Docker Installation (recommended)
+- Install Docker on your system by following the instructions from the official Docker documentation.
+
+- Clone this repository or download it as a ZIP file and extract it:
+
+git clone https://github.com/kalebbroo/plex_music_bot.git
+Change the working directory to the project folder:
+
+- cd plex_music_bot
+
+- Build the Docker image:
+Copy code
+docker build -t plex_music_bot .
+
+- Run the Docker container
+
+docker run -d --name plex_music_bot
 
 # Install the required dependencies.
 
-1. Install ffmpeg. Depending on your operating system, you may be able to install ffmpeg using your package manager. For example, on Ubuntu or Debian, you can run 'sudo apt-get install ffmpeg' to install ffmpeg. On macOS, you can use Homebrew by running 'brew install ffmpeg'.
+pip install -r requirements.txt
 
-2. Install the Python dependencies by running pip install -r requirements.txt.
+Install ffmpeg. Depending on your operating system, you may be able to install ffmpeg using your package manager. For example, on Ubuntu or Debian, you can run 'sudo apt-get install ffmpeg' to install ffmpeg. On macOS, you can use Homebrew by running 'brew install ffmpeg'.
 
-3. Enter your credentials into config.py or set them as environment variables.
-
+Enter your cridentials into config.py or use environment variables.
 
 # Environment Variables
 (This is optional if you use the config.py you dont need to do this)
@@ -126,9 +143,22 @@ Restart the bot by stopping the current instance and running it again.
 
 python plex_music_bot.py
 
+Using Docker:
+Rebuild the Docker image:
+
+docker build -t plex_music_bot .
+Stop the running container:
+
+docker stop plex_music_bot
+Remove the stopped container:
+
+docker rm plex_music_bot
+Run the updated Docker container:
+
+docker run -d --name plex_music_bot
+
 # Contributing
 Feel free to submit issues, feature requests, or pull requests to contribute to this project.
 
-# Join the Discord and test the bot
-
+# Join the Discord for Support
 https://discord.gg/CmrFZgZVEE
