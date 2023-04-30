@@ -1,16 +1,22 @@
 ## Config options. Enter your Discord bot and Plex information. ##
 
 ## Discord Bot Token ##
-TOKEN = 'BOT_TOKEN'
+TOKEN = ''
 
 ## Plex Username ##
-PLEX_USERNAME = 'USERNAME'
+PLEX_USERNAME = ''
 
 ## Plex Password ##
-PLEX_PASSWORD = 'PASSWORD'
+PLEX_PASSWORD = ''
 
-## Plex Token (This is a placeholder and is currently not used) ##
-PLEX_TOKEN = "TOKEN"
+## Plex Token ##
+PLEX_TOKEN = ""
+
+## Plex base URL ##
+BASEURL = ""
 
 ## Plex Server Name ##
-SERVER = "SERVER"
+SERVER = ""
+
+## Main Discord Text Channel ##
+CHANNEL_ID = ""
