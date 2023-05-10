@@ -1,4 +1,3 @@
-import os
 import io
 import requests
 import traceback
@@ -12,11 +11,9 @@ from plexapi.server import PlexServer
 from config import TOKEN, PLEX_USERNAME, PLEX_PASSWORD, SERVER, PLEX_TOKEN, BASEURL, CHANNEL_ID
 from PIL import Image
 import concurrent.futures
-import functools
 import asyncio
 import datetime
 import math
-import sys
 
 # I have switched to using url and plex token method for logging in.
 # If using username and password method comment out the below line and uncomment the ones below that.
@@ -33,13 +30,14 @@ current_song_duration = 0
 song_duration = None
 
 
-# Define a lock to prevent multiple instances of play_next_song() from running at the same time
+# Define lock to prevent multiple instances of play_next_song() from running at the same time
 play_lock = asyncio.Lock()
 
 
 class MusicQueue:
     def __init__(self):
         self.queue = []
+        self.message_id = None
 
     async def add_song(self, song_info):
         self.queue.append(song_info)
@@ -61,42 +59,45 @@ music_queue = MusicQueue()
 @bot.event
 async def on_ready():
     print(f'We have logged in as {bot.user}')
-    bot.loop.create_task(auto_disconnect())
 
-async def auto_disconnect():
-    await bot.wait_until_ready()
-    idle_timeout = 120  # seconds
 
-    while not bot.is_closed():
-        for guild in bot.guilds:
-            voice_client = guild.voice_client
-            if voice_client and voice_client.channel:  # Check if the bot is in a voice channel
-                # Disconnect if no other users are in the voice channel
-                other_users = [member for member in voice_client.channel.members if not member.bot]
-                if not other_users:
-                    print(f'Disconnecting from voice channel {voice_client.channel} in guild {guild} (no other users)')
-                    await voice_client.disconnect()
-                    music_queue.queue.clear()
-                else:
-                    if not voice_client.source:  # Check if a song is playing or paused
-                        user = await bot.fetch_user(bot.user.id)
-                        ctx = await bot.get_context(user)  # Get the Context object
-                        if music_queue.queue:  # If there are songs in the queue, play the first one
-                            print(f'Playing a song in guild {guild}')
-                            await play_song(ctx, *music_queue.queue[0], send_message=True, music_queue=music_queue)
-                        else:  # If there are no songs in the queue, wait `idle_timeout` seconds and then disconnect
-                            print(f'Waiting {idle_timeout} seconds before disconnecting in guild {guild}')
-                            await asyncio.sleep(idle_timeout)
-                            if not voice_client.source:
-                                print(f'Disconnecting from voice channel {voice_client.channel} in guild {guild} (no songs in queue)')
-                                await voice_client.disconnect()
-        await asyncio.sleep(30)  # Check every 30 seconds
+
+
+class MyMusicView(discord.ui.View):
+    def __init__(self):
+        super().__init__()
+        self.add_item(discord.ui.Button(style=discord.ButtonStyle.secondary, label="Pause", custom_id="music_pause_button"))
+        self.add_item(discord.ui.Button(style=discord.ButtonStyle.success, label="Play", custom_id="music_play_button"))
+        self.add_item(discord.ui.Button(style=discord.ButtonStyle.blurple, label="Skip", custom_id="music_skip_button"))
+        self.add_item(discord.ui.Button(style=discord.ButtonStyle.primary, label="Shuffle", custom_id="music_shuffle_button"))
+        self.add_item(discord.ui.Button(style=discord.ButtonStyle.danger, label="Kill", custom_id="music_kill_button"))
+
+
+
+@bot.event
+async def on_interaction(interaction: discord.Interaction):
+    if interaction.type == discord.InteractionType.component:
+        if interaction.data["custom_id"] == "music_pause_button":
+            await pause(interaction)
+        elif interaction.data["custom_id"] == "music_play_button":
+            await resume(interaction)
+        elif interaction.data["custom_id"] == "music_skip_button":
+            await skip(interaction)
+        elif interaction.data["custom_id"] == "music_shuffle_button":
+            await shuffle(interaction)
+        elif interaction.data["custom_id"] == "music_kill_button":
+            await kill(interaction)
 
 
 
 
 
 
+async def remove_last_embed(ctx):
+    async for message in ctx.channel.history(limit=100):
+        if message.author == bot.user and message.embeds:
+            await message.delete()
+            break
 
 
 
@@ -137,6 +138,8 @@ def safe_attr(obj, *attrs):
 
 async def play_song(ctx, url, song_info, song_duration, track, send_message=True, music_queue=None, play_called=True, play_next=False):
     print("play_song() called")
+    view = MyMusicView()
+    art_file = None
     if play_called:
         print("play_called set to true returning")
         return
@@ -151,7 +154,7 @@ async def play_song(ctx, url, song_info, song_duration, track, send_message=True
             await ctx.send("❌ You must be in a voice channel to play music.")
             return
     else:
-                voice_client = ctx.voice_client
+        voice_client = ctx.voice_client
 
     if not play_next:
         if voice_client.is_playing() or voice_client.is_paused():
@@ -181,8 +184,8 @@ async def play_song(ctx, url, song_info, song_duration, track, send_message=True
         task = asyncio.run_coroutine_threadsafe(coro, bot.loop)
         task.add_done_callback(lambda _: asyncio.run_coroutine_threadsafe(disconnect_after(ctx, music_queue), bot.loop))
 
-
     voice_client.play(discord.FFmpegPCMAudio(url, **FFMPEG_OPTIONS), after=wrapped_play_next)
+
 
     if send_message:
         embed = discord.Embed(title="Plex Bot", color=0x00b0f0)
@@ -193,8 +196,8 @@ async def play_song(ctx, url, song_info, song_duration, track, send_message=True
         embed.add_field(name="Track number", value=track_number, inline=True)
         embed.add_field(name="Song duration", value=formatted_duration, inline=True)
 
+
         thumb_url = safe_attr(track, 'thumbUrl')
-        art_file = None
         if thumb_url:
             try:
                 img_stream = requests.get(thumb_url, stream=True).raw
@@ -212,10 +215,12 @@ async def play_song(ctx, url, song_info, song_duration, track, send_message=True
             except Exception as e:
                 print(f"Error retrieving or processing album artwork: {e}")
 
-        if art_file:
-            await ctx.send(embed=embed, file=art_file)
-        else:
-            await ctx.send(embed=embed)
+        if music_queue.message_id is not None:
+            message = await ctx.fetch_message(music_queue.message_id)
+            await message.delete()  # Delete the old message
+        message = await ctx.send(embed=embed, file=art_file if art_file else None, view=view)  # Send the new message
+        music_queue.message_id = message.id
+
 
 
 
@@ -296,13 +301,15 @@ async def play(ctx, *, query):
              await ctx.send(f"🔍 Found a song for '{query}'.")
              await play_song(ctx, track.getStreamURL(), f"{track.grandparentTitle} - {track.title}", track.duration, track, send_message=True, music_queue=music_queue, play_called=False)
         else:
-            print("No matching songs found")
             await ctx.send(f"❌ Couldn't find a song for '{query}'.")
 
     except Exception as e:
         print("Error in play command:")
         traceback.print_exc()
         await ctx.send("❌ An error occurred while processing your request. Please try again.")
+
+           
+
 
 
 
@@ -513,13 +520,44 @@ async def on_reaction_add(reaction, user):
 
 
 
-@bot.command(name='skip', help='Skip the current song')
-async def skip(ctx):
+async def pause(interaction: discord.Interaction):
     global music_queue
-    voice_client = ctx.voice_client
+    guild = interaction.guild
+    voice_client = guild.voice_client
+    
+    if voice_client and voice_client.is_playing():
+        voice_client.pause()
+        await interaction.response.send_message(f"⏸️ Paused:")
+
+async def resume(interaction: discord.Interaction):
+    global music_queue
+    guild = interaction.guild
+    voice_client = guild.voice_client
+
+    if voice_client is None:
+        await interaction.response.send_message("❌ I am not connected to a voice channel.")
+        return
+
+    if voice_client.is_playing():
+        await interaction.response.send_message("❌ I am already playing a song.")
+        return
+
+    if voice_client.is_paused():
+        voice_client.resume()
+        await interaction.response.send_message(f"▶️ Resumed playing:")
+        return
+
+    if music_queue.queue:
+        await play_song(interaction, *music_queue.queue[0], send_message=True, play_called=False)
+    else:
+        await interaction.response.send_message("❌ There are no songs in the queue.")
+
+async def skip(interaction: discord.Interaction):
+    global music_queue
+    guild = interaction.guild
+    voice_client = guild.voice_client
 
     if voice_client and voice_client.is_playing():
-        current_song = music_queue.current_song_title
         voice_client.stop()
         await asyncio.sleep(1)
         if music_queue.queue:
@@ -527,15 +565,39 @@ async def skip(ctx):
             url, title, duration, track = music_queue.queue.pop(0)
             music_queue.current_song_title = title
             music_queue.current_song_duration = duration
-            await play_song(ctx, url, title, duration, track, send_message=True, music_queue=music_queue, play_called=True)
-            await ctx.send("⏭ Skipped the current song.")
+            await play_song(interaction=interaction, url=url, song_info=title, song_duration=duration, track=track, send_message=True, music_queue=music_queue, play_called=True)
+            await interaction.response.send_message("⏭ Skipped the current song.")
         else:
             music_queue.current_song_title = None
             music_queue.current_song_duration = None
-            await ctx.send("⏹️ The queue is empty. There are no more songs to play.")
+            await interaction.response.send_message("⏹️ The queue is empty. There are no more songs to play.")
     else:
-        await ctx.send("❌ There is no song currently playing.")
+        await interaction.response.send_message("❌ There is no song currently playing.")
 
+
+
+async def shuffle(interaction: discord.Interaction):
+    global music_queue
+    if len(music_queue.queue) > 0:
+        random.shuffle(music_queue.queue)
+        await interaction.response.send_message("🔀 Shuffled the current queue.")
+    else:
+        await interaction.response.send_message("❌ There are no songs in the queue to shuffle.")
+
+async def kill(interaction: discord.Interaction):
+    guild = interaction.guild
+    voice_client = guild.voice_client
+
+    if voice_client:
+        if voice_client.is_playing() or voice_client.is_paused():
+            voice_client.stop()
+
+        music_queue.queue.clear()  # Clear the queue
+
+        await interaction.response.send_message("⏹ Stopped playing music and cleared the queue.")
+        await voice_client.disconnect()
+    else:
+        await interaction.response.send_message("❌ Not connected to a voice channel.")
 
 
 
@@ -559,44 +621,6 @@ async def remove_song(ctx, *, song_number: int):
         await ctx.send(f"🗑️ Removed song '{removed_song}' from the queue.")
     else:
         await ctx.send("❌ Invalid song number.")
-
-
-
-
-@bot.command(name='shuffle', help='Shuffle the current queue')
-async def shuffle(ctx):
-    global music_queue
-    if len(music_queue.queue) > 0:
-        random.shuffle(music_queue.queue)
-        await ctx.send("🔀 Shuffled the current queue.")
-    else:
-        await ctx.send("❌ There are no songs in the queue to shuffle.")
-
-
-
-
-@bot.command(name='resume', help='Resume playing the current song or start playing the first song in the queue')
-async def resume(ctx):
-    global music_queue
-    voice_client = ctx.voice_client
-
-    if voice_client is None:
-        await ctx.send("❌ I am not connected to a voice channel.")
-        return
-
-    if voice_client.is_playing():
-        await ctx.send("❌ I am already playing a song.")
-        return
-
-    if voice_client.is_paused():
-        voice_client.resume()
-        await ctx.send(f"▶️ Resumed playing: {music_queue.current_song_title}")
-        return
-
-    if music_queue.queue:
-        await play_song(ctx, *music_queue.queue[0], send_message=True, play_called=False)
-    else:
-        await ctx.send("❌ There are no songs in the queue.")
 
 
 
@@ -858,21 +882,20 @@ async def youtube(ctx, *, query):
 
 @bot.command(name='playlist', help='List all playlists and play songs from the chosen playlist')
 async def playlist(ctx):
-    await show_playlists(ctx, music_queue)
-
-    
-
-
-
+    try:
+        await show_playlists(ctx, music_queue)
+    except Exception as e:
+        print(f"Error in playlist command: {e}")
+        await ctx.send("🚫 An error occurred while processing the playlist command.")
 
 
 async def display_playlists_page(ctx, page, max_pages, playlists):
     start_idx = page * 10
     end_idx = start_idx + 10
-    playlist_list = "\n".join([f"{idx + 1}. {pl.title}" for idx, pl in enumerate(playlists[start_idx:end_idx])])
+    playlist_list = "\n".join([f"{idx + 1}. 🎶 {pl.title} ({len(pl.items())} songs)" for idx, pl in enumerate(playlists[start_idx:end_idx])])
 
     embed = discord.Embed(title="🎵 Available Playlists", description=playlist_list)
-    embed.set_footer(text=f"Page {page + 1} of {max_pages}")
+    embed.set_footer(text=f"Page {page + 1} of {max_pages} | Type the number of the playlist to play")
 
     message = await ctx.send(embed=embed)
 
@@ -881,101 +904,73 @@ async def display_playlists_page(ctx, page, max_pages, playlists):
             await message.add_reaction("⬅️")
         if page < max_pages - 1:
             await message.add_reaction("➡️")
-    
+
     return message
 
 
-
-
-
-
-
 async def show_playlists(ctx, music_queue):
-    playlists = plex.playlists()
-    max_pages = math.ceil(len(playlists) / 10)
-    current_page = 0
-    message = await display_playlists_page(ctx, current_page, max_pages, playlists)
+    try:
+        playlists = plex.playlists()[5:]
+        max_pages = math.ceil(len(playlists) / 10)
+        current_page = 0
+        message = await display_playlists_page(ctx, current_page, max_pages, playlists)
 
-    def check_reaction(reaction, user):
-        return user == ctx.author and reaction.message.id == message.id and str(reaction.emoji) in ["⬅️", "➡️"]
+        def check_reaction(reaction, user):
+            return user == ctx.author and reaction.message.id == message.id and str(reaction.emoji) in ["⬅️", "➡️"]
 
-    def check(msg):
-        return msg.author == ctx.author and msg.content.isdigit() and 1 <= int(msg.content) <= len(playlists)
+        def check(msg):
+            return msg.author == ctx.author and msg.content.isdigit() and 1 <= int(msg.content) <= len(playlists)
 
-    while True:
-        reaction_task = asyncio.create_task(bot.wait_for("reaction_add", check=check_reaction))
-        message_task = asyncio.create_task(bot.wait_for("message", check=check))
+        while True:
+            reaction_task = asyncio.create_task(bot.wait_for("reaction_add", check=check_reaction))
+            message_task = asyncio.create_task(bot.wait_for("message", check=check))
 
-        done, pending = await asyncio.wait(
-            [reaction_task, message_task],
-            return_when=asyncio.FIRST_COMPLETED,
-            timeout=60.0
-        )
+            done, pending = await asyncio.wait(
+                [reaction_task, message_task],
+                return_when=asyncio.FIRST_COMPLETED,
+                timeout=60.0
+            )
 
-        for future in pending:
-            future.cancel()
+            for future in pending:
+                future.cancel()
 
-        if not done:
-            break
+            if not done:
+                await ctx.send("⏰ Timeout! You didn't choose a playlist. Try the command again.")
+                break
 
-        result = done.pop().result()
-        if isinstance(result, tuple):  # Reaction
-            reaction, user = result
-            await message.remove_reaction(reaction, user)
+            result = done.pop().result()
+            if isinstance(result, tuple):  # Reaction
+                reaction, user = result
+                await message.remove_reaction(reaction, user)
 
-            if str(reaction.emoji) == "⬅️" and current_page > 0:
-                current_page -= 1
-            elif str(reaction.emoji) == "➡️" and current_page < max_pages - 1:
-                current_page += 1
-            else:
-                continue
+                if str(reaction.emoji) == "⬅️" and current_page > 0:
+                    current_page -= 1
+                elif str(reaction.emoji) == "➡️" and current_page < max_pages - 1:
+                    current_page += 1
+                else:
+                    continue
 
-            await message.edit(embed=await display_playlists_page(ctx, current_page, max_pages, playlists))
-        else:  # Message
-            response = result
-            chosen_playlist = playlists[int(response.content) - 1]
-            tracks = chosen_playlist.items()
-            random.shuffle(tracks)  # Shuffle the tracks before adding them to the queue
-            for track in tracks:
-                artist = track.grandparentTitle if hasattr(track, 'grandparentTitle') else "Unknown Artist"
-                await music_queue.add_song((track.getStreamURL(), f"{artist} - {track.title}", track.duration, track))
+                await message.edit(embed=await display_playlists_page(ctx, current_page, max_pages, playlists))
+            else:  # Message
+                response = result
+                chosen_playlist = playlists[int(response.content) - 1]
+                tracks = chosen_playlist.items()
+                random.shuffle(tracks)  # Shuffle the tracks before adding them to the queue
+                for track in tracks:
+                    artist = track.grandparentTitle if hasattr(track, 'grandparentTitle') else "Unknown Artist"
+                    await music_queue.add_song((track.getStreamURL(), f"{artist} - {track.title}", track.duration, track))
 
-            await ctx.send(f"🎵 Loaded {len(tracks)} songs from the '{chosen_playlist.title}' playlist into the queue.")
-            if not (ctx.voice_client and (ctx.voice_client.is_playing() or ctx.voice_client.is_paused())):
-                first_song = music_queue.queue.pop(0)
-                formatted_duration = str(datetime.timedelta(seconds=int(first_song[2] / 1000)))
-                await play_song(ctx, *first_song, send_message=True, music_queue=music_queue, play_called=False)
+                await ctx.send(f"🎵 Loaded {len(tracks)} songs from the '{chosen_playlist.title}' playlist into the queue.")
+                if not (ctx.voice_client and (ctx.voice_client.is_playing() or ctx.voice_client.is_paused())):
+                    first_song = music_queue.queue.pop(0)
+                    formatted_duration = str(datetime.timedelta(seconds=int(first_song[2] / 1000)))
+                    await play_song(ctx, *first_song, send_message=True, music_queue=music_queue, play_called=False)
 
+                await message.clear_reactions()
 
-            await message.clear_reactions()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-@bot.command(name='kill', help='Stop playing music and disconnect from the voice channel')
-async def stop(ctx):
-    voice_client = ctx.voice_client
-
-    if voice_client:
-        if voice_client.is_playing() or voice_client.is_paused():
-            voice_client.stop()
-
-        music_queue.queue.clear()  # Clear the queue
-
-        await ctx.send("⏹ Stopped playing music and cleared the queue.")
-        await voice_client.disconnect()
-    else:
-        await ctx.send("❌ Not connected to a voice channel.")
+    except Exception as e:
+        print(f"Error in show_playlists: {e}")
+        await ctx.send("🚫 An error occurred while displaying the playlists.")
 
 
 
