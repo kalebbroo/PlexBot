@@ -1,21 +1,25 @@
 # Plex Music Bot (BETA) v0.6
-This Discord bot allows users to play audio from their Plex library and YouTube videos in a voice channel.
-![Now Playing!](images/embed.PNG)
+
+Download releases for current stable builds. Master will be Dev builds.
+
+This Discord bot allows users to play audio from their Plex library in a voice channel.
+New BUTTONS! use thses buttons to control the bot!
+![Now Playing!](images/buttons.PNG)
 
 # Features
 - Search for and play songs from a Plex library
 
-- Play audio from YouTube videos
+- Play audio from another popular website
 
 - Manage a song queue with play, skip, shuffle, and loop functionality
 
 - Automatically disconnect after 2 minutes of inactivity when the queue is empty
 
 # Commands
-- `!play <song title> <artist>`: Search for a song by title and artist in your Plex library and play it. If a song is already playing, the new song will be added to the queue.
+- `!play <song title> <artist>`: Search for a song by title or artist in your Plex library and play it. If a song is already playing, the new song will be added to the queue.
 (This is the main command you will use but it only plays/adds 1 song)
 
-- `!stop`: Stop playing music and disconnect the bot from the voice channel.
+- `kill`: Stop playing music and disconnect the bot from the voice channel. (button)
 
 - `!remove_song <song index>`: Remove a specific song from the queue by its position in the queue.
 
@@ -26,11 +30,11 @@ This Discord bot allows users to play audio from their Plex library and YouTube 
 
 - `!queue`: Display the current song queue with song titles and artists.
 
-- `!shuffle`: Randomly shuffle the current song queue.
+- `shuffle`: Randomly shuffle the current song queue. (button)
 
 - `!artist <artist name>`: Queue all songs by the specified artist from your Plex library.
 
-- `!skip`: Skip the current song and play the next song in the queue.
+- `skip`: Skip the current song and play the next song in the queue. (button)
 
 - `!youtube <YouTube URL or search query>`: Play audio from a YouTube video using its URL, or search for a video or playlist and play the first result. 
 (Youtube search is very slow and buggy. providing a link is the best option. Playlists are currently broken dont try to play them.)
