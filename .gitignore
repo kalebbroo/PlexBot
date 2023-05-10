@@ -1,0 +1,13 @@
+# Ignore a specific file
+configs.py
+config.py
+config.py.
+
+# Ignore all .log files
+*.log
+
+# Ignore all .tmp files in any directory
+**/*.tmp
+
+# Ignore all files inside __pycache__ directories at any level
+**/__pycache__/
