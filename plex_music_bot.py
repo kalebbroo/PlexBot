@@ -6,9 +6,9 @@ import yt_dlp
 import discord
 from discord.ext import commands
 #from plexapi.myplex import MyPlexAccount
-# If you want to use the old login method uncomment above line and comment the line below this.
+# If you want to use the old login method uncomment above line and comment the line below this. Then choose what to import from the congig.py
 from plexapi.server import PlexServer
-from config import TOKEN, PLEX_USERNAME, PLEX_PASSWORD, SERVER, PLEX_TOKEN, BASEURL, CHANNEL_ID
+from config import TOKEN, PLEX_TOKEN, BASEURL
 from PIL import Image
 import concurrent.futures
 import asyncio
@@ -23,7 +23,7 @@ plex = PlexServer(BASEURL, PLEX_TOKEN)
 
 intents = discord.Intents.all()
 intents.messages = True
-bot = commands.Bot(command_prefix='!', intents=intents)
+bot = commands.Bot(command_prefix='?', intents=intents)
 
 current_song_title = ""
 current_song_duration = 0
@@ -421,11 +421,27 @@ async def album(ctx, *, query):
 
 
 async def send_queue(queue_list, page):
-    start = (page - 1) * 10
-    end = start + 10
-    embed = discord.Embed(title="🎵 Current Queue", description="\n".join(queue_list[start:end]), color=0x00b0f0)
-    embed.set_footer(text=f"Page {page}/{(len(queue_list) - 1) // 10 + 1}")
+    start = (page - 1) * 20
+    end = start + 20
+
+    embed = discord.Embed(title="🎵 Current Queue", color=0x00b0f0)
+
+    for i in range(start, end, 2):
+        if i < len(queue_list):
+            song_1 = queue_list[i]
+            song_2 = queue_list[i+1] if (i+1) < len(queue_list) else None
+
+            field_value = f"**{i+1}.** {song_1}\n\n"
+            if song_2:
+                field_value += f"**{i+2}.** {song_2}\n\n"
+
+            embed.add_field(name="\u200b", value=field_value, inline=True)
+
+    embed.set_footer(text=f"Page {page}/{(len(queue_list) - 1) // 20 + 1}")
+
     return embed
+
+
 
 
 
@@ -440,7 +456,6 @@ def reaction_check(reaction, user):
 
 @bot.command(name='queue', help='Show the current queue')
 async def queue(ctx, page: int = 1):
-
     if not music_queue.queue and (ctx.voice_client is None or not ctx.voice_client.is_playing()):
         await ctx.send("❌ There are no songs in the queue.")
         return
@@ -461,9 +476,9 @@ async def queue(ctx, page: int = 1):
                 duration = str(datetime.timedelta(seconds=int(duration/1000)))
             else:
                 duration = "Unknown"
-            queue_list.append(f"{idx}. {title} ({duration})")
+            queue_list.append(f"{title} ({duration})")
 
-        num_pages = (len(queue_list) - 1) // 10 + 1
+        num_pages = (len(queue_list) - 1) // 20 + 1
 
     if 1 <= page <= num_pages:
         queue_msg = await ctx.send(embed=await send_queue(queue_list, page))
@@ -487,6 +502,7 @@ async def queue(ctx, page: int = 1):
 
     else:
         await ctx.send(f"❌ Invalid page number. The queue has {num_pages} page(s).")
+
 
 
 
@@ -890,11 +906,22 @@ async def playlist(ctx):
 
 
 async def display_playlists_page(ctx, page, max_pages, playlists):
-    start_idx = page * 10
-    end_idx = start_idx + 10
-    playlist_list = "\n".join([f"{idx + 1}. 🎶 {pl.title} ({len(pl.items())} songs)" for idx, pl in enumerate(playlists[start_idx:end_idx])])
+    start_idx = page * 21
+    end_idx = start_idx + 21
+    embed = discord.Embed(title="🎵 ---------- User Submitted Playlists ---------- 🎵", color=0x00b0f0)
 
-    embed = discord.Embed(title="🎵 Available Playlists", description=playlist_list)
+    playlist_rows = [playlists[i:i + 3] for i in range(start_idx, end_idx, 3)]
+
+    for row in playlist_rows:
+        row_values = [f"{playlists.index(pl) + 1}. 🎶 {pl.title} ({len(pl.items())} songs)" for pl in row]
+        while len(row_values) < 3:
+            row_values.append("\u200b")
+        field1, field2, field3 = row_values
+        embed.add_field(name="\u200b", value=field1, inline=True)
+        embed.add_field(name="\u200b", value=field2, inline=True)
+        embed.add_field(name="\u200b", value=field3, inline=True)
+
+
     embed.set_footer(text=f"Page {page + 1} of {max_pages} | Type the number of the playlist to play")
 
     message = await ctx.send(embed=embed)
@@ -908,10 +935,11 @@ async def display_playlists_page(ctx, page, max_pages, playlists):
     return message
 
 
+
 async def show_playlists(ctx, music_queue):
     try:
         playlists = plex.playlists()[5:]
-        max_pages = math.ceil(len(playlists) / 10)
+        max_pages = math.ceil(len(playlists) / 21)
         current_page = 0
         message = await display_playlists_page(ctx, current_page, max_pages, playlists)
 
@@ -921,21 +949,24 @@ async def show_playlists(ctx, music_queue):
         def check(msg):
             return msg.author == ctx.author and msg.content.isdigit() and 1 <= int(msg.content) <= len(playlists)
 
-        while True:
+        playlist_chosen = False  # Add this flag to check if a playlist has been chosen
+
+        while not playlist_chosen:
             reaction_task = asyncio.create_task(bot.wait_for("reaction_add", check=check_reaction))
             message_task = asyncio.create_task(bot.wait_for("message", check=check))
 
             done, pending = await asyncio.wait(
                 [reaction_task, message_task],
                 return_when=asyncio.FIRST_COMPLETED,
-                timeout=60.0
+                timeout=30.0
             )
 
             for future in pending:
                 future.cancel()
 
             if not done:
-                await ctx.send("⏰ Timeout! You didn't choose a playlist. Try the command again.")
+                if not playlist_chosen:  # Only send the timeout message if a playlist has not been chosen
+                    await ctx.send("⏰ Timeout! You didn't choose a playlist. Try the command again.")
                 break
 
             result = done.pop().result()
@@ -966,11 +997,13 @@ async def show_playlists(ctx, music_queue):
                     formatted_duration = str(datetime.timedelta(seconds=int(first_song[2] / 1000)))
                     await play_song(ctx, *first_song, send_message=True, music_queue=music_queue, play_called=False)
 
+                playlist_chosen = True  # Set the flag to True once a playlist has been chosen
                 await message.clear_reactions()
 
     except Exception as e:
         print(f"Error in show_playlists: {e}")
         await ctx.send("🚫 An error occurred while displaying the playlists.")
+
 
 
 
