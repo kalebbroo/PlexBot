@@ -1,9 +1,9 @@
-# Plex Music Bot (BETA) v0.6
+# Plex Music Bot (BETA) v0.7
 
 Download releases for current stable builds. Master will be Dev builds.
 
 This Discord bot allows users to play audio from their Plex library in a voice channel.
-New BUTTONS! use thses buttons to control the bot!
+New BUTTONS and slash commands! use thses buttons to control the bot!
 ![Now Playing!](images/buttons.PNG)
 
 # Features
@@ -16,40 +16,40 @@ New BUTTONS! use thses buttons to control the bot!
 - Automatically disconnect after 2 minutes of inactivity when the queue is empty
 
 # Commands
-- `!play <song title> <artist>`: Search for a song by title or artist in your Plex library and play it. If a song is already playing, the new song will be added to the queue.
+- `/play <song title> <artist>`: Search for a song by title or artist in your Plex library and play it. If a song is already playing, the new song will be added to the queue.
 (This is the main command you will use but it only plays/adds 1 song)
 
 - `kill`: Stop playing music and disconnect the bot from the voice channel. (button)
 
-- `!remove_song <song index>`: Remove a specific song from the queue by its position in the queue.
+- `/remove_song <song index>`: Remove a specific song from the queue by its position in the queue.
 
-- `!album <album title> <artist>`: Queue all songs from the specified album or list albums by an artist if only the artist name is provided.
+- `/album <album title> <artist>`: Queue all songs from the specified album or list albums by an artist if only the artist name is provided.
 
-- `!playlist`: List all available playlists and play songs from the chosen playlist by selecting its number.
+- `/playlist`: List all available playlists and play songs from the chosen playlist by selecting its number.
 (This is one of the most powerful commands because you can setup playlists in Plex then quickly start playing them.)
 
-- `!queue`: Display the current song queue with song titles and artists.
+- `/queue`: Display the current song queue with song titles and artists.
 
 - `shuffle`: Randomly shuffle the current song queue. (button)
 
-- `!artist <artist name>`: Queue all songs by the specified artist from your Plex library.
+- `/artist <artist name>`: Queue all songs by the specified artist from your Plex library.
 
 - `skip`: Skip the current song and play the next song in the queue. (button)
 
-- `!youtube <YouTube URL or search query>`: Play audio from a YouTube video using its URL, or search for a video or playlist and play the first result. 
-(Youtube search is very slow and buggy. providing a link is the best option. Playlists are currently broken dont try to play them.)
+- `/youtube <YouTube URL, Playlist URL, or search query>`: Play audio from a YouTube video using its URL, or search for a video or playlist and play the first result. 
+(Added a new library to search for videos. It is now much faster! Playlists are still slow so i dont really recommend them)
 
-- `!clear_queue`: Remove all songs from the current queue.
+- `/clear_queue`: Remove all songs from the current queue.
 
-- `!help`: Show a summary of available commands.
+- `/help`: Show a summary of available commands.
 
-- `!help <command>`: Show more detailed information on a specific command.
+- `/help <command>`: Show more detailed information on a specific command.
 
 # Prerequisites
 Python 3.11.2 or higher
 A Discord bot token
 A Plex server with valid credentials
-(I have moved to using a plex token and base-url for cridentials. I have left the option to login using username and password you just have to uncomment it.)
+(I have moved to using a plex token and base-url for cridentials.)
 
 # Installation
 Clone this repository or download it as a ZIP file and extract it.
