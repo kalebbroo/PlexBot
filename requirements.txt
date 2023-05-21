@@ -1,6 +1,6 @@
 discord.py==2.2.2
 plexapi==4.8.0
 yt-dlp==2023.03.04
-#python-dotenv==0.19.2 
 Pillow==9.5.0
 PyNaCl==1.4.0
+youtube-search-python

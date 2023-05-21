@@ -5,60 +5,67 @@ import random
 import yt_dlp
 import discord
 from discord.ext import commands
-#from plexapi.myplex import MyPlexAccount
-# If you want to use the old login method uncomment above line and comment the line below this. Then choose what to import from the congig.py
+from discord import app_commands, Colour, Embed
+from youtubesearchpython import VideosSearch, Playlist
 from plexapi.server import PlexServer
 from config import TOKEN, PLEX_TOKEN, BASEURL
 from PIL import Image
-import concurrent.futures
 import asyncio
 import datetime
-import math
 
-# I have switched to using url and plex token method for logging in.
-# If using username and password method comment out the below line and uncomment the ones below that.
 plex = PlexServer(BASEURL, PLEX_TOKEN)
-#account = MyPlexAccount(PLEX_USERNAME, PLEX_PASSWORD)
-#plex = account.resource(SERVER).connect()
 
 intents = discord.Intents.all()
+client = discord.Client(intents=intents)
+tree = app_commands.CommandTree(client)
 intents.messages = True
-bot = commands.Bot(command_prefix='?', intents=intents)
+bot = commands.Bot(command_prefix='/', intents=intents)
 
 current_song_title = ""
 current_song_duration = 0
 song_duration = None
-
+view_instances = {}
+play_lock = asyncio.Lock()
+queue_buttons_instances = {}
 
 # Define lock to prevent multiple instances of play_next_song() from running at the same time
-play_lock = asyncio.Lock()
-
-
-class MusicQueue:
-    def __init__(self):
-        self.queue = []
-        self.message_id = None
-
-    async def add_song(self, song_info):
-        self.queue.append(song_info)
-
-    async def next_song(self):
-        if not self.queue:
-            return None
-        return self.queue.pop(0)
-
-    def is_empty(self):
-        return len(self.queue) == 0
-
-music_queue = MusicQueue()
-
-
-
 
 
 @bot.event
 async def on_ready():
     print(f'We have logged in as {bot.user}')
+    try:
+        synced = await bot.tree.sync()
+        print(f"Synced {len(synced)} command(s)")
+    except Exception as e:
+        print(f"Error syncing commands: {e}")
+
+
+class MusicQueue:
+    def __init__(self):
+        self.queue = []
+        self.playlist_queue = []
+        self.message_id = None
+
+    async def add_song(self, song_info, playlist=False):
+        if playlist:
+            self.playlist_queue.append(song_info)
+        else:
+            self.queue.append(song_info)
+
+    async def next_song(self):
+        if self.playlist_queue:
+            return self.playlist_queue.pop(0)
+        elif self.queue:
+            return self.queue.pop(0)
+        else:
+            return None
+
+    def is_empty(self):
+        return len(self.queue) == 0 and len(self.playlist_queue) == 0
+music_queue = MusicQueue()
+
+
 
 
 
@@ -87,37 +94,100 @@ async def on_interaction(interaction: discord.Interaction):
             await shuffle(interaction)
         elif interaction.data["custom_id"] == "music_kill_button":
             await kill(interaction)
+        elif interaction.data["custom_id"] == "back_button":
+            view = playlist_buttons_instances.get(interaction.guild.id)
+            if view is not None:
+                await view.back_button(interaction)
+        elif interaction.data["custom_id"] == "next_button":
+            view = playlist_buttons_instances.get(interaction.guild.id)
+            if view is not None:
+                await view.next_button(interaction)
+
+
+        
+
+class EmbedButtons(discord.ui.View):
+    def __init__(self, interaction, items, num_pages, generate_embed, shuffle: bool = False):
+        super().__init__(timeout=None)
+        self.guild_id = interaction.guild.id
+        self.page = 1
+        self.items = items
+        self.num_pages = num_pages
+        self.interaction = interaction
+        self.generate_embed = generate_embed
+        self.shuffle = shuffle
+
+        view_instances[self.guild_id] = self
+
+        self.add_item(discord.ui.Button(label="Back", style=discord.ButtonStyle.blurple, custom_id="back_button"))
+        self.add_item(discord.ui.Button(label="Next", style=discord.ButtonStyle.blurple, custom_id="next_button"))
+
+    async def refresh(self):
+        self.clear_items()  # Clear old buttons and dropdown
+        self.add_item(discord.ui.Button(label="Back", style=discord.ButtonStyle.blurple, custom_id="back_button"))
+        self.add_item(discord.ui.Button(label="Next", style=discord.ButtonStyle.blurple, custom_id="next_button"))
+
+
+    async def on_timeout(self) -> None:
+        if self.guild_id in view_instances:
+            del view_instances[self.guild_id]
+
+    async def next_button(self, interaction: discord.Interaction):
+        if self.page < self.num_pages:
+            self.page += 1
+            await self.refresh()  # Refresh the view
+            await interaction.response.edit_message(embed=await self.send_page(self.page_list, self.page), view=self)
+
+    async def back_button(self, interaction: discord.Interaction):
+        if self.page > 1:
+            self.page -= 1
+            await self.refresh()  # Refresh the view
+            await interaction.response.edit_message(embed=await self.send_page(self.page_list, self.page), view=self)
 
 
 
 
 
+@bot.event
+async def on_voice_state_update(member, before, after):
+    if before.channel is not None:
+        # Check if bot is alone in the voice channel
+        await asyncio.sleep(1)
+        if bot.user in before.channel.members and len(before.channel.members) == 1:
+            # If bot is alone, run the kill function
+            print(f"Bot was alone in {before.channel.name} - killing")
+            print(f"len(before.channel.members): {len(before.channel.members)}")
+            await kill(before.channel)
+    if after.channel is not None:
+        print(f"Bot joined {after.channel.name}")
+        print(f"Number of Users in VC: {len(after.channel.members)}")
+        # Check if bot is alone in the voice channel
+        await asyncio.sleep(1)
+        if bot.user in after.channel.members and len(after.channel.members) == 1:
+            # If bot is alone, run the kill function
+            print(f"Bot was alone in {after.channel.name} - killing")
+            print(f"len(after.channel.members): {len(after.channel.members)}")
+            await kill(after.channel)
 
-async def remove_last_embed(ctx):
-    async for message in ctx.channel.history(limit=100):
-        if message.author == bot.user and message.embeds:
-            await message.delete()
-            break
 
 
 
-
-
-async def disconnect_after(ctx, music_queue, duration=120):
+async def disconnect_after(interaction, music_queue, duration=120):
     print(f"disconnect_after was called")
     await asyncio.sleep(duration)
-    voice_client = ctx.voice_client
+    voice_client = interaction.guild.voice_client
     if voice_client and not voice_client.is_playing() and not voice_client.is_paused():
         if len(music_queue.queue) == 0:  # Check if there are no songs in the queue
             try:
                 if voice_client:
-                    await ctx.send("❌ Disconnecting from voice channel due to inactivity.")
+                    await interaction.channel.send("❌ Disconnecting from voice channel due to inactivity.")
                     await voice_client.disconnect()
-            except Exception as e:  # Add exception handling here
+            except Exception as e:
                 print(f"Error during disconnect: {e}")
-                await ctx.send("❌ An error occurred while disconnecting. Please try again.")
+                await interaction.channel.send("❌ An error occurred while disconnecting. Please try again.")
         else:
-            await ctx.send("⚠️ Queue is not empty. Bot will remain connected to the voice channel.")
+            await interaction.channel.send("⚠️ Queue is not empty. Bot will remain connected to the voice channel.")
+
 
 
 
@@ -136,7 +206,54 @@ def safe_attr(obj, *attrs):
 
 
 
-async def play_song(ctx, url, song_info, song_duration, track, send_message=True, music_queue=None, play_called=True, play_next=False):
+
+
+
+
+async def create_embed(track, song_title, formatted_duration, art_file):
+    embed = discord.Embed(title="Plex Bot", color=0x00b0f0)
+    embed.add_field(name="Now playing", value=song_title, inline=False)
+    album_title = safe_attr(track, 'parentTitle') or "Unknown"
+    embed.add_field(name="Album title", value=album_title, inline=True)
+    track_number = safe_attr(track, 'index') or "Unknown"
+    embed.add_field(name="Track number", value=track_number, inline=True)
+    embed.add_field(name="Song duration", value=formatted_duration, inline=True)
+
+    thumb_url = safe_attr(track, 'thumbUrl')
+    if thumb_url:
+        try:
+            img_stream = requests.get(thumb_url, stream=True).raw
+            img = Image.open(img_stream)
+
+            max_size = (500, 500)
+            img.thumbnail(max_size)
+
+            resized_img = io.BytesIO()
+            img.save(resized_img, format='PNG')
+            resized_img.seek(0)
+
+            art_file = discord.File(resized_img, filename="image0.png")
+            embed.set_thumbnail(url="attachment://image0.png")
+        except Exception as e:
+            print(f"Error retrieving or processing album artwork: {e}")
+            embed.set_thumbnail(url="https://images.freeimages.com/fic/images/icons/820/simply_google/256/google_youtube.png")  # Use a default thumbnail if there's an error
+    else:
+        embed.set_thumbnail(url="https://images.freeimages.com/fic/images/icons/820/simply_google/256/google_youtube.png")  # Use a default thumbnail if thumb_url is None or an empty string
+
+    return embed, art_file
+
+async def delete_old_embed(interaction, music_queue):
+        try:
+            async for message in interaction.channel.history(limit=5):
+                if message.id == music_queue.message_id:
+                    await message.delete()  # Delete the old message
+                    break
+                else:
+                    print(f"Failed to delete old embed. If there is no previous embed in this channel this is intentional")
+        except Exception as e:
+            print(f"Error retrieving or deleting old message: {e}")
+
+async def play_song(interaction, url, song_info, song_duration, track, send_message=True, music_queue=None, play_called=True, play_next=False):
     print("play_song() called")
     view = MyMusicView()
     art_file = None
@@ -146,30 +263,40 @@ async def play_song(ctx, url, song_info, song_duration, track, send_message=True
     if music_queue is None:
         music_queue = MusicQueue()
 
-    if ctx.voice_client is None:
-        channel = ctx.author.voice.channel if ctx.author.voice and ctx.author.voice.channel else None
-        if channel:
+    if interaction.guild.voice_client is None:
+        if interaction.user.voice and interaction.user.voice.channel:  # Check if user is in a voice channel
+            channel = interaction.user.voice.channel
             voice_client = await channel.connect()
         else:
-            await ctx.send("❌ You must be in a voice channel to play music.")
+            await interaction.channel.send("❌ You must be in a voice channel to play music.")
             return
     else:
-        voice_client = ctx.voice_client
+        voice_client = interaction.guild.voice_client
 
     if not play_next:
         if voice_client.is_playing() or voice_client.is_paused():
-            await music_queue.add_song((url, song_info, song_duration, track))
-            formatted_duration = str(datetime.timedelta(seconds=int(song_duration / 1000)))
-            if send_message:
-                embed = discord.Embed(title=f"🎵 Added to queue: {song_info} ({formatted_duration})", color=0x00b0f0)
-                await ctx.send(embed=embed)
+            song_added = await music_queue.add_song((url, song_info, song_duration, track))
+            if song_added:  # Check if song was added successfully
+                formatted_duration = str(datetime.timedelta(seconds=int(song_duration / 1000)))
+                if send_message:
+                    embed, art_file = await create_embed(track, song_info, formatted_duration, art_file)
+                    try:
+                        await interaction.response.send_message(embed=embed, file=art_file if art_file else None, view=view)
+                    except discord.errors.InteractionResponded:
+                        await interaction.followup.send(embed=embed, file=art_file if art_file else None, view=view, wait=True)
             return
 
     song_info = await music_queue.next_song() if play_next else (url, song_info, song_duration, track)
-    if song_info:
+    if song_info:  # Check if song_info is not None
         url, song_title, song_duration, track = song_info
+        if url == "placeholder":
+            song_info = await music_queue.next_song()
+            if song_info is None:
+                return
+            url, song_title, song_duration, track = song_info
         print(f"Playing: {song_title}")
         formatted_duration = str(datetime.timedelta(seconds=int(song_duration / 1000)))
+
 
     music_queue.current_song_duration = song_duration
     music_queue.current_song_title = song_info
@@ -180,46 +307,30 @@ async def play_song(ctx, url, song_info, song_duration, track, send_message=True
     }
 
     def wrapped_play_next(error):
-        coro = play_song(ctx, None, None, None, None, send_message=True, music_queue=music_queue, play_called=False, play_next=True)
+        coro = play_song(interaction, None, None, None, None, send_message=True, music_queue=music_queue, play_called=False, play_next=True)
         task = asyncio.run_coroutine_threadsafe(coro, bot.loop)
-        task.add_done_callback(lambda _: asyncio.run_coroutine_threadsafe(disconnect_after(ctx, music_queue), bot.loop))
+        task.add_done_callback(lambda _: asyncio.run_coroutine_threadsafe(disconnect_after(interaction, music_queue), bot.loop))
 
     voice_client.play(discord.FFmpegPCMAudio(url, **FFMPEG_OPTIONS), after=wrapped_play_next)
 
-
     if send_message:
-        embed = discord.Embed(title="Plex Bot", color=0x00b0f0)
-        embed.add_field(name="Now playing", value=song_title, inline=False)
-        album_title = safe_attr(track, 'parentTitle') or "Unknown"
-        embed.add_field(name="Album title", value=album_title, inline=True)
-        track_number = safe_attr(track, 'index') or "Unknown"
-        embed.add_field(name="Track number", value=track_number, inline=True)
-        embed.add_field(name="Song duration", value=formatted_duration, inline=True)
+        await delete_old_embed(interaction, music_queue)
+        embed, art_file = await create_embed(track, song_title, formatted_duration, art_file)
+        try:
+            if art_file is not None:
+                message = await interaction.channel.send(embed=embed, file=art_file, view=view)  # Send the new message
+            else:
+                message = await interaction.channel.send(embed=embed, view=view)  # Send the new message
+        except Exception as e:
+            print(f"Error sending new embed: {e}")
+            message = None
 
-
-        thumb_url = safe_attr(track, 'thumbUrl')
-        if thumb_url:
-            try:
-                img_stream = requests.get(thumb_url, stream=True).raw
-                img = Image.open(img_stream)
-
-                max_size = (500, 500)
-                img.thumbnail(max_size)
-
-                resized_img = io.BytesIO()
-                img.save(resized_img, format='PNG')
-                resized_img.seek(0)
-
-                art_file = discord.File(resized_img, filename="image0.png")
-                embed.set_thumbnail(url="attachment://image0.png")
-            except Exception as e:
-                print(f"Error retrieving or processing album artwork: {e}")
-
-        if music_queue.message_id is not None:
-            message = await ctx.fetch_message(music_queue.message_id)
-            await message.delete()  # Delete the old message
-        message = await ctx.send(embed=embed, file=art_file if art_file else None, view=view)  # Send the new message
-        music_queue.message_id = message.id
+        if message is None:  # if the message was not successfully sent
+            print("Failed to send the 'Now playing' embed.")
+            return
+        else:
+            print(f"New 'Now playing' embed sent for song: {song_title}")
+            music_queue.message_id = message.id  # Store the message ID
 
 
 
@@ -228,21 +339,28 @@ async def play_song(ctx, url, song_info, song_duration, track, send_message=True
 
 
 
-@bot.command(name='play', help='Play a song by title and artist')
-async def play(ctx, *, query):
+
+
+@bot.tree.command(name="play", description="Play a song by title and artist")
+@app_commands.describe(query="Song title, artist name, or both")
+async def play(interaction: discord.Interaction, query: str):
     global music_queue
+    try:
+        await interaction.response.defer()
+    except discord.errors.NotFound:
+        pass
     try:
         print("Received play command:", query)
 
-        if ctx.author.voice is None:
+        if interaction.user.voice is None:
             print("User not in voice channel")
-            await ctx.send("❌ You must be in a voice channel to play music.")
+            await interaction.channel.send("❌ You must be in a voice channel to play music.")
             return
 
-        channel = ctx.author.voice.channel
+        channel = interaction.user.voice.channel
         print("User in voice channel:", channel)
 
-        voice_client = ctx.voice_client
+        voice_client = interaction.guild.voice_client
         if voice_client is None:
             voice_client = await channel.connect()
         elif voice_client.channel != channel:
@@ -270,43 +388,45 @@ async def play(ctx, *, query):
                 # For each album, fetch the tracks and add them to the list
                 for album in albums:
                     tracks = album.tracks()
-                    print(f"tracks before extend and shuffle: {tracks}")
+                    #print(f"tracks before extend and shuffle: {tracks}")
                     all_tracks.extend(tracks)
                 # Shuffle the list of tracks
                 random.shuffle(all_tracks)
                 # Get the first 20 tracks
                 first_20_tracks = all_tracks[:20]
-                print(f"tracks from artist: {first_20_tracks}")
+                #print(f"tracks from artist: {first_20_tracks}")
                 # Create a list of track names and their indices
                 track_list = [f"{idx + 1}. {track.grandparentTitle} - {track.title}" for idx, track in enumerate(first_20_tracks)]
                 # Create a discord.Embed object with the track list
                 embed = discord.Embed(title="🔍 Found multiple songs for the artist", description="\n".join(track_list), color=0x00b0f0)
-                query_msg = await ctx.send(embed=embed)
+                query_msg = await interaction.followup.send(embed=embed, ephemeral=True)
                 def check(msg):
-                    return msg.author == ctx.author and msg.content.isdigit() and 1 <= int(msg.content) <= len(track_list)
+                    return msg.author == interaction.user and msg.content.isdigit() and 1 <= int(msg.content) <= len(track_list)
                 try:
-                    response = await bot.wait_for("message", timeout=60.0, check=check)
+                    response = await interaction.client.wait_for("message", timeout=60.0, check=check)
                     track = first_20_tracks[int(response.content) - 1]
                 except asyncio.TimeoutError:
                     print("No response received")
-                    return await ctx.send("❌ No response received. Please try again.")
+                    return await interaction.channel.send("❌ No response received. Please try again.")
+
             else:
                 track = matching_tracks[0]
 
             if track:
-                await ctx.send(f"🔍 Found a song for '{query}'.")
-                await play_song(ctx, track.getStreamURL(), f"{track.grandparentTitle} - {track.title}", track.duration, track, send_message=True, music_queue=music_queue, play_called=False)
+                await interaction.channel.send(f"🔍 Found a song for '{query}'.")
+                await play_song(interaction, track.getStreamURL(), f"{track.grandparentTitle} - {track.title}", track.duration, track, send_message=True, music_queue=music_queue, play_called=False)
+
         elif tracks:
              track = tracks[0]
-             await ctx.send(f"🔍 Found a song for '{query}'.")
-             await play_song(ctx, track.getStreamURL(), f"{track.grandparentTitle} - {track.title}", track.duration, track, send_message=True, music_queue=music_queue, play_called=False)
+             await interaction.followup.send(f"🔍 Found a song for '{query}'.")
+             await play_song(interaction, track.getStreamURL(), f"{track.grandparentTitle} - {track.title}", track.duration, track, send_message=True, music_queue=music_queue, play_called=False)
         else:
-            await ctx.send(f"❌ Couldn't find a song for '{query}'.")
+            await interaction.channel.send(f"❌ Couldn't find a song for '{query}'.")
 
     except Exception as e:
         print("Error in play command:")
         traceback.print_exc()
-        await ctx.send("❌ An error occurred while processing your request. Please try again.")
+        await interaction.channel.send("❌ An error occurred while processing your request. Please try again.")
 
            
 
@@ -319,10 +439,15 @@ async def play(ctx, *, query):
 
 
 
-@bot.command(name='artist', help='Queue all songs by the specified artist')
-async def artist(ctx, *, artist_name):
+@bot.tree.command(name="artist", description="search for songs by artist")
+@app_commands.describe(artist_name = "Enter Artist Name")
+async def artist(interaction: discord.Interaction, artist_name: str):
     global music_queue
     print(f"Searching for songs by '{artist_name}'")
+    try:
+        await interaction.response.defer()
+    except discord.errors.NotFound:
+        pass
     
     # Search for the artist in the Plex library
     music_library = next((section for section in plex.library.sections() if section.type == 'artist'), None)
@@ -336,13 +461,12 @@ async def artist(ctx, *, artist_name):
         queued_tracks = 0
         for index, track in enumerate(tracks):
             send_message = index == 0  # Set send_message to True for the first track and False for the rest
-            await play_song(ctx, track.getStreamURL(), f"{track.grandparentTitle} - {track.title}", track.duration, track, send_message=send_message, music_queue=music_queue, play_called=False)
+            await play_song(interaction, track.getStreamURL(), f"{track.grandparentTitle} - {track.title}", track.duration, track, send_message=send_message, music_queue=music_queue, play_called=False)
             queued_tracks += 1
 
-
-        await ctx.send(f"🎵 Queued {queued_tracks} songs by {artist_name}.")
+        await interaction.channel.send(f"🎵 Queued {queued_tracks} songs by {artist_name}.")
     else:
-        await ctx.send(f"❌ Couldn't find any songs by '{artist_name}'.")
+        await interaction.channel.send(f"❌ Couldn't find any songs by '{artist_name}'.")
 
 
 
@@ -351,18 +475,23 @@ async def artist(ctx, *, artist_name):
 
 
 
-@bot.command(name='album', help='Queue all songs from the specified album or list albums by an artist')
-async def album(ctx, *, query):
+@bot.tree.command(name='album', description='Queue all songs from the specified album or list albums by an artist')
+@app_commands.describe(album_name = "Enter Album Name")
+async def album(interaction: discord.Interaction, album_name: str):
     global music_queue
-    print(f"Searching for album or artist '{query}'")
+    print(f"Searching for album or artist '{album_name}'")
+    try:
+        await interaction.response.defer()
+    except discord.errors.NotFound:
+        pass
 
     # Search for the album or artist in the Plex library
     music_library = next((section for section in plex.library.sections() if section.type == 'artist'), None)
     if not music_library:
-        await ctx.send("❌ Music library not found.")
+        await interaction.channel.send("❌ Music library not found.")
         return
 
-    album_results = music_library.search(query)
+    album_results = music_library.search(album_name)
     matching_albums = [result for result in album_results if result.type == 'album']
     matching_artists = [result for result in album_results if result.type == 'artist']
 
@@ -375,11 +504,11 @@ async def album(ctx, *, query):
         queued_tracks = 0
         for index, track in enumerate(tracks):
             send_message = index == 0  # Set send_message to True for the first track and False for the rest
-            await play_song(ctx, track.getStreamURL(), f"{track.grandparentTitle} - {track.title}", track.duration, track, send_message=send_message, music_queue=music_queue, play_called=False)
+            await play_song(interaction, track.getStreamURL(), f"{track.grandparentTitle} - {track.title}", track.duration, track, send_message=send_message, music_queue=music_queue, play_called=False)
             queued_tracks += 1
 
-
-        await ctx.send(f"🎵 Queued {queued_tracks} songs from the album '{album.title}'.")
+        await interaction.channel.send(f"🎵 Queued {queued_tracks} songs from the album '{album.title}'.")
+        
     elif matching_artists:
         artist = matching_artists[0]
         albums = artist.albums()
@@ -387,10 +516,10 @@ async def album(ctx, *, query):
         # List all the albums from the artist
         album_list = [f"{idx + 1}. {album.title}" for idx, album in enumerate(albums)]
         embed = discord.Embed(title=f"🔍 Found albums for '{artist.title}'", description="\n".join(album_list), color=0x00b0f0)
-        query_msg = await ctx.send(embed=embed)
+        await interaction.channel.send(embed=embed)
 
         def check(msg):
-            return msg.author == ctx.author and msg.content.isdigit() and 1 <= int(msg.content) <= len(album_list)
+            return msg.author == interaction.user and msg.content.isdigit() and 1 <= int(msg.content) <= len(album_list)
 
         try:
             # Wait for the user's response with the selected album's number
@@ -402,15 +531,16 @@ async def album(ctx, *, query):
             queued_tracks = 0
             for index, track in enumerate(tracks):
                 send_message = index == 0  # Set send_message to True for the first track and False for the rest
-                await play_song(ctx, track.getStreamURL(), f"{track.grandparentTitle} - {track.title}", track.duration, track, send_message=send_message, music_queue=music_queue, play_called=False)
+                await play_song(interaction, track.getStreamURL(), f"{track.grandparentTitle} - {track.title}", track.duration, track, send_message=send_message, music_queue=music_queue, play_called=False)
                 queued_tracks += 1
 
-
-            await ctx.send(f"🎵 Queued {queued_tracks} songs from the album '{selected_album.title}'.")
+            await interaction.channel.send(f"🎵 Queued {queued_tracks} songs from the album '{selected_album.title}'.")
+            
         except asyncio.TimeoutError:
-            return await ctx.send("❌ No response received. Please try again.")
+            return await interaction.channel.send("❌ No response received. Please try again.")
     else:
-        await ctx.send(f"❌ Couldn't find any album or artist matching '{query}'.")
+        await interaction.channel.send(f"❌ Couldn't find any album or artist matching '{album_name}'.")
+
 
 
 
@@ -421,10 +551,10 @@ async def album(ctx, *, query):
 
 
 async def send_queue(queue_list, page):
-    start = (page - 1) * 20
-    end = start + 20
+    start = (page - 1) * 21
+    end = start + 21
 
-    embed = discord.Embed(title="🎵 Current Queue", color=0x00b0f0)
+    embed = discord.Embed(title="🎵 **---------- Current Queue ----------** 🎵", color=0x00b0f0)
 
     for i in range(start, end, 2):
         if i < len(queue_list):
@@ -437,7 +567,8 @@ async def send_queue(queue_list, page):
 
             embed.add_field(name="\u200b", value=field_value, inline=True)
 
-    embed.set_footer(text=f"Page {page}/{(len(queue_list) - 1) // 20 + 1}")
+    num_pages = (len(queue_list) - 1) // 21 + 1
+    embed.set_footer(text=f"Page {page}/{num_pages}")
 
     return embed
 
@@ -446,26 +577,23 @@ async def send_queue(queue_list, page):
 
 
 
-def reaction_check(reaction, user):
-    return user != bot.user and str(reaction.emoji) in ["⬅️", "➡️"]
 
+@bot.tree.command(name="queue", description="Show the current queue")
+@app_commands.describe(page_number = "Enter page number")
+async def queue(interaction: discord.Interaction, page_number: int = 1):
+    await interaction.response.defer()
+    guild_id = interaction.guild.id
 
-
-
-
-
-@bot.command(name='queue', help='Show the current queue')
-async def queue(ctx, page: int = 1):
-    if not music_queue.queue and (ctx.voice_client is None or not ctx.voice_client.is_playing()):
-        await ctx.send("❌ There are no songs in the queue.")
+    if not music_queue.queue and (interaction.guild.voice_client is None or not interaction.guild.voice_client.is_playing()):
+        await interaction.channel.send("❌ There are no songs in the queue.")
         return
     else:
-        if ctx.voice_client.is_playing() and music_queue.current_song_duration is not None:
+        queue_list = []
+        
+        if interaction.guild.voice_client.is_playing() and music_queue.current_song_duration is not None:
             current_duration = str(datetime.timedelta(seconds=int(music_queue.current_song_duration/1000)))
-            queue_list = [f"🔊 Currently Playing: {music_queue.current_song_title[1]} ({current_duration})"]
-        else:
-            queue_list = []
-
+            queue_list.append(f"🔊 Currently Playing: {music_queue.current_song_title[1]} ({current_duration})")
+            
         for idx, item in enumerate(music_queue.queue, start=1):
             url, title, duration = item[:3]
             if len(item) > 3:
@@ -478,59 +606,22 @@ async def queue(ctx, page: int = 1):
                 duration = "Unknown"
             queue_list.append(f"{title} ({duration})")
 
-        num_pages = (len(queue_list) - 1) // 20 + 1
+        num_pages = (len(queue_list) - 1) // 21 + 1
 
-    if 1 <= page <= num_pages:
-        queue_msg = await ctx.send(embed=await send_queue(queue_list, page))
-        await queue_msg.add_reaction("⬅️")
-        await queue_msg.add_reaction("➡️")
-
-        while True:
-            try:
-                reaction, user = await bot.wait_for("reaction_add", check=reaction_check, timeout=60)
-            except asyncio.TimeoutError:
-                break
-            if str(reaction.emoji) == "⬅️" and page > 1:
-                page -= 1
-            elif str(reaction.emoji) == "➡️" and page < num_pages:
-                page += 1
-            else:
-                await queue_msg.remove_reaction(reaction, user)
-                continue
-            await queue_msg.edit(embed=await send_queue(queue_list, page))
-            await queue_msg.remove_reaction(reaction, user)
-
-    else:
-        await ctx.send(f"❌ Invalid page number. The queue has {num_pages} page(s).")
-
-
-
-
-
-
-
-@bot.event
-async def on_reaction_add(reaction, user):
-    global music_queue
-
-    if user == bot.user:
-        return
-
-    ctx = await bot.get_context(reaction.message)
-    if ctx.command and ctx.command.name == "queue":
-        embed = reaction.message.embeds[0]
-        page = int(embed.footer.text.split(" ")[1].split("/")[0])
-        queue_list = embed.description.split("\n")
-
-        if reaction.emoji == "⬅️" and page > 1:
-            new_page = page - 1
-        elif reaction.emoji == "➡️" and page < ((len(queue_list) - 1) // 10 + 1):
-            new_page = page + 1
+    if 1 <= page_number <= num_pages:
+        if guild_id not in queue_buttons_instances:
+            view = EmbedButtons(interaction, queue_list, num_pages, send_queue)
+            queue_buttons_instances[guild_id] = view
         else:
-            return
+            view = queue_buttons_instances[guild_id]
+            view.page = page_number
+        await view.refresh()
+        await interaction.channel.send(embed=await send_queue(queue_list, page_number), view=view)
+    else:
+        await interaction.channel.send(f"❌ Invalid page number. The queue has {num_pages} page(s).")
 
-        await reaction.remove(user)
-        await reaction.message.edit(embed=await send_queue(queue_list, new_page))
+
+
 
 
 
@@ -543,7 +634,7 @@ async def pause(interaction: discord.Interaction):
     
     if voice_client and voice_client.is_playing():
         voice_client.pause()
-        await interaction.response.send_message(f"⏸️ Paused:")
+        await interaction.channel.send(f"⏸️ Paused:")
 
 async def resume(interaction: discord.Interaction):
     global music_queue
@@ -551,22 +642,22 @@ async def resume(interaction: discord.Interaction):
     voice_client = guild.voice_client
 
     if voice_client is None:
-        await interaction.response.send_message("❌ I am not connected to a voice channel.")
+        await interaction.channel.send("❌ I am not connected to a voice channel.")
         return
 
     if voice_client.is_playing():
-        await interaction.response.send_message("❌ I am already playing a song.")
+        await interaction.channel.send("❌ I am already playing a song.")
         return
 
     if voice_client.is_paused():
         voice_client.resume()
-        await interaction.response.send_message(f"▶️ Resumed playing:")
+        await interaction.channel.send(f"▶️ Resumed playing:")
         return
 
     if music_queue.queue:
         await play_song(interaction, *music_queue.queue[0], send_message=True, play_called=False)
     else:
-        await interaction.response.send_message("❌ There are no songs in the queue.")
+        await interaction.channel.send("❌ There are no songs in the queue.")
 
 async def skip(interaction: discord.Interaction):
     global music_queue
@@ -582,13 +673,13 @@ async def skip(interaction: discord.Interaction):
             music_queue.current_song_title = title
             music_queue.current_song_duration = duration
             await play_song(interaction=interaction, url=url, song_info=title, song_duration=duration, track=track, send_message=True, music_queue=music_queue, play_called=True)
-            await interaction.response.send_message("⏭ Skipped the current song.")
+            await interaction.channel.send("⏭ Skipped the current song.")
         else:
             music_queue.current_song_title = None
             music_queue.current_song_duration = None
-            await interaction.response.send_message("⏹️ The queue is empty. There are no more songs to play.")
+            await interaction.channel.send("⏹️ The queue is empty. There are no more songs to play.")
     else:
-        await interaction.response.send_message("❌ There is no song currently playing.")
+        await interaction.channel.send("❌ There is no song currently playing.")
 
 
 
@@ -596,12 +687,18 @@ async def shuffle(interaction: discord.Interaction):
     global music_queue
     if len(music_queue.queue) > 0:
         random.shuffle(music_queue.queue)
-        await interaction.response.send_message("🔀 Shuffled the current queue.")
+        await interaction.channel.send("🔀 Shuffled the current queue.")
     else:
-        await interaction.response.send_message("❌ There are no songs in the queue to shuffle.")
+        await interaction.channel.send("❌ There are no songs in the queue to shuffle.")
 
-async def kill(interaction: discord.Interaction):
-    guild = interaction.guild
+async def kill(obj):
+    if isinstance(obj, discord.Interaction):
+        guild = obj.guild
+        channel = obj.channel
+    elif isinstance(obj, discord.VoiceChannel):
+        guild = obj.guild
+        channel = obj
+
     voice_client = guild.voice_client
 
     if voice_client:
@@ -610,60 +707,47 @@ async def kill(interaction: discord.Interaction):
 
         music_queue.queue.clear()  # Clear the queue
 
-        await interaction.response.send_message("⏹ Stopped playing music and cleared the queue.")
+        message_content = "⏹ Stopped playing music and cleared the queue."
+        if isinstance(obj, discord.Interaction):
+            await obj.response.send_message(message_content)
+        else:
+            await channel.send(message_content)
+        print("Sent message:", message_content)
+
         await voice_client.disconnect()
+        print("Disconnected voice client")
     else:
-        await interaction.response.send_message("❌ Not connected to a voice channel.")
+        print("Voice client does not exist")
+        if isinstance(obj, discord.Interaction):
+            await obj.response.send_message("❌ Not connected to a voice channel.")
+        else:
+            await channel.send("❌ Not connected to a voice channel.")
+        print("Sent message: ❌ Not connected to a voice channel.")
 
 
 
 
 
 
-@bot.command(name='clear_queue', help='Clear the current queue')
-async def clear_queue(ctx):
+
+
+@bot.tree.command(name="clear_queue", description="Clear the current queue")
+async def clear_queue(interaction):
     global music_queue
     music_queue.queue.clear()
-    await ctx.send("🗑️ Cleared the current queue.")
+    await interaction.channel.send("🗑️ Cleared the current queue.")
 
 
 
-
-@bot.command(name='remove_song', help='Remove a specific song from the queue')
-async def remove_song(ctx, *, song_number: int):
+@bot.tree.command(name="remove_song", description="Remove a specific song from the queue")
+@app_commands.describe(song_number = "Enter the song number to remove")
+async def remove_song(interaction: discord.Interaction, song_number: int):
     global music_queue
     if len(music_queue.queue) >= song_number and song_number > 0:
         removed_song = music_queue.queue.pop(song_number - 1)[1]
-        await ctx.send(f"🗑️ Removed song '{removed_song}' from the queue.")
+        await interaction.channel.send(f"🗑️ Removed song '{removed_song}' from the queue.")
     else:
-        await ctx.send("❌ Invalid song number.")
-
-
-
-
-
-
-
-async def display_choices(ctx, title, choices, max_choices_per_page=10):
-    num_pages = math.ceil(len(choices) / max_choices_per_page)
-
-    async def send_page(page):
-        start_idx = page * max_choices_per_page
-        end_idx = start_idx + max_choices_per_page
-        choice_list = "\n".join([f"{idx + 1}. {choice}" for idx, choice in enumerate(choices[start_idx:end_idx])])
-
-        embed = discord.Embed(title=title, description=choice_list)
-        embed.set_footer(text=f"Page {page + 1} of {num_pages}")
-
-        return embed
-
-    message = await ctx.send(embed=await send_page(0))
-
-    if num_pages > 1:
-        await message.add_reaction("⬅️")
-        await message.add_reaction("➡️")
-
-    return message, num_pages
+        await interaction.channel.send("❌ Invalid song number.")
 
 
 
@@ -672,20 +756,115 @@ async def display_choices(ctx, title, choices, max_choices_per_page=10):
 
 
 
+@bot.tree.command(name="playlist", description="List all playlists and play songs from the chosen playlist")
+@app_commands.describe(shuffle = "Enter True or False")
+@app_commands.describe(playlist_title = "The title of the playlist to be played")
+async def playlist(interaction: discord.Interaction, shuffle: bool, playlist_title: str = None):
+    await interaction.response.defer()
+    if playlist_title:
+        await play_playlist_by_title(interaction, music_queue, playlist_title, shuffle)
+    else:
+        await show_playlists(interaction, music_queue, shuffle)
 
 
-
-
-async def display_youtube_search_results(ctx, search_results):
-    search_list = "\n".join(
-        [
-            f"{idx + 1}. {result['title']} [{str(datetime.timedelta(seconds=result['duration']))}]"
-            for idx, result in enumerate(search_results)
-        ]
+async def display_playlists_page(interaction):
+    embed = discord.Embed(
+        title="🎵________Select a Playlist________🎵",
+        description="Please choose a playlist from the dropdown menu below to start playing.",
+        color=0x00b0f0
     )
-    embed = discord.Embed(title="🎵 YouTube Search Results", description=search_list)
-    message = await ctx.send(embed=embed)
-    return message
+    return embed
+
+async def show_playlists(interaction, music_queue, shuffle: bool):
+    try:
+        playlists = plex.playlists()[5:]
+        print(f"Fetched playlists: {playlists}")
+        num_pages = (len(playlists) - 1) // 21 + 1
+        page = 1
+
+        guild_id = interaction.guild.id
+        if guild_id not in playlist_buttons_instances:
+            view = CombinedView(interaction, playlists, num_pages, display_playlists_page, shuffle)
+            playlist_buttons_instances[guild_id] = view
+        else:
+            view = playlist_buttons_instances[guild_id]
+            view.page = page
+            view.shuffle = shuffle
+        await view.refresh()
+
+        await interaction.channel.send(embed=await display_playlists_page(interaction), view=view)
+
+    except Exception as e:
+        print(f"Error in show_playlists: {e}")
+        await interaction.channel.send("🚫 An error occurred while displaying the playlists.")
+
+
+
+
+playlist_buttons_instances = {}
+
+
+
+
+async def play_playlist_by_title(interaction, music_queue, title: str, shuffle: bool):
+    playlists = plex.playlists()[5:]
+    print(f"Fetched playlists: {playlists}")
+    matching_playlists = [playlist for playlist in playlists if playlist.title.lower() == title.lower()]
+    if matching_playlists:
+        chosen_playlist = matching_playlists[0]
+        tracks = chosen_playlist.items()
+        if shuffle:
+            random.shuffle(tracks)
+        for track in tracks:
+            artist = track.grandparentTitle if hasattr(track, 'grandparentTitle') else "Unknown Artist"
+            await music_queue.add_song((track.getStreamURL(), f"{artist} - {track.title}", track.duration, track))
+
+        await interaction.response.send_message(f"🎵 Loaded {len(tracks)} songs from the '{chosen_playlist.title}' playlist into the queue.")
+        if not (interaction.guild.voice_client and (interaction.guild.voice_client.is_playing() or interaction.guild.voice_client.is_paused())):
+            first_song = music_queue.queue.pop(0)
+            formatted_duration = str(datetime.timedelta(seconds=int(first_song[2] / 1000)))
+            await play_song(interaction, *first_song, send_message=True, music_queue=music_queue, play_called=False)
+
+    else:
+        await interaction.channel.send(f"❌ Playlist '{title}' not found.")
+
+
+
+class PlaylistSelect(discord.ui.Select):
+    def __init__(self, playlists, shuffle):
+        options = []
+        for i, playlist in enumerate(playlists, start=1):
+            options.append(discord.SelectOption(label=playlist.title, value=i, description=f"{len(playlist.items())} songs"))
+        
+        super().__init__(placeholder="Select a playlist to play", options=options)
+        self.playlists = playlists
+        self.shuffle = shuffle
+
+    async def callback(self, interaction: discord.Interaction):
+        selected_playlist = self.playlists[int(self.values[0]) - 1]
+        await play_playlist_by_title(interaction, music_queue, selected_playlist.title, self.shuffle)
+
+
+class CombinedView(discord.ui.View):
+    def __init__(self, interaction, items, num_pages, generate_embed, shuffle: bool = False):
+        super().__init__(timeout=None)
+        self.guild_id = interaction.guild.id
+        self.page = 1
+        self.items = items
+        self.num_pages = num_pages
+        self.interaction = interaction
+        self.generate_embed = generate_embed
+        self.shuffle = shuffle
+
+        playlist_buttons_instances[self.guild_id] = self
+
+        self.add_item(PlaylistSelect(items, shuffle))
+
+    async def refresh(self):
+        start_idx = (self.page - 1) * 21
+        end_idx = start_idx + 21
+        self.clear_items()
+        self.add_item(PlaylistSelect(self.items[start_idx:end_idx], self.shuffle))
 
 
 
@@ -693,363 +872,177 @@ async def display_youtube_search_results(ctx, search_results):
 
 
 
-def search_youtube(query, ydl_opts):
-    ydl_opts['default_search'] = 'ytsearch20'
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+
+
+
+class YouTubeSearchSelect(discord.ui.Select):
+    def __init__(self, options, interaction, music_queue):
+        super().__init__(placeholder='Select a video to play...', options=options)
+        self.interaction = interaction
+        self.music_queue = music_queue
+
+    async def callback(self, interaction: discord.Interaction):
+        interaction.response.defer()
+        selected_option = self.values[0]
+        song_info = await asyncio.to_thread(YouTube.get_song_info, {"link": selected_option})
+        song = (song_info['url'], f"📺 {song_info['title']}", song_info['duration'] * 1000, song_info)
+        await play_song(self.interaction, *song, send_message=True, music_queue=self.music_queue, play_called=False)
+
+
+
+class YouTube:
+    ydl_opts = {
+        'format': 'bestaudio/best',
+        'socket_timeout': 60,
+        'noplaylist': True,
+        'quiet': True,
+    }
+
+    @staticmethod
+    def search(query, playlist=False):
         try:
-            info_dict = ydl.extract_info(query, download=False)
-            search_results = info_dict["entries"]
-            filtered_results = [result for result in search_results if not result.get("is_live", False)]
-            return [{"title": result["title"], "webpage_url": result["webpage_url"], "duration": result["duration"]} for result in filtered_results]
+            search = VideosSearch(query, limit=20)
+            search_results = search.result()["result"]
+            filtered_results = [result for result in search_results if not result.get("isLive")]
+            return [{"title": result.get("title", ""), "webpage_url": result.get("link", ""), "duration": result.get("duration", "")} for result in filtered_results]
         except Exception as e:
             print(f"Error searching YouTube videos: {e}")
             return None
 
-
-
-def search_youtube_playlist(playlist_id, ydl_opts, start=1, end=None, max_songs=30):
-    ydl_opts['noplaylist'] = False
-    ydl_opts['playlist-start'] = start
-    if end:
-        ydl_opts['playlist-end'] = end
-
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        try:
-            info_dict = ydl.extract_info(f'https://www.youtube.com/playlist?list={playlist_id}', download=False)
-            entries = info_dict.get('entries', [])[:max_songs]  # limit the number of songs here
-
-            # filter out unavailable and live videos
-            filtered_entries = []
-            for entry in entries:
-                if entry and not entry.get('is_live', False):
-                    webpage_url = entry.get('webpage_url')
-                    title = entry.get('title')
-                    filtered_entries.append({"title": title, "webpage_url": webpage_url})
-
-            return filtered_entries
-        except Exception as e:
-            print(f"Error searching YouTube playlist: {e}")
-            return None
-
-
-
-
-
-
-
-
-
-
-class Downloader:
-    ydl_opts = {
-        'format': 'bestaudio/best',
-        'socket_timeout': 30,
-        'noplaylist': True,
-        'quiet': True,
-    }
-
-    @classmethod
-    async def get_raw_url(cls, url, ydl_opts=None):
-        ydl_opts = ydl_opts or cls.ydl_opts
-
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+    @staticmethod
+    async def get_raw_url(url):
+        with yt_dlp.YoutubeDL(YouTube.ydl_opts) as ydl:
             try:
                 info_dict = ydl.extract_info(url, download=False)
-                audio_url = info_dict['url']
-                return audio_url
+                return info_dict['url']
             except Exception as e:
                 print(f"Error extracting audio from YouTube video: {e}")
                 return None
 
+    @staticmethod
+    def get_song_info(entry):
+        with yt_dlp.YoutubeDL(YouTube.ydl_opts) as ydl:
+            try:
+                info_dict = ydl.extract_info(entry["link"], download=False)
+                yt_thumbnail = "https://images.freeimages.com/fic/images/icons/820/simply_google/256/google_youtube.png"
+                return {'title': info_dict['title'], 'duration': info_dict['duration'], 'thumbnail': info_dict.get('thumbnail', 'yt_thumbnail'), 'url': info_dict['url']}
+            except Exception as e:
+                print(f"Error extracting info from YouTube video: {e}")
+                return None
 
 
-
-async def process_playlist_entry(entry, ydl_opts):
-    video_url = entry["webpage_url"]
-    raw_url = await Downloader.get_raw_url(video_url, ydl_opts)
-
-    if raw_url is None:
-        return None
-
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        try:
-            info_dict = ydl.extract_info(video_url, download=False)
-            title = info_dict['title']
-            duration = info_dict['duration']
-        except Exception as e:
-            print(f"❌ Error extracting info from YouTube video: {e}")
-            return None
-
-    song = (raw_url, f"📺 {title}", duration * 1000, {'title': title, 'duration': duration, 'parentTitle': 'YouTube', 'index': 'Unknown', 'thumbUrl': None})
-    return song
-
-
-
-
-
-
-@bot.command(name='youtube', help='Play audio from a YouTube link or search for a video or playlist')
-async def youtube(ctx, *, query):
-    ydl_opts = {
-        'format': 'bestaudio/best',
-        'socket_timeout': 30,
-        'noplaylist': True,
-        'quiet': True,
-    }
-
-    loop = asyncio.get_event_loop()
-
-    # Check if the query is a playlist link
-    if "youtube.com/playlist?list=" in query:
-        playlist_id = query.split("list=")[-1]
-
-        await ctx.send("⌛ Processing playlist, this may take several moments.")
-
-        with concurrent.futures.ThreadPoolExecutor() as pool:
-            playlist_entries = await loop.run_in_executor(pool, search_youtube_playlist, playlist_id, ydl_opts, 1, 30)  # include 1 and 30 as start and end parameters
-
-        if len(playlist_entries) == 30:
-            await ctx.send("ℹ️ The playlist song limit reached. Only the first 30 songs will be added to the queue.")
-
-        if playlist_entries:
-            # Get the first entry in the playlist
-            first_entry = playlist_entries[0]
-            first_song = await process_playlist_entry(first_entry, ydl_opts)
-
-            if first_song is None:
-                await ctx.send(f"❌ Error extracting audio from video {first_entry['webpage_url']}. Skipping.")
-                return
-
-            await play_song(ctx, *first_song, send_message=True, music_queue=music_queue, play_called=False)
-
-            # Add the rest of the playlist to the queue
-            for entry in playlist_entries[1:]:
-                song = await process_playlist_entry(entry, ydl_opts)
-
-                if song is None:
-                    await ctx.send(f"❌ Error extracting audio from video {video_url}. Skipping.")
-                    continue
-
-                await music_queue.add_song(song)
-
-            # Send message after all songs are added to the queue
-            await ctx.send(f"✅ Added {len(playlist_entries)} songs to the queue.")
-
-        else:
-            await ctx.send("❌ Error searching YouTube playlist. Please try again.")
-        return
-
-    if "youtube.com" in query or "youtu.be" in query:
-        video_url = query
-    else:
-        search_message = await ctx.send("🔍 Searching YouTube for videos, one moment...")
-
-        with concurrent.futures.ThreadPoolExecutor() as pool:
-            search_results = await loop.run_in_executor(pool, search_youtube, query, ydl_opts)
-
+@bot.tree.command(name='youtube', description='Play audio from a YouTube link or search for a video or playlist')
+@app_commands.describe(search = "Search for a YouTube Video or Playlist")
+@app_commands.describe(video_url = "Enter a YouTube Video URL")
+@app_commands.describe(playlist_url = "Enter a YouTube Playlist URL")
+async def youtube(interaction: discord.Interaction, search: str = None, video_url: str = None, playlist_url: str = None):
+    await interaction.response.defer()
+    if search:
+        # Handle search functionality
+        search_results = YouTube.search(search)
         if search_results is None:
-            await search_message.delete()
-            return await ctx.send("❌ Error searching YouTube videos. Please try again.")
-        else:
-            await search_message.delete()
-            message = await display_youtube_search_results(ctx, search_results)
-            await ctx.send("Please type the number of the video you want to play.")
-
-            def check(msg):
-                return msg.author == ctx.author and msg.content.isdigit() and 1 <= int(msg.content) <= len(search_results)
-
-            response = await bot.wait_for("message", timeout=60.0, check=check)
-            chosen_video = search_results[int(response.content) - 1]
-            video_url = chosen_video["webpage_url"]
-
-    raw_url = await Downloader.get_raw_url(video_url, ydl_opts)
-
-    if raw_url is None:
-        return await ctx.send("❌ This is not a valid YouTube video link.")
-
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        try:
-            info_dict = ydl.extract_info(video_url, download=False)
-            title = info_dict['title']
-            duration = info_dict['duration']
-        except Exception as e:
-            print(f"Error extracting info from YouTube video: {e}")
-            return await ctx.send("❌ This is not a valid YouTube video link.")
-
-    song = (raw_url, f"📺 {title}", duration * 1000, {'title': title, 'duration': duration, 'parentTitle': 'YouTube', 'index': 'Unknown', 'thumbUrl': None})
-
-    if not (ctx.voice_client and (ctx.voice_client.is_playing() or ctx.voice_client.is_paused())):
-        await play_song(ctx, *song, send_message=True, music_queue=music_queue, play_called=False)
-    else:
-        await music_queue.add_song(song)
-        await ctx.send(f"🎵 Added {title} to the queue.")
-
-    return
-
-
-
-
-
-
-
-
-
-
-
-@bot.command(name='playlist', help='List all playlists and play songs from the chosen playlist')
-async def playlist(ctx):
-    try:
-        await show_playlists(ctx, music_queue)
-    except Exception as e:
-        print(f"Error in playlist command: {e}")
-        await ctx.send("🚫 An error occurred while processing the playlist command.")
-
-
-async def display_playlists_page(ctx, page, max_pages, playlists):
-    start_idx = page * 21
-    end_idx = start_idx + 21
-    embed = discord.Embed(title="🎵 ---------- User Submitted Playlists ---------- 🎵", color=0x00b0f0)
-
-    playlist_rows = [playlists[i:i + 3] for i in range(start_idx, end_idx, 3)]
-
-    for row in playlist_rows:
-        row_values = [f"{playlists.index(pl) + 1}. 🎶 {pl.title} ({len(pl.items())} songs)" for pl in row]
-        while len(row_values) < 3:
-            row_values.append("\u200b")
-        field1, field2, field3 = row_values
-        embed.add_field(name="\u200b", value=field1, inline=True)
-        embed.add_field(name="\u200b", value=field2, inline=True)
-        embed.add_field(name="\u200b", value=field3, inline=True)
-
-
-    embed.set_footer(text=f"Page {page + 1} of {max_pages} | Type the number of the playlist to play")
-
-    message = await ctx.send(embed=embed)
-
-    if max_pages > 1:
-        if page > 0:
-            await message.add_reaction("⬅️")
-        if page < max_pages - 1:
-            await message.add_reaction("➡️")
-
-    return message
-
-
-
-async def show_playlists(ctx, music_queue):
-    try:
-        playlists = plex.playlists()[5:]
-        max_pages = math.ceil(len(playlists) / 21)
-        current_page = 0
-        message = await display_playlists_page(ctx, current_page, max_pages, playlists)
-
-        def check_reaction(reaction, user):
-            return user == ctx.author and reaction.message.id == message.id and str(reaction.emoji) in ["⬅️", "➡️"]
-
-        def check(msg):
-            return msg.author == ctx.author and msg.content.isdigit() and 1 <= int(msg.content) <= len(playlists)
-
-        playlist_chosen = False  # Add this flag to check if a playlist has been chosen
-
-        while not playlist_chosen:
-            reaction_task = asyncio.create_task(bot.wait_for("reaction_add", check=check_reaction))
-            message_task = asyncio.create_task(bot.wait_for("message", check=check))
-
-            done, pending = await asyncio.wait(
-                [reaction_task, message_task],
-                return_when=asyncio.FIRST_COMPLETED,
-                timeout=30.0
-            )
-
-            for future in pending:
-                future.cancel()
-
-            if not done:
-                if not playlist_chosen:  # Only send the timeout message if a playlist has not been chosen
-                    await ctx.send("⏰ Timeout! You didn't choose a playlist. Try the command again.")
-                break
-
-            result = done.pop().result()
-            if isinstance(result, tuple):  # Reaction
-                reaction, user = result
-                await message.remove_reaction(reaction, user)
-
-                if str(reaction.emoji) == "⬅️" and current_page > 0:
-                    current_page -= 1
-                elif str(reaction.emoji) == "➡️" and current_page < max_pages - 1:
-                    current_page += 1
-                else:
-                    continue
-
-                await message.edit(embed=await display_playlists_page(ctx, current_page, max_pages, playlists))
-            else:  # Message
-                response = result
-                chosen_playlist = playlists[int(response.content) - 1]
-                tracks = chosen_playlist.items()
-                random.shuffle(tracks)  # Shuffle the tracks before adding them to the queue
-                for track in tracks:
-                    artist = track.grandparentTitle if hasattr(track, 'grandparentTitle') else "Unknown Artist"
-                    await music_queue.add_song((track.getStreamURL(), f"{artist} - {track.title}", track.duration, track))
-
-                await ctx.send(f"🎵 Loaded {len(tracks)} songs from the '{chosen_playlist.title}' playlist into the queue.")
-                if not (ctx.voice_client and (ctx.voice_client.is_playing() or ctx.voice_client.is_paused())):
-                    first_song = music_queue.queue.pop(0)
-                    formatted_duration = str(datetime.timedelta(seconds=int(first_song[2] / 1000)))
-                    await play_song(ctx, *first_song, send_message=True, music_queue=music_queue, play_called=False)
-
-                playlist_chosen = True  # Set the flag to True once a playlist has been chosen
-                await message.clear_reactions()
-
-    except Exception as e:
-        print(f"Error in show_playlists: {e}")
-        await ctx.send("🚫 An error occurred while displaying the playlists.")
-
-
-
-
-
-
-
-
-@bot.event
-async def on_command_error(ctx, error):
-    if isinstance(error, commands.CommandNotFound):
-        await ctx.send("❌ Invalid command. Use !help to see the available commands.")
-    elif isinstance(error, commands.MissingRequiredArgument):
-        await ctx.send("❌ Missing required argument. Use !help to see the command usage.")
-    else:
-        await ctx.send(f"❌ Error: {error}")
-
-
-
-
-bot.remove_command('help')
-
-@bot.command(name='help', help='Show the help information')
-async def help(ctx, *args):
-    if args:
-        command = bot.get_command(args[0])
-        if command:
-            embed = discord.Embed(
-                title=f"Command: !{command.name}",
-                description=command.help,
-                color=discord.Color.blue()
-            )
-            embed.set_footer(text="<> indicates a required argument. [] indicates an optional argument.")
-            await ctx.send(embed=embed)
-        else:
-            await ctx.send(f"❌ Command '{args[0]}' not found.")
-    else:
+            return await interaction.channel.send("❌ Error searching videos. None were found, Please try searching again.")
+        # Create options for the SelectMenu
+        options = [
+            discord.SelectOption(label=result['title'], value=result['webpage_url'])
+            for result in search_results
+        ]
+        # Create the SelectMenu
+        select_menu = YouTubeSearchSelect(options, interaction, music_queue)
+        # Create a View and add the SelectMenu to it
+        view = discord.ui.View()
+        view.add_item(select_menu)
+        # Send the SelectMenu
         embed = discord.Embed(
-            title="Plex Music Bot Commands",
-            description="Here are the available commands:",
-            color=discord.Color.blue()
+        title="🔍 YouTube Search Results 🔍",
+        description=f"Here are the search results for **{search}**. Please select a video from the dropdown menu below to play it.",
+        color=discord.Color.blue()
         )
-        
-        for command in bot.commands:
-            embed.add_field(name=f"!{command.name}", value=command.help, inline=False)
-        
-        embed.set_footer(text="Type !help <command> for more info on a command.")
-        await ctx.send(embed=embed)
+        embed.set_footer(text="Plex Bot | YouTube Search")
+        await interaction.channel.send(embed=embed, view=view)
+
+
+    elif video_url:
+        # Handle video URL functionality
+        raw_url = await YouTube.get_raw_url(video_url)
+        if raw_url is None:
+            return await interaction.followup.send("❌ This is not a valid YouTube video link.")
+        song_info = await YouTube.get_song_info(video_url)
+        song = (raw_url, f"📺 {song_info['title']}", song_info['duration'] * 1000, song_info)
+        await play_song(interaction, *song, send_message=True, music_queue=music_queue, play_called=False)
+    elif playlist_url:
+        # Handle playlist URL functionality
+        await interaction.channel.send("⌛ Playing first soing & Processing playlist, this may take several moments depending on the length of the playlist.")
+        playlist = Playlist.get(playlist_url)
+        playlist_entries = playlist["videos"]
+        total_songs = len(playlist_entries)
+        print(playlist.keys())
+        if playlist_entries:
+            # Process and add songs in the playlist in the background
+            bot.loop.create_task(process_playlist(interaction, playlist_entries, music_queue))
+            placeholder_song = ("placeholder", f"📺 Playlist: {playlist['info']['title']} ({total_songs} songs)", 0, {})
+            print(f"{playlist['info']['title']}")
+            await music_queue.add_song(placeholder_song)
+        else:
+            interaction.channel.send("❌ Error searching YouTube playlist. Please try again.")
+    else:
+        await interaction.channel.send("❌ Please enter a search query, a video URL, or a playlist URL after the command.")
+
+
+
+async def process_playlist(interaction, playlist_entries, music_queue):
+    for entry in playlist_entries:
+        song_info = await asyncio.to_thread(YouTube.get_song_info, entry)
+        if song_info is None:
+            await interaction.channel.send(f"❌ Error extracting audio from video {entry['link']}. Skipping.")
+            continue
+        song = (song_info['url'], f"📺 {song_info['title']}", song_info['duration'] * 1000, song_info)
+        await music_queue.add_song(song, playlist=True)
+        if len(music_queue.playlist_queue) == 1:
+            await play_song(interaction, *song, send_message=True, music_queue=music_queue, play_called=False)
+            music_queue.playlist_queue.pop(0)
+    await interaction.channel.send(f"✅ Finished processing playlist.")
+
+
+
+
+
+
+
+commands = {
+    "play": "Play a song or playlist. Usage: /play <song/playlist name>",
+    "playlist": "Toggle loop mode. Usage: /playlist",
+    "pause": "Pause the current song. Usage: button only",
+    "resume": "Resume the paused song. Usage: button only",
+    "kill": "Stop the current song and clear the queue. Usage: /kill or button",
+    "skip": "Skip the current song. Usage: button only",
+    "queue": "Show the current music queue. Usage: /queue",
+    "clear_queue": "Clear the current music queue. Usage: /clear_queue",
+    "shuffle": "Toggle shuffle mode. Usage: button only",
+    "remove": "Remove a song from the queue. Usage: /remove <index>",
+    "help": "Show the help information. Usage: /help <command>"
+}
+
+@bot.tree.command(name='help', description='Show available commands')
+@app_commands.describe(command='The command to get help for')
+#@app_commands.choices(command=[Choice(name=name, value=name) for name in commands.keys()])
+async def help(interaction: discord.Interaction, command: str = None):
+    embed = Embed(
+        title="Plex Music Bot Commands",
+        description="Here are the available commands:",
+        color=Colour.brand_green()
+    )
+    
+    for command, description in commands.items():
+        embed.add_field(name=f"/{command}", value=description, inline=False)
+    
+    embed.set_footer(text="Type /help <command> for more info on a command.")
+    await interaction.channel.send(embed=embed)
+
+
+
+
+
+
 
 bot.run(TOKEN)
