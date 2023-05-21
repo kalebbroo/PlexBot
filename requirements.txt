@@ -1,4 +1,4 @@
-discord.py==2.2.2
+discord.py==2.2.3
 plexapi==4.8.0
 yt-dlp==2023.03.04
 Pillow==9.5.0
