@@ -1048,5 +1048,4 @@ async def help(interaction: discord.Interaction, command: str = None):
 
 
 
-
-    bot.run(TOKEN)
+bot.run(TOKEN)
