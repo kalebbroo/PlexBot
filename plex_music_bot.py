@@ -884,7 +884,9 @@ class YouTubeSearchSelect(discord.ui.Select):
     async def callback(self, interaction: discord.Interaction):
         interaction.response.defer()
         selected_option = self.values[0]
-        song_info = await asyncio.to_thread(YouTube.get_song_info, {"link": selected_option})
+        song_info = await YouTube.get_song_info(selected_option)
+        if song_info is None:
+            return await interaction.followup.send("❌ This is not a valid YouTube video link.")
         song = (song_info['url'], f"📺 {song_info['title']}", song_info['duration'] * 1000, song_info)
         await play_song(self.interaction, *song, send_message=True, music_queue=self.music_queue, play_called=False)
 
@@ -920,10 +922,10 @@ class YouTube:
                 return None
 
     @staticmethod
-    def get_song_info(entry):
+    async def get_song_info(entry):
         with yt_dlp.YoutubeDL(YouTube.ydl_opts) as ydl:
             try:
-                info_dict = ydl.extract_info(entry["link"], download=False)
+                info_dict = ydl.extract_info(entry, download=False)
                 yt_thumbnail = "https://images.freeimages.com/fic/images/icons/820/simply_google/256/google_youtube.png"
                 return {'title': info_dict['title'], 'duration': info_dict['duration'], 'thumbnail': info_dict.get('thumbnail', 'yt_thumbnail'), 'url': info_dict['url']}
             except Exception as e:
@@ -968,6 +970,8 @@ async def youtube(interaction: discord.Interaction, search: str = None, video_ur
         if raw_url is None:
             return await interaction.followup.send("❌ This is not a valid YouTube video link.")
         song_info = await YouTube.get_song_info(video_url)
+        if song_info is None:
+            return await interaction.followup.send("❌ This is not a valid YouTube video link.")
         song = (raw_url, f"📺 {song_info['title']}", song_info['duration'] * 1000, song_info)
         await play_song(interaction, *song, send_message=True, music_queue=music_queue, play_called=False)
     elif playlist_url:
@@ -980,6 +984,7 @@ async def youtube(interaction: discord.Interaction, search: str = None, video_ur
         if playlist_entries:
             # Process and add songs in the playlist in the background
             bot.loop.create_task(process_playlist(interaction, playlist_entries, music_queue))
+            # Add a placeholder song to the queue
             placeholder_song = ("placeholder", f"📺 Playlist: {playlist['info']['title']} ({total_songs} songs)", 0, {})
             print(f"{playlist['info']['title']}")
             await music_queue.add_song(placeholder_song)
@@ -992,7 +997,7 @@ async def youtube(interaction: discord.Interaction, search: str = None, video_ur
 
 async def process_playlist(interaction, playlist_entries, music_queue):
     for entry in playlist_entries:
-        song_info = await asyncio.to_thread(YouTube.get_song_info, entry)
+        song_info = await YouTube.get_song_info(entry['link'])
         if song_info is None:
             await interaction.channel.send(f"❌ Error extracting audio from video {entry['link']}. Skipping.")
             continue
@@ -1002,6 +1007,8 @@ async def process_playlist(interaction, playlist_entries, music_queue):
             await play_song(interaction, *song, send_message=True, music_queue=music_queue, play_called=False)
             music_queue.playlist_queue.pop(0)
     await interaction.channel.send(f"✅ Finished processing playlist.")
+
+
 
 
 
@@ -1042,7 +1049,4 @@ async def help(interaction: discord.Interaction, command: str = None):
 
 
 
-
-
-
-bot.run(TOKEN)
+    bot.run(TOKEN)
