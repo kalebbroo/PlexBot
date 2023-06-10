@@ -28,8 +28,6 @@ view_instances = {}
 play_lock = asyncio.Lock()
 queue_buttons_instances = {}
 
-# Define lock to prevent multiple instances of play_next_song() from running at the same time
-
 
 @bot.event
 async def on_ready():
@@ -37,6 +35,8 @@ async def on_ready():
     try:
         synced = await bot.tree.sync()
         print(f"Synced {len(synced)} command(s)")
+        await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.listening,
+                                                            name="/Play",))
     except Exception as e:
         print(f"Error syncing commands: {e}")
 
@@ -84,24 +84,29 @@ class MyMusicView(discord.ui.View):
 @bot.event
 async def on_interaction(interaction: discord.Interaction):
     if interaction.type == discord.InteractionType.component:
-        if interaction.data["custom_id"] == "music_pause_button":
-            await pause(interaction)
-        elif interaction.data["custom_id"] == "music_play_button":
-            await resume(interaction)
-        elif interaction.data["custom_id"] == "music_skip_button":
-            await skip(interaction)
-        elif interaction.data["custom_id"] == "music_shuffle_button":
-            await shuffle(interaction)
-        elif interaction.data["custom_id"] == "music_kill_button":
-            await kill(interaction)
-        elif interaction.data["custom_id"] == "back_button":
-            view = playlist_buttons_instances.get(interaction.guild.id)
-            if view is not None:
-                await view.back_button(interaction)
-        elif interaction.data["custom_id"] == "next_button":
-            view = playlist_buttons_instances.get(interaction.guild.id)
-            if view is not None:
-                await view.next_button(interaction)
+        custom_id = interaction.data["custom_id"]
+        match custom_id:
+            case "music_pause_button":
+                await pause(interaction)
+            case "music_play_button":
+                await resume(interaction)
+            case "music_skip_button":
+                await skip(interaction)
+            case "music_shuffle_button":
+                await interaction.response.defer()
+                await shuffle(interaction)
+            case "music_kill_button":
+                await kill(interaction)
+            case "back_button":
+                view = queue_buttons_instances.get(interaction.guild.id)
+                if view is not None:
+                    await view.back_button(interaction)
+            case "next_button":
+                view = queue_buttons_instances.get(interaction.guild.id)
+                if view is not None:
+                    await view.next_button(interaction)
+            case _:
+                pass  # Do nothing for all other cases
 
 
         
@@ -136,13 +141,14 @@ class EmbedButtons(discord.ui.View):
         if self.page < self.num_pages:
             self.page += 1
             await self.refresh()  # Refresh the view
-            await interaction.response.edit_message(embed=await self.send_page(self.page_list, self.page), view=self)
+            await interaction.response.edit_message(embed=await self.generate_embed(self.items, self.page), view=self)
 
     async def back_button(self, interaction: discord.Interaction):
         if self.page > 1:
             self.page -= 1
             await self.refresh()  # Refresh the view
-            await interaction.response.edit_message(embed=await self.send_page(self.page_list, self.page), view=self)
+            await interaction.response.edit_message(embed=await self.generate_embed(self.items, self.page), view=self)
+
 
 
 
@@ -172,7 +178,7 @@ async def on_voice_state_update(member, before, after):
 
 
 
-async def disconnect_after(interaction, music_queue, duration=120):
+async def disconnect_after(interaction, music_queue, duration=600):
     print(f"disconnect_after was called")
     await asyncio.sleep(duration)
     voice_client = interaction.guild.voice_client
@@ -296,7 +302,10 @@ async def play_song(interaction, url, song_info, song_duration, track, send_mess
             url, song_title, song_duration, track = song_info
         print(f"Playing: {song_title}")
         formatted_duration = str(datetime.timedelta(seconds=int(song_duration / 1000)))
+        # Create listening activity with song title
+        activity = discord.Activity(type=discord.ActivityType.listening, name=song_title)
 
+        await bot.change_presence(activity=activity)
 
     music_queue.current_song_duration = song_duration
     music_queue.current_song_title = song_info
@@ -310,6 +319,10 @@ async def play_song(interaction, url, song_info, song_duration, track, send_mess
         coro = play_song(interaction, None, None, None, None, send_message=True, music_queue=music_queue, play_called=False, play_next=True)
         task = asyncio.run_coroutine_threadsafe(coro, bot.loop)
         task.add_done_callback(lambda _: asyncio.run_coroutine_threadsafe(disconnect_after(interaction, music_queue), bot.loop))
+        if not music_queue.queue:  # If there's no next song
+            # Reset the bot's presence
+            asyncio.run_coroutine_threadsafe(bot.change_presence(activity=discord.Activity(type=discord.ActivityType.listening,
+                                                            name="/Play")), bot.loop)
 
     voice_client.play(discord.FFmpegPCMAudio(url, **FFMPEG_OPTIONS), after=wrapped_play_next)
 
