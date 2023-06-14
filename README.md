@@ -1,4 +1,4 @@
-# Plex Music Bot (BETA) v0.7
+# Plex Music Bot (BETA) v0.8
 
 Download releases for current stable builds. Master will be Dev builds.
 
