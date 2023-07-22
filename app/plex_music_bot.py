@@ -15,6 +15,10 @@ import datetime
 
 plex = PlexServer(BASEURL, PLEX_TOKEN)
 
+# If not on Windows, need to manually load the opus codec, otherwise voice actions fail
+if not discord.opus.is_loaded():
+    discord.opus.load_opus("libopus.so.0")
+
 intents = discord.Intents.all()
 client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
