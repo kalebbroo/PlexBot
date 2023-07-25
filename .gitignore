@@ -1,7 +1,7 @@
 # Ignore a specific file
-configs.py
-config.py
-config.py.
+#configs.py
+#config.py
+#config.py.
 
 # Ignore all .log files
 *.log
@@ -11,3 +11,6 @@ config.py.
 
 # Ignore all files inside __pycache__ directories at any level
 **/__pycache__/
+
+# Ignore IDE folders and files
+/.idea
