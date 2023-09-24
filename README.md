@@ -1,3 +1,5 @@
+# I am in the process of doing an almost complete rewrite now that I have learned a bit more. V1.0 release will be epic!
+
 # Plex Music Bot (BETA) v0.8
 
 Download releases for current stable builds. Master will be Dev builds.
