@@ -1,0 +1,64 @@
+{
+  "botSettings": {
+    "token": "YOUR_BOT_TOKEN_HERE",
+    "prefix": "!",
+    "activity": "playing music",
+    "status": "online"
+  },
+  "database": {
+    "type": "mongodb",
+    "connectionString": "YOUR_DATABASE_CONNECTION_STRING"
+  },
+  "defaultSettings": {
+    "maxVolume": 100,
+    "loop": false,
+    "djRole": "default-dj-role-id"
+  },
+  "guilds": [
+    {
+      "guildId": "123456789012345678",
+      "guildName": "Guild One",
+      "djRole": "specific-dj-role-id-for-guild",
+      "maxVolume": 80,
+      "plugins": {
+        "autoPlay": true,
+        "welcomeMessages": true
+      },
+      "assets": {
+        "welcomeBanner": "path/to/welcome/banner/image.png"
+      },
+      "userSettings": {
+        "allowCustomPlaylists": true
+      }
+    },
+    {
+      "guildId": "876543210987654321",
+      "guildName": "Guild Two",
+      "djRole": "another-dj-role-id-for-different-guild",
+      "maxVolume": 100,
+      "plugins": {
+        "autoPlay": false,
+        "welcomeMessages": false
+      },
+      "assets": {
+        "welcomeBanner": "path/to/different/welcome/banner/image.png"
+      },
+      "userSettings": {
+        "allowCustomPlaylists": false
+      }
+    }
+  ],
+  "plugins": {
+    "spotifyIntegration": true,
+    "youtubeIntegration": true,
+    "soundcloudIntegration": false
+  },
+  "userOptions": {
+    "allowCustomPlaylists": true,
+    "playlistLimit": 10
+  },
+  "logging": {
+    "level": "info",
+    "file": "logs/bot.log"
+  }
+}
