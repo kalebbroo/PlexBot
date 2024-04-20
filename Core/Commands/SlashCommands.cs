@@ -5,20 +5,15 @@ using Lavalink4NET;
 using Lavalink4NET.Rest.Entities.Tracks;
 using PlexBot.Core.LavaLink;
 using PlexBot.Core.PlexAPI;
+using System.Buffers.Text;
 
 namespace PlexBot.Core.Commands
 {
-    public class SlashCommands : InteractionModuleBase<SocketInteractionContext>
+    public class SlashCommands(IAudioService audioService, LavaLinkCommands lavaLinkCommands, PlexApi plexApi) : InteractionModuleBase<SocketInteractionContext>
     {
-        private readonly IAudioService _audioService;
-        private readonly LavaLinkCommands _lavaLinkCommands;
-        private readonly PlexApi _plexApi;
-        public SlashCommands(IAudioService audioService, LavaLinkCommands lavaLinkCommands, PlexApi plexApi)
-        {
-            _audioService = audioService;
-            _lavaLinkCommands = lavaLinkCommands;
-            _plexApi = plexApi;
-        }
+        private readonly IAudioService _audioService = audioService;
+        private readonly LavaLinkCommands _lavaLinkCommands = lavaLinkCommands;
+        private readonly PlexApi _plexApi = plexApi;
 
         /// <summary>Responds with help information about how to use the bot, including available commands.</summary>
         [SlashCommand("help", "Learn how to use the bot")]
@@ -26,6 +21,7 @@ namespace PlexBot.Core.Commands
         {
             try
             {
+                #warning TODO: Update help message
                 EmbedBuilder embed = new EmbedBuilder()
                     .WithTitle("Hartsy.AI Bot Help")
                     .WithThumbnailUrl(Context.Guild.IconUrl)
@@ -54,7 +50,7 @@ namespace PlexBot.Core.Commands
         public async Task Play(string query)
         {
             await DeferAsync().ConfigureAwait(false);
-            SocketSlashCommand command = Context.Interaction as SocketSlashCommand;
+            SocketSlashCommand? command = Context.Interaction as SocketSlashCommand;
             var player = await _lavaLinkCommands.GetPlayerAsync(command, connectToVoiceChannel: true).ConfigureAwait(false);
 
             if (player == null)
@@ -101,9 +97,11 @@ namespace PlexBot.Core.Commands
                 string mediaUrl = "";
                 if (type == "track" && !string.IsNullOrEmpty(firstResult.PartKey))
                 {
+                    Console.WriteLine($"Found media part key: {firstResult.PartKey}");
                     mediaUrl = _plexApi.GetPlaybackUrl(firstResult.PartKey);
                 }
 
+                #warning TODO: Get embed from player class
                 // Create and send an embed with details about the result
                 var embed = new EmbedBuilder()
                     .WithTitle($"Search Result for {type}")
@@ -112,26 +110,8 @@ namespace PlexBot.Core.Commands
                     .WithColor(Color.Blue)
                     .Build();
 
-                // Provide a link or command depending on the type
-                if (!string.IsNullOrEmpty(mediaUrl))
-                {
-                    embed.Fields.Add(new EmbedFieldBuilder()
-                        .WithName("Playback")
-                        .WithValue($"[Play]({mediaUrl})")
-                        .Build());
-                }
-
-                // Additional handling if it's a track and you want to play it directly
-                if (type == "track")
-                {
-                    FileStream file = File.OpenRead(mediaUrl);
-                    FileAttachment attachment = new(file, "media.mp3");
-                    await FollowupWithFileAsync(embed: embed, attachment: attachment);
-                }
-                else
-                {
-                    await FollowupAsync(embed: embed);
-                }
+                await PlayPlexInLavalink(mediaUrl, Context.Interaction as SocketSlashCommand);
+                await FollowupAsync(embed: embed);
             }
             catch (Exception ex)
             {
@@ -144,6 +124,20 @@ namespace PlexBot.Core.Commands
         public async Task PlaylistCommand()
         {
             await RespondAsync("Playing a playlist");
+        }
+
+        public async Task PlayPlexInLavalink(string song, SocketSlashCommand command)
+        {
+            var player = await _lavaLinkCommands.GetPlayerAsync(command, connectToVoiceChannel: true).ConfigureAwait(false);
+            if (player == null)
+            {
+                await FollowupAsync("You need to be in a voice channel.").ConfigureAwait(false);
+                return;
+            }
+
+            // Play the track
+            await player.PlayAsync(song);
+            await FollowupAsync($"Playing:").ConfigureAwait(false);
         }
     }
 }

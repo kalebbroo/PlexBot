@@ -8,7 +8,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Folder Include="Core\MusicQueue\" />
     <Folder Include="Install\" />
     <Folder Include="Plugins\" />
   </ItemGroup>

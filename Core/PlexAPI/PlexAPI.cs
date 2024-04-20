@@ -6,19 +6,13 @@ using System.Xml.Linq;
 
 namespace PlexBot.Core.PlexAPI
 {
-    public class PlexApi
+    public class PlexApi(string baseAddress, string plexToken)
     {
-        private readonly string _plexURL = Environment.GetEnvironmentVariable("PLEX_BASE_ADDRESS") ?? "";
-        private readonly string _plexToken = Environment.GetEnvironmentVariable("PLEX_TOKEN") ?? "";
-
-        public PlexApi(string baseAddress, string plexToken)
-        {
-            _plexURL = baseAddress;
-            _plexToken = plexToken;
-        }
+        private readonly string _plexURL = baseAddress;
+        private readonly string _plexToken = plexToken;
 
         // Private method to perform the HTTP request
-        private async Task<string> PerformRequestAsync(string uri)
+        private static async Task<string> PerformRequestAsync(string uri)
         {
             HttpClient client = new();
             HttpRequestMessage request = new(HttpMethod.Get, uri);
@@ -53,13 +47,13 @@ namespace PlexBot.Core.PlexAPI
         }
 
         // Parses the XML search results based on type and extracts media part details if available
-        private List<MediaItem> ParseSearchResults(string xmlContent, string type)
+        private static List<MediaItem> ParseSearchResults(string xmlContent, string type)
         {
             XDocument doc = XDocument.Parse(xmlContent);
             List<MediaItem> items = [];
 
             // Depending on the type, the element might be "Track", "Artist", or "Album"
-            string elementType = type.Substring(0, 1).ToUpper() + type.Substring(1).ToLower();  // Capitalize first letter
+            string elementType = type[..1].ToUpper() + type[1..].ToLower();  // Capitalize first letter
             foreach (var element in doc.Descendants(elementType))
             {
                 if (element.Attribute("type")?.Value == type)
