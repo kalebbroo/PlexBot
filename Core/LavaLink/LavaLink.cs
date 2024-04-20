@@ -13,22 +13,15 @@ using Microsoft.Extensions.Options;
 
 namespace PlexBot.Core.LavaLink
 {
-    public class LavaLinkCommands
+    public class LavaLinkCommands(IAudioService audioService, DiscordSocketClient discordClient)
     {
-        private readonly IAudioService _audioService;
-        private readonly DiscordSocketClient _discordClient;
+        private readonly IAudioService _audioService = audioService;
+        private readonly DiscordSocketClient _discordClient = discordClient;
         private readonly Core.Commands.SlashCommands _commands;
-
-        public LavaLinkCommands(IAudioService audioService, DiscordSocketClient discordClient)
-        {
-            _audioService = audioService;
-            _discordClient = discordClient;
-        }
 
         public async ValueTask<ILavalinkPlayer?> GetPlayerAsync(SocketSlashCommand command, bool connectToVoiceChannel = true)
         {
-            var user = command.User as SocketGuildUser;
-            if (user == null || user.VoiceChannel == null)
+            if (command.User is not SocketGuildUser user || user.VoiceChannel == null)
             {
                 await command.FollowupAsync("You must be in a voice channel to play music.").ConfigureAwait(false);
                 return null;
