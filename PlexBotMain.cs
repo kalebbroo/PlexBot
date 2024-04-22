@@ -131,6 +131,7 @@ namespace PlexBot
                 options.BaseAddress = new Uri($"http://{options.HttpClientName}:2333");
                 options.ResumptionOptions = new LavalinkSessionResumptionOptions(TimeSpan.FromSeconds(60));
             });
+            services.AddMemoryCache();
 
             // Setup logging
             services.AddLogging(loggingBuilder =>

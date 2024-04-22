@@ -4,11 +4,13 @@ using Discord.WebSocket;
 using Lavalink4NET;
 using Lavalink4NET.Players;
 using Lavalink4NET.Rest.Entities.Tracks;
+using Lavalink4NET.Players.Queued;
 using PlexBot.Core.LavaLink;
 using PlexBot.Core.PlexAPI;
 using System.Net;
 using PlexBot.Core.InteractionComponents;
 using Newtonsoft.Json;
+using Microsoft.Extensions.Caching;
 
 namespace PlexBot.Core.Commands
 {
@@ -227,7 +229,7 @@ namespace PlexBot.Core.Commands
                 foreach (string key in trackKeys)
                 {
                     string url = plexApi.GetPlaybackUrl(key);
-                    Console.WriteLine($"Queuing track: {url}");
+                    Console.WriteLine($"Queuing track: {url}"); // Debugging
                     await player.PlayAsync(url);
                 }
                 await FollowupAsync($"Playing playlist with {trackKeys.Count} tracks.");
