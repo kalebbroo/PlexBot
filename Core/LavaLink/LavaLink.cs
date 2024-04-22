@@ -3,6 +3,8 @@ using Discord.WebSocket;
 using Lavalink4NET.Players.Queued;
 using Lavalink4NET.Players;
 using Microsoft.Extensions.Options;
+using PlexBot.Core.Commands;
+using Discord;
 
 namespace PlexBot.Core.LavaLink
 {
@@ -10,9 +12,9 @@ namespace PlexBot.Core.LavaLink
     {
         private readonly IAudioService _audioService = audioService;
         private readonly DiscordSocketClient _discordClient = discordClient;
-        private readonly Core.Commands.SlashCommands _commands;
+        private readonly SlashCommands _commands;
 
-        public async ValueTask<ILavalinkPlayer?> GetPlayerAsync(SocketInteraction interaction, bool connectToVoiceChannel = true)
+        public async ValueTask<QueuedLavalinkPlayer?> GetPlayerAsync(SocketInteraction interaction, bool connectToVoiceChannel = true)
         {
             if (interaction.User is not SocketGuildUser user || user.VoiceChannel == null)
             {
@@ -53,5 +55,56 @@ namespace PlexBot.Core.LavaLink
             }
             return result.Player;
         }
+
+        public async Task<string> TogglePauseResume(SocketInteraction interaction)
+        {
+            var player = await GetPlayerAsync(interaction, true);
+            if (player == null)
+            {
+                return "Player not found.";
+            }
+
+            if (player.State == PlayerState.Paused)
+            {
+                await player.ResumeAsync();
+                return "Resumed.";
+            }
+            else
+            {
+                await player.PauseAsync();
+                return "Paused.";
+            }
+        }
+
+        public async Task DisplayQueueAsync(SocketInteraction interaction)
+        {
+            var player = await GetPlayerAsync(interaction, true);
+            if (player == null)
+            {
+                //await RespondAsync("No queued player is currently active.", ephemeral: true);
+                return;
+            }
+
+            if (player.Queue.IsEmpty)
+            {
+                //await RespondAsync("The queue is currently empty.", ephemeral: true);
+                return;
+            }
+
+            var embed = new EmbedBuilder()
+                .WithTitle("Current Music Queue")
+                .WithDescription("Here are the details of the tracks in the queue:");
+
+            foreach (var item in player.Queue)
+            {
+                // Access track details
+                var track = item.Track;
+                //embed.AddField(track.Title, $"Artist: {track.Author}\nDuration: {TimeSpan.FromMilliseconds(track.Duration).ToString(@"hh\:mm\:ss")}\nURL: [Listen]({track.Uri})");
+            }
+
+            //await RespondAsync(embed: embed.Build(), ephemeral: true);
+        }
+
+
     }
 }

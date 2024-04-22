@@ -20,5 +20,31 @@ namespace PlexBot.Core.Players
         // logic needed to get all info from Lavalink4NET.Players.Queued.QueuedLavalinkPlayer
 
         // Logic needed for image editing and text overlaying
+
+        public async Task CreatePlayer()
+        {
+            // Create a new embed with the player information
+            // Add the embed to the player list
+            Discord.EmbedBuilder embed = new();
+            embed.WithTitle("Now Playing");
+            embed.WithDescription("Song Name");
+            embed.WithImageUrl("Image URL");
+            embed.WithFooter("Volume: 100%");
+            embed.WithColor(Discord.Color.Blue);
+            embed.WithTimestamp(DateTime.Now);
+            
+        }
+
+        public async Task UpdatePlayer()
+        {
+            // Update the player embed with the new information
+            
+        }
+
+        public async Task BuildImage()
+        {
+            // Build the image for the player embed
+            
+        }
     }
 }
