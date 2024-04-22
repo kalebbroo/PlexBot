@@ -26,5 +26,92 @@ namespace PlexBot.Core.InteractionComponents
             _lastInteracted[key] = DateTime.UtcNow;
             return false;
         }
+
+        [ComponentInteraction("pause:*", runMode: RunMode.Async)]
+        public async Task Pause()
+        {
+            if (IsOnCooldown(Context.User, "pause"))
+            {
+                await FollowupAsync("You are on cooldown.");
+                return;
+            }
+            await DeferAsync();
+            // pauses the current track
+            // removes buttons and adds resume button
+        }
+
+        [ComponentInteraction("resume:*", runMode: RunMode.Async)]
+        public async Task Resume()
+        {
+            if (IsOnCooldown(Context.User, "resume"))
+            {
+                await FollowupAsync("You are on cooldown.");
+                return;
+            }
+            await DeferAsync();
+            // resumes the player after pausing
+            // Maybe this should not be shown unless the player is paused?
+        }
+
+        [ComponentInteraction("skip:*", runMode: RunMode.Async)]
+        public async Task Skip()
+        {
+            if (IsOnCooldown(Context.User, "skip"))
+            {
+                await FollowupAsync("You are on cooldown.");
+                return;
+            }
+            await DeferAsync();
+            // skips the current track
+        }
+
+        [ComponentInteraction("kill:*", runMode: RunMode.Async)]
+        public async Task Kill()
+        {
+            if (IsOnCooldown(Context.User, "kill"))
+            {
+                await FollowupAsync("You are on cooldown.");
+                return;
+            }
+            await DeferAsync();
+            // Clears the queue and stops the player then disconnects from the voice channel
+        }
+
+        [ComponentInteraction("repeat:*", runMode: RunMode.Async)]
+        public async Task Repeat()
+        {
+            if (IsOnCooldown(Context.User, "repeat"))
+            {
+                await FollowupAsync("You are on cooldown.");
+                return;
+            }
+            await DeferAsync();
+            // create a select menu with repeat options (off, one, all)
+        }
+
+        [ComponentInteraction("shuffle:*", runMode: RunMode.Async)]
+        public async Task Shuffle()
+        {
+            if (IsOnCooldown(Context.User, "shuffle"))
+            {
+                await FollowupAsync("You are on cooldown.");
+                return;
+            }
+            await DeferAsync();
+            // create a select menu with shuffle options (on, off)
+        }
+
+        [ComponentInteraction("queue:*", runMode: RunMode.Async)]
+        public async Task Queue()
+        {
+            if (IsOnCooldown(Context.User, "queue"))
+            {
+                await FollowupAsync("You are on cooldown.");
+                return;
+            }
+            await DeferAsync();
+            // create a select menu with queue options (clear, remove, move, display a list)
+            // or should it display a list of the current queue then have buttons for clear, remove, move?
+        }
     }
 }
