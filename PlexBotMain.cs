@@ -6,13 +6,15 @@ using Microsoft.Extensions.DependencyInjection;
 using System.Reflection;
 using dotenv.net;
 using Lavalink4NET;
-using Lavalink4NET.DiscordNet;
 using Microsoft.Extensions.Logging;
-using Lavalink4NET.Clients;
 using Lavalink4NET.Extensions;
 using PlexBot.Core.LavaLink;
 using Microsoft.Extensions.Hosting;
 using PlexBot.Core.PlexAPI;
+using PlexBot.Core.InteractionComponents;
+using PlexBot.Core.AutoComplete;
+using PlexBot.Core.EventHandlers;
+using PlexBot.Core.Commands;
 
 namespace PlexBot
 {
@@ -104,11 +106,12 @@ namespace PlexBot
             services.AddSingleton<InteractionService>();
 
             // Add other bot components
-            services.AddSingleton<Core.InteractionComponents.Buttons>();
-            services.AddSingleton<Core.Commands.SlashCommands>();
-            services.AddSingleton<Core.AutoComplete.AutoConfig>();
-            services.AddSingleton<Core.EventHandlers.UserEvents>();
+            services.AddSingleton<Buttons>();
+            services.AddSingleton<SlashCommands>();
+            services.AddSingleton<AutoComplete>();
+            services.AddSingleton<UserEvents>();
             services.AddSingleton<PlexApi>();
+            services.AddSingleton<SelectMenus>();
             services.AddSingleton(serviceProvider =>
             {
                 var baseAddress = Environment.GetEnvironmentVariable("PLEX_URL") ?? "";
