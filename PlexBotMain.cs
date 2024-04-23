@@ -15,6 +15,7 @@ using PlexBot.Core.InteractionComponents;
 using PlexBot.Core.AutoComplete;
 using PlexBot.Core.EventHandlers;
 using PlexBot.Core.Commands;
+using PlexBot.Core.Players;
 
 namespace PlexBot
 {
@@ -112,14 +113,15 @@ namespace PlexBot
             services.AddSingleton<UserEvents>();
             services.AddSingleton<PlexApi>();
             services.AddSingleton<SelectMenus>();
+            services.AddSingleton<Players>();
+            services.AddSingleton<LavaLinkCommands>();
             services.AddSingleton(serviceProvider =>
             {
-                var baseAddress = Environment.GetEnvironmentVariable("PLEX_URL") ?? "";
-                var plexToken = Environment.GetEnvironmentVariable("PLEX_TOKEN") ?? "";
-                return new PlexApi(baseAddress, plexToken);
+                string baseAddress = Environment.GetEnvironmentVariable("PLEX_URL") ?? "";
+                string plexToken = Environment.GetEnvironmentVariable("PLEX_TOKEN") ?? "";
+                var lavaLinkCommands = serviceProvider.GetRequiredService<LavaLinkCommands>();
+                return new PlexApi(baseAddress, plexToken, lavaLinkCommands);
             });
-            services.AddSingleton<LavaLinkCommands>();
-
             // Add Lavalink and configure it
             services.AddLavalink();
             services.ConfigureLavalink(options =>

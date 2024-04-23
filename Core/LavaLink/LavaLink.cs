@@ -5,14 +5,17 @@ using Lavalink4NET.Players;
 using Microsoft.Extensions.Options;
 using PlexBot.Core.Commands;
 using Discord;
+using Microsoft.Extensions.Caching.Memory;
+using static System.Runtime.InteropServices.JavaScript.JSType;
+using System;
 
 namespace PlexBot.Core.LavaLink
 {
-    public class LavaLinkCommands(IAudioService audioService, DiscordSocketClient discordClient)
+    public class LavaLinkCommands(IAudioService audioService, DiscordSocketClient discordClient, IMemoryCache memoryCache)
     {
         private readonly IAudioService _audioService = audioService;
         private readonly DiscordSocketClient _discordClient = discordClient;
-        private readonly SlashCommands _commands;
+        private readonly IMemoryCache _memoryCache = memoryCache;
 
         public async ValueTask<QueuedLavalinkPlayer?> GetPlayerAsync(SocketInteraction interaction, bool connectToVoiceChannel = true)
         {
@@ -38,7 +41,7 @@ namespace PlexBot.Core.LavaLink
             IOptions<QueuedLavalinkPlayerOptions> optionsWrapper = Options.Create(options);
 
             // Retrieve or create the player
-            PlayerResult<QueuedLavalinkPlayer> result = await _audioService.Players
+            PlayerResult<QueuedLavalinkPlayer> result = await audioService.Players
                 .RetrieveAsync(guildId, voiceChannelId, PlayerFactory.Queued, optionsWrapper, retrieveOptions)
                 .ConfigureAwait(false);
 
@@ -103,6 +106,39 @@ namespace PlexBot.Core.LavaLink
             }
 
             //await RespondAsync(embed: embed.Build(), ephemeral: true);
+        }
+
+        public async Task CacheTrackDetails(List<Dictionary<string, string>> trackDetails, bool isQueued = false)
+        {
+            foreach (var details in trackDetails)
+            {
+                var trackId = details["Url"]; // Assuming 'Url' is the unique identifier for each track
+
+                // Check if the track details are already cached
+                if (!memoryCache.TryGetValue(trackId, out _))
+                {
+                    var cacheEntryOptions = new MemoryCacheEntryOptions()
+                        .SetSlidingExpiration(TimeSpan.FromMinutes(30)); // Set cache expiration
+
+                    if (isQueued)
+                    {
+                        cacheEntryOptions.SetPriority(CacheItemPriority.High); // Higher priority for queued tracks
+                        cacheEntryOptions.RegisterPostEvictionCallback((key, value, reason, state) =>
+                        {
+                            Console.WriteLine($"Cache item evicted: {key} due to {reason}");
+                        });
+                    }
+
+                    // Cache the track details
+                    memoryCache.Set(trackId, details, cacheEntryOptions);
+                }
+            }
+        }
+
+
+        public void RemoveTrackFromCache(string trackId)
+        {
+            memoryCache.Remove(trackId);
         }
 
 

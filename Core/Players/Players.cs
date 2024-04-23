@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace PlexBot.Core.Players
 {
-    internal class Players
+    public class Players
     {
         // Not to be confused with the Players class in Lavalink4NET.Players
         // This class will contain methods for the visual representation of players in the bot
@@ -21,7 +21,7 @@ namespace PlexBot.Core.Players
 
         // Logic needed for image editing and text overlaying
 
-        public async Task CreatePlayer()
+        public async Task<Discord.EmbedBuilder> CreatePlayer(Lavalink4NET.Players.ILavalinkPlayer player, List<Dictionary<string, string>> tracks)
         {
             // Create a new embed with the player information
             // Add the embed to the player list
@@ -32,6 +32,8 @@ namespace PlexBot.Core.Players
             embed.WithFooter("Volume: 100%");
             embed.WithColor(Discord.Color.Blue);
             embed.WithTimestamp(DateTime.Now);
+
+            return embed;
             
         }
 
