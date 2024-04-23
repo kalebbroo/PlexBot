@@ -31,7 +31,7 @@ namespace PlexBot.Core.InteractionComponents
                 Console.WriteLine("Interaction is null.");
                 return;
             }
-            ILavalinkPlayer? player = await _lavaLinkCommands.GetPlayerAsync(interaction, connectToVoiceChannel: true);
+            ILavalinkPlayer? player = await lavaLink.GetPlayerAsync(interaction, connectToVoiceChannel: true);
             if (player == null)
             {
                 await FollowupAsync("You need to be in a voice channel.");
@@ -51,30 +51,19 @@ namespace PlexBot.Core.InteractionComponents
                     }
                     break;
                 case "album":
-                    var albumTracks = await plexApi.GetTracks(selectedValue);
-                    foreach (var track in albumTracks)
-                    {
-                        string trackUrl = plexApi.GetPlaybackUrl(track);
-                        if (!string.IsNullOrEmpty(trackUrl))
-                        {
-                            Console.WriteLine($"Queuing album track: {trackUrl}");
-                            await player.PlayAsync(trackUrl);
-                        }
-                    }
-                    await FollowupAsync("Album queued for playback.");
-                    break;
                 case "artist":
-                    var artistTracks = await plexApi.GetTracks(selectedValue);
-                    foreach (var track in artistTracks)
+                    var tracks = await plexApi.GetTracks(selectedValue);
+                    foreach (var trackDetail in tracks)
                     {
-                        string trackUrl = plexApi.GetPlaybackUrl(track);
+                        string trackUrl = trackDetail["Url"];
                         if (!string.IsNullOrEmpty(trackUrl))
                         {
-                            Console.WriteLine($"Queuing artist track: {trackUrl}");
+                            Console.WriteLine($"Queuing track: {trackUrl}");
+                            trackUrl = _plexApi.GetPlaybackUrl(trackUrl);
                             await player.PlayAsync(trackUrl);
                         }
                     }
-                    await FollowupAsync("Artist's tracks queued for playback.");
+                    await FollowupAsync($"{customId} queued for playback.");
                     break;
             }
         }

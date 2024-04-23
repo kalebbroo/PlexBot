@@ -1,17 +1,15 @@
 ﻿using Newtonsoft.Json.Linq;
-using System;
-using System.Net;
-using System.Net.Http;
-using System.Threading.Tasks;
 using System.Web;
-using System.Xml.Linq;
+using PlexBot.Core.LavaLink;
 
 namespace PlexBot.Core.PlexAPI
 {
-    public class PlexApi(string baseAddress, string plexToken)
+    public class PlexApi(string plexUrl, string plexToken, LavaLinkCommands lavaLinkCommands)
     {
-        private readonly string _plexURL = baseAddress;
+        private readonly string _plexURL = plexUrl;
         private readonly string _plexToken = plexToken;
+        private readonly LavaLinkCommands _lavaLinkCommands;
+
 
         // Private method to perform the HTTP request
         public async Task<string> PerformRequestAsync(string uri)
@@ -20,7 +18,7 @@ namespace PlexBot.Core.PlexAPI
             HttpClient client = new();
             HttpRequestMessage request = new(HttpMethod.Get, uri);
             request.Headers.Add("Accept", "application/json");
-            request.Headers.Add("X-Plex-Token", $"{_plexToken}");
+            request.Headers.Add("X-Plex-Token", $"{plexToken}");
             HttpResponseMessage response = await client.SendAsync(request);
             response.EnsureSuccessStatusCode();
             Console.WriteLine($"Response status code: {response.StatusCode}");
@@ -37,13 +35,13 @@ namespace PlexBot.Core.PlexAPI
         // Gets the playback URL for a media item using the part_id and the key together in the url
         public string GetPlaybackUrl(string partKey)
         {
-            return $"{_plexURL}{partKey}?X-Plex-Token={_plexToken}";
+            return $"{plexUrl}{partKey}?X-Plex-Token={plexToken}";
         }
 
         // Gets the URL for searching the music library
         public string GetSearchUrl(string partKey)
         {
-            return $"{_plexURL}{partKey}";
+            return $"{plexUrl}{partKey}";
         }
 
         // Public method to search the music library
@@ -68,7 +66,7 @@ namespace PlexBot.Core.PlexAPI
             }
             string encodedQuery = HttpUtility.UrlEncode(query);
             // Limit to 25 results Due to Discord's 25 limit on select options
-            string uri = $"{_plexURL}/library/sections/5/search?type={typeId}&query={encodedQuery}&limit=25";
+            string uri = $"{plexUrl}/library/sections/5/search?type={typeId}&query={encodedQuery}&limit=25";
             string Response = await PerformRequestAsync(uri);
 
             // if the response is empty, throw an exception
@@ -84,14 +82,14 @@ namespace PlexBot.Core.PlexAPI
         // Method to refresh the music library
         public async Task<string> RefreshLibraryAsync(int libraryId)
         {
-            string uri = $"{_plexURL}/library/sections/{libraryId}/refresh";
+            string uri = $"{plexUrl}/library/sections/{libraryId}/refresh";
             return await PerformRequestAsync(uri);
         }
 
         // Method to add a new item to the music library
         public async Task<string> AddToLibraryAsync(int libraryId, string metadata)
         {
-            string uri = $"{_plexURL}/library/sections/{libraryId}/all?type=12&title={metadata}";
+            string uri = $"{plexUrl}/library/sections/{libraryId}/all?type=12&title={metadata}";
             return await PerformRequestAsync(uri);
         }
 
@@ -139,7 +137,7 @@ namespace PlexBot.Core.PlexAPI
 
                         try
                         {
-                            List<string> tracks = await GetTracks(details["Url"]);
+                            List<Dictionary<string, string>> tracks = await GetTracks(details["Url"]);
                             int trackCount = tracks.Count;
                             details["TrackCount"] = trackCount.ToString();
                         }
@@ -159,20 +157,21 @@ namespace PlexBot.Core.PlexAPI
                 }
                 results.Add($"Item{id++}", details);
             }
+            List<Dictionary<string, string>> dicList = results.Values.ToList();
+            await lavaLinkCommands.CacheTrackDetails(dicList, false);
             return results;
         }
 
         // Method to fetch playlists from Plex
         public async Task<Dictionary<string, Dictionary<string, string>>> GetPlaylists()
         {
-            string uri = $"{_plexURL}/playlists?playlistType=audio";
+            string uri = $"{plexUrl}/playlists?playlistType=audio";
             string response = await PerformRequestAsync(uri);
             Console.WriteLine(response); // Debugging
             return await ParseSearchResults(response, "playlist");
         }
 
-
-        public async Task<List<string>> GetTracks(string Key)
+        public async Task<List<Dictionary<string, string>>> GetTracks(string Key)
         {
             string uri = GetPlaybackUrl(Key);
             Console.WriteLine(uri);
@@ -183,7 +182,8 @@ namespace PlexBot.Core.PlexAPI
                 Console.WriteLine("No results found.");
                 throw new Exception("No results found.");
             }
-            List<string> tracks = [];
+
+            List<Dictionary<string, string>> tracks = new List<Dictionary<string, string>>();
             JObject jObject = JObject.Parse(response);
             var items = jObject["MediaContainer"]["Metadata"];
             if (items == null)
@@ -194,27 +194,16 @@ namespace PlexBot.Core.PlexAPI
 
             foreach (JToken item in items)
             {
-                var mediaItems = item["Media"];
-                if (mediaItems != null)
-                {
-                    foreach (var media in mediaItems)
-                    {
-                        var parts = media["Part"];
-                        if (parts != null)
-                        {
-                            foreach (var part in parts)
-                            {
-                                var key = part["key"]?.ToString();
-                                if (!string.IsNullOrWhiteSpace(key))
-                                {
-                                    tracks.Add(key);
-                                    Console.WriteLine(key);
-                                }
-                            }
-                        }
-                    }
-                }
+                var trackDetails = new Dictionary<string, string>();
+                trackDetails["Title"] = item["title"]?.ToString() ?? "Unknown Title";
+                trackDetails["Artist"] = item["grandparentTitle"]?.ToString() ?? "Unknown Artist";
+                trackDetails["Album"] = item["parentTitle"]?.ToString() ?? "Unknown Album";
+                trackDetails["ReleaseDate"] = item["originallyAvailableAt"]?.ToString() ?? "N/A";
+                trackDetails["Url"] = item.SelectToken("Media[0].Part[0].key")?.ToString() ?? "N/A";
+
+                tracks.Add(trackDetails);
             }
+            await lavaLinkCommands.CacheTrackDetails(tracks, false);
             return tracks;
         }
     }

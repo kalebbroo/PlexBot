@@ -7,20 +7,23 @@ using Lavalink4NET.Rest.Entities.Tracks;
 using Lavalink4NET.Players.Queued;
 using PlexBot.Core.LavaLink;
 using PlexBot.Core.PlexAPI;
-using System.Net;
 using PlexBot.Core.InteractionComponents;
+using PlexBot.Core.Players;
+using System.Net;
 using Newtonsoft.Json;
-using Microsoft.Extensions.Caching;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace PlexBot.Core.Commands
 {
-    public class SlashCommands(IAudioService audioService, LavaLinkCommands lavaLinkCommands, PlexApi plexApi,
+    public class SlashCommands(IAudioService audioService, LavaLinkCommands lavaLinkCommands, PlexApi plexApi, Players.Players visualPlayer, IMemoryCache memoryCache,
         SelectMenus selectMenus) : InteractionModuleBase<SocketInteractionContext>
     {
         private readonly IAudioService _audioService = audioService;
+        private readonly IMemoryCache _memoryCache = memoryCache;
         private readonly LavaLinkCommands _lavaLinkCommands = lavaLinkCommands;
         private readonly PlexApi _plexApi = plexApi;
         private readonly SelectMenus _selectMenus = selectMenus;
+        private readonly Players.Players _players = visualPlayer;
 
         /// <summary>Responds with help information about how to use the bot, including available commands.</summary>
         [SlashCommand("help", "Learn how to use the bot")]
@@ -58,17 +61,16 @@ namespace PlexBot.Core.Commands
         {
             await DeferAsync().ConfigureAwait(false);
             SocketInteraction interaction = Context.Interaction;
-            var player = await _lavaLinkCommands.GetPlayerAsync(interaction, connectToVoiceChannel: true).ConfigureAwait(false);
+            var player = await lavaLinkCommands.GetPlayerAsync(interaction, connectToVoiceChannel: true).ConfigureAwait(false);
 
             if (player == null)
             {
                 await FollowupAsync("You need to be in a voice channel.").ConfigureAwait(false);
                 return;
             }
-
             // Load the track from YouTube using the query provided
-            var track = await _audioService.Tracks
-                .LoadTrackAsync(query, TrackSearchMode.YouTube)
+            var track = await audioService.Tracks
+                .LoadTrackAsync(query, TrackSearchMode.YouTubeMusic)
                 .ConfigureAwait(false);
             // If no track was found, we send an error message to the user.
             if (track is null)
@@ -194,45 +196,53 @@ namespace PlexBot.Core.Commands
 
         [SlashCommand("playlist", "Play a playlist")]
         public async Task PlaylistCommand(
-        [Summary("playlist", "Choose a playlist.")]
-        [Autocomplete(typeof(AutoComplete.AutoComplete))] string playlistKey,
-        [Summary("shuffle", "Shuffle the playlist.")] bool shuffle = false)
+    [Summary("playlist", "Choose a playlist.")]
+    [Autocomplete(typeof(AutoComplete.AutoComplete))] string playlistKey,
+    [Summary("shuffle", "Shuffle the playlist.")] bool shuffle = false)
         {
-            await RespondAsync("Loading playlist...");
+            await RespondAsync("Loading playlist...", ephemeral: true);
 
             try
             {
-                // Retrieve track keys from the playlist
-                List<string> trackKeys = await plexApi.GetTracks(playlistKey);
+                // Retrieve track details from the playlist
+                List<Dictionary<string, string>> trackDetails = await plexApi.GetTracks(playlistKey);
 
-                if (trackKeys.Count == 0)
+                if (trackDetails.Count == 0)
                 {
                     await FollowupAsync("The playlist is empty or could not be loaded.");
                     Console.WriteLine("Playlist is empty or could not be loaded.");
                     return;
                 }
-                // added shuffle logic just in case user wants to shuffle playlist but not shuffle the rest of the queue
+
+                // Optionally shuffle the playlist
                 if (shuffle)
                 {
-                    Random rng = new();
-                    trackKeys = [.. trackKeys.OrderBy(x => rng.Next())];
+                    Random rng = new Random();
+                    trackDetails = trackDetails.OrderBy(x => rng.Next()).ToList();
                 }
+
                 SocketInteraction interaction = Context.Interaction;
-                ILavalinkPlayer? player = await _lavaLinkCommands.GetPlayerAsync(interaction, connectToVoiceChannel: true);
+                ILavalinkPlayer? player = await lavaLinkCommands.GetPlayerAsync(interaction, connectToVoiceChannel: true);
 
                 if (player == null)
                 {
                     await FollowupAsync("You need to be in a voice channel.");
                     return;
                 }
+
                 // Queue each track in the player
-                foreach (string key in trackKeys)
+                foreach (var trackDetail in trackDetails)
                 {
-                    string url = plexApi.GetPlaybackUrl(key);
+                    string url = trackDetail["Url"]; // Assuming 'Url' is the key for the track's URL
                     Console.WriteLine($"Queuing track: {url}"); // Debugging
                     await player.PlayAsync(url);
                 }
-                await FollowupAsync($"Playing playlist with {trackKeys.Count} tracks.");
+
+                await FollowupAsync($"Playing playlist with {trackDetails.Count} tracks.", ephemeral: true);
+
+                // After queuing all tracks, send the visual player embed
+                var embed = await visualPlayer.CreatePlayer(player, trackDetails);
+                await FollowupAsync(embed: embed.Build());
             }
             catch (Exception ex)
             {
