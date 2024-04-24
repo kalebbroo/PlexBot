@@ -16,6 +16,7 @@ using PlexBot.Core.AutoComplete;
 using PlexBot.Core.EventHandlers;
 using PlexBot.Core.Commands;
 using PlexBot.Core.Players;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace PlexBot
 {
@@ -119,9 +120,11 @@ namespace PlexBot
             {
                 string baseAddress = Environment.GetEnvironmentVariable("PLEX_URL") ?? "";
                 string plexToken = Environment.GetEnvironmentVariable("PLEX_TOKEN") ?? "";
-                var lavaLinkCommands = serviceProvider.GetRequiredService<LavaLinkCommands>();
-                return new PlexApi(baseAddress, plexToken, lavaLinkCommands);
+                LavaLinkCommands lavaLinkCommands = serviceProvider.GetRequiredService<LavaLinkCommands>();
+                IMemoryCache memoryCache = serviceProvider.GetRequiredService<IMemoryCache>();
+                return new PlexApi(baseAddress, plexToken, lavaLinkCommands, memoryCache);
             });
+
             // Add Lavalink and configure it
             services.AddLavalink();
             services.ConfigureLavalink(options =>

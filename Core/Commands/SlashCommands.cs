@@ -180,10 +180,10 @@ namespace PlexBot.Core.Commands
                 
                 SelectMenuBuilder selectMenu = new SelectMenuBuilder()
                     .WithCustomId($"search_plex:{type}")
-                    .WithPlaceholder("Select an item")
+                    .WithPlaceholder($"Select a/an {type}")
                     .WithOptions(selectMenuOptions)
                     .WithMinValues(1)
-                    .WithMaxValues(1);
+                    .WithMaxValues(1); 
 
                 await FollowupAsync("Select an item to play.", components: new ComponentBuilder().WithSelectMenu(selectMenu).Build());
             }
