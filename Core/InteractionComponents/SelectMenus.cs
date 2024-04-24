@@ -53,13 +53,16 @@ namespace PlexBot.Core.InteractionComponents
                 case "album":
                 case "artist":
                     var tracks = await plexApi.GetTracks(selectedValue);
+                    Console.WriteLine($"Tracks: {tracks.Count}");
+                    Console.WriteLine($"Selected Value: {selectedValue}");
                     foreach (var trackDetail in tracks)
                     {
                         string trackUrl = trackDetail["Url"];
                         if (!string.IsNullOrEmpty(trackUrl))
                         {
+                            
+                            trackUrl = plexApi.GetPlaybackUrl(trackUrl);
                             Console.WriteLine($"Queuing track: {trackUrl}");
-                            trackUrl = _plexApi.GetPlaybackUrl(trackUrl);
                             await player.PlayAsync(trackUrl);
                         }
                     }

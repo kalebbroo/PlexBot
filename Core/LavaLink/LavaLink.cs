@@ -108,33 +108,23 @@ namespace PlexBot.Core.LavaLink
             //await RespondAsync(embed: embed.Build(), ephemeral: true);
         }
 
-        public async Task CacheTrackDetails(List<Dictionary<string, string>> trackDetails, bool isQueued = false)
+        public void CacheMediaDetails(string mediaType, string mediaId, Dictionary<string, Dictionary<string, string>> details, bool isQueued = false)
         {
-            foreach (var details in trackDetails)
+            string cacheKey = $"{mediaType}:{mediaId}";
+
+            if (!memoryCache.TryGetValue(cacheKey, out _))
             {
-                var trackId = details["Url"]; // Assuming 'Url' is the unique identifier for each track
+                var cacheEntryOptions = new MemoryCacheEntryOptions()
+                    .SetSlidingExpiration(TimeSpan.FromHours(1))
+                    .SetPriority(isQueued ? CacheItemPriority.High : CacheItemPriority.Normal);
 
-                // Check if the track details are already cached
-                if (!memoryCache.TryGetValue(trackId, out _))
-                {
-                    var cacheEntryOptions = new MemoryCacheEntryOptions()
-                        .SetSlidingExpiration(TimeSpan.FromMinutes(30)); // Set cache expiration
+                cacheEntryOptions.RegisterPostEvictionCallback((key, value, reason, state) =>
+                    Console.WriteLine($"Cache item evicted: {key} due to {reason}")
+                );
 
-                    if (isQueued)
-                    {
-                        cacheEntryOptions.SetPriority(CacheItemPriority.High); // Higher priority for queued tracks
-                        cacheEntryOptions.RegisterPostEvictionCallback((key, value, reason, state) =>
-                        {
-                            Console.WriteLine($"Cache item evicted: {key} due to {reason}");
-                        });
-                    }
-
-                    // Cache the track details
-                    memoryCache.Set(trackId, details, cacheEntryOptions);
-                }
+                memoryCache.Set(cacheKey, details, cacheEntryOptions);
             }
         }
-
 
         public void RemoveTrackFromCache(string trackId)
         {

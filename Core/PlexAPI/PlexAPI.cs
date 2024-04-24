@@ -1,14 +1,16 @@
 ﻿using Newtonsoft.Json.Linq;
 using System.Web;
 using PlexBot.Core.LavaLink;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace PlexBot.Core.PlexAPI
 {
-    public class PlexApi(string plexUrl, string plexToken, LavaLinkCommands lavaLinkCommands)
+    public class PlexApi(string plexUrl, string plexToken, LavaLinkCommands lavaLink, IMemoryCache memoryCache)
     {
         private readonly string _plexURL = plexUrl;
         private readonly string _plexToken = plexToken;
-        private readonly LavaLinkCommands _lavaLinkCommands;
+        private readonly LavaLinkCommands _lavaLinkCommands = lavaLink;
+        private readonly IMemoryCache _memoryCache = memoryCache;
 
 
         // Private method to perform the HTTP request
@@ -47,36 +49,42 @@ namespace PlexBot.Core.PlexAPI
         // Public method to search the music library
         public async Task<Dictionary<string, Dictionary<string, string>>> SearchLibraryAsync(string query, string type)
         {
-            int typeId = 9;
-            if (type == "track")
-            {
-                typeId = 10;
-            }
-            else if (type == "album")
-            {
-                typeId = 9;
-            }
-            else if (type == "artist")
-            {
-                typeId = 8;
-            }
-            else if (type == "playlist")
-            {
-                typeId = 15;
-            }
+            int typeId = GetTypeID(type);
             string encodedQuery = HttpUtility.UrlEncode(query);
-            // Limit to 25 results Due to Discord's 25 limit on select options
             string uri = $"{plexUrl}/library/sections/5/search?type={typeId}&query={encodedQuery}&limit=25";
-            string Response = await PerformRequestAsync(uri);
+            string cacheKey = $"search:{type}:{encodedQuery}"; // Unique cache key
 
-            // if the response is empty, throw an exception
-            if (string.IsNullOrEmpty(Response))
+            // Check cache first
+            if (memoryCache.TryGetValue(cacheKey, out Dictionary<string, Dictionary<string, string>> cachedResults))
+            {
+                Console.WriteLine("Returning cached results");
+                return cachedResults;
+            }
+
+            string response = await PerformRequestAsync(uri);
+            if (string.IsNullOrEmpty(response))
             {
                 Console.WriteLine("No results found.");
                 throw new Exception("No results found.");
-
             }
-            return await ParseSearchResults(Response, type);
+
+            var results = await ParseSearchResults(response, type);
+
+            // Cache the results using the centralized method
+            lavaLink.CacheMediaDetails("search", cacheKey, results, false);
+            return results;
+        }
+
+        private int GetTypeID(string type)
+        {
+            switch (type.ToLower())
+            {
+                case "track": return 10;
+                case "album": return 9;
+                case "artist": return 8;
+                case "playlist": return 15;
+                default: return -1;
+            }
         }
 
         // Method to refresh the music library
@@ -111,30 +119,54 @@ namespace PlexBot.Core.PlexAPI
                         details["Album"] = item["parentTitle"]?.ToString() ?? "Unknown Album";
                         details["ReleaseDate"] = item["originallyAvailableAt"]?.ToString() ?? "N/A";
                         details["Artwork"] = item["thumb"]?.ToString() ?? "N/A";
-                        details["Url"] = item.SelectToken("Media[0].Part[0].key")?.ToString() != null
-                        ? $"{item.SelectToken("Media[0].Part[0].key")}" : "N/A";
+                        details["Url"] = item.SelectToken("Media[0].Part[0].key")?.ToString() ?? "N/A";
+                        details["ArtistUrl"] = item["grandparentKey"]?.ToString() ?? "N/A";
+                        details["Duration"] = item["duration"]?.ToString() ?? "N/A"; // Duration in milliseconds
+                        details["Studio"] = item["studio"]?.ToString() ?? "N/A";
                         Console.WriteLine(details["Url"]);
                         break;
-
                     case "artist":
                         details["Title"] = item["title"]?.ToString() ?? "Unknown Artist";
                         details["Summary"] = item["summary"]?.ToString() ?? "No description available.";
                         details["Artwork"] = item["thumb"]?.ToString() ?? "N/A";
                         details["Url"] = item["key"]?.ToString() ?? "N/A";
-                        break;
+                        // Fetch album and track count
+                        try
+                        {
+                            var albumDetails = await GetAlbums(details["Url"]);
+                            details["AlbumCount"] = albumDetails.Count.ToString();
 
+                            int trackCount = 0;
+                            foreach (var album in albumDetails)
+                            {
+                                var tracks = await GetTracks(album["Url"]);
+                                trackCount += tracks.Count;
+                            }
+                            details["TrackCount"] = trackCount.ToString();
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"Failed to retrieve album or track details: {ex.Message}");
+                            details["AlbumCount"] = "Error";
+                            details["TrackCount"] = "Error";
+                        }
+                        break;
                     case "album":
                         details["Title"] = item["title"]?.ToString() ?? "Unknown Album";
                         details["Artist"] = item["parentTitle"]?.ToString() ?? "Unknown Artist";
                         details["ReleaseDate"] = item["originallyAvailableAt"]?.ToString() ?? "N/A";
                         details["Artwork"] = item["thumb"]?.ToString() ?? "N/A";
                         details["Url"] = item["key"]?.ToString() ?? "N/A";
+                        details["ArtistUrl"] = item["parentKey"]?.ToString() ?? "N/A";
+                        details["Studio"] = item["studio"]?.ToString() ?? "N/A";
+                        details["Genre"] = item["Genre"]?.ToString() ?? "N/A";
                         details["Summary"] = item["summary"]?.ToString() ?? "No description available.";
+                        // TODO: Limit the summary to 100 characters. This should be done in select menu not here
                         if (details["Summary"].Length > 100)
                         {
                             details["Summary"] = details["Summary"][..97] + "...";
                         }
-
+                        // Get track count
                         try
                         {
                             List<Dictionary<string, string>> tracks = await GetTracks(details["Url"]);
@@ -146,7 +178,6 @@ namespace PlexBot.Core.PlexAPI
                             Console.WriteLine($"Failed to retrieve tracks: {ex.Message}");
                             details["TrackCount"] = "Error retrieving track count";
                         }
-
                         break;
                     case "playlist":
                         details["Title"] = item["title"]?.ToString() ?? "Unknown Playlist";
@@ -157,8 +188,6 @@ namespace PlexBot.Core.PlexAPI
                 }
                 results.Add($"Item{id++}", details);
             }
-            List<Dictionary<string, string>> dicList = results.Values.ToList();
-            await lavaLinkCommands.CacheTrackDetails(dicList, false);
             return results;
         }
 
@@ -183,9 +212,9 @@ namespace PlexBot.Core.PlexAPI
                 throw new Exception("No results found.");
             }
 
-            List<Dictionary<string, string>> tracks = new List<Dictionary<string, string>>();
+            List<Dictionary<string, string>> tracks = [];
             JObject jObject = JObject.Parse(response);
-            var items = jObject["MediaContainer"]["Metadata"];
+            JToken items = jObject["MediaContainer"]["Metadata"];
             if (items == null)
             {
                 Console.WriteLine("No track metadata available.");
@@ -194,17 +223,53 @@ namespace PlexBot.Core.PlexAPI
 
             foreach (JToken item in items)
             {
+                Console.WriteLine($"\nEach Track:\n{item}\n"); // Debugging
                 var trackDetails = new Dictionary<string, string>();
                 trackDetails["Title"] = item["title"]?.ToString() ?? "Unknown Title";
                 trackDetails["Artist"] = item["grandparentTitle"]?.ToString() ?? "Unknown Artist";
                 trackDetails["Album"] = item["parentTitle"]?.ToString() ?? "Unknown Album";
                 trackDetails["ReleaseDate"] = item["originallyAvailableAt"]?.ToString() ?? "N/A";
+                trackDetails["Artwork"] = item["thumb"]?.ToString() ?? "N/A";
                 trackDetails["Url"] = item.SelectToken("Media[0].Part[0].key")?.ToString() ?? "N/A";
-
+                trackDetails["ArtistUrl"] = item["grandparentKey"]?.ToString() ?? "N/A";
+                trackDetails["Duration"] = item["duration"]?.ToString() ?? "N/A"; // Duration in milliseconds
+                trackDetails["Studio"] = item["studio"]?.ToString() ?? "N/A";
                 tracks.Add(trackDetails);
             }
-            await lavaLinkCommands.CacheTrackDetails(tracks, false);
+            Dictionary<string, Dictionary<string, string>> trackList = new();
+            lavaLink.CacheMediaDetails("tracks", Key, trackList, false);
             return tracks;
+        }
+
+        public async Task<List<Dictionary<string, string>>> GetAlbums(string artistKey)
+        {
+            string uri = GetPlaybackUrl(artistKey + "/children");
+            Console.WriteLine($"Fetching albums with URI: {uri}");
+            string response = await PerformRequestAsync(uri);
+            Console.WriteLine(response);
+            if (string.IsNullOrEmpty(response))
+            {
+                Console.WriteLine("No albums found.");
+                return new List<Dictionary<string, string>>();
+            }
+            List<Dictionary<string, string>> albums = new List<Dictionary<string, string>>();
+            JObject jObject = JObject.Parse(response);
+            var items = jObject["MediaContainer"]["Metadata"];
+            if (items == null)
+            {
+                Console.WriteLine("No album metadata available.");
+                return albums;
+            }
+            foreach (JToken item in items)
+            {
+                var albumDetails = new Dictionary<string, string>
+                {
+                    ["Title"] = item["title"]?.ToString() ?? "Unknown Album",
+                    ["Url"] = item["key"]?.ToString() ?? "N/A"
+                };
+                albums.Add(albumDetails);
+            }
+            return albums;
         }
     }
 }
