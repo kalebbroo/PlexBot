@@ -36,7 +36,7 @@ namespace PlexBot.Core.Players
                 {
                     Console.WriteLine($"The 'Url' key was found in the dictionary: {url}");
                     // If the "Url" key exists in the dictionary, proceed with playing the media
-                    url = $"http://72.15.115.79:32400{url}?X-Plex-Token=GEqKQjTDC3DtXy4CToyr";
+                    url = $"";
                     bool hasQueue = await lavaLink.PlayMedia(interaction, url);
                     EmbedBuilder player = await CreatePlayer(tracks, hasQueue);
                     return player;
