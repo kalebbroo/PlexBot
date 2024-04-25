@@ -1,16 +1,19 @@
-﻿using Discord.WebSocket;
-using PlexBot.Core.PlexAPI;
+﻿using Discord;
+using Discord.WebSocket;
 using Discord.Interactions;
+using PlexBot.Core.PlexAPI;
+using PlexBot.Core.Players;
 using PlexBot.Core.LavaLink;
 using Lavalink4NET.Players;
 
 namespace PlexBot.Core.InteractionComponents
 {
-    public class SelectMenus(DiscordSocketClient client, PlexApi plexApi, LavaLinkCommands lavaLink) : InteractionModuleBase<SocketInteractionContext>
+    public class SelectMenus(DiscordSocketClient client, PlexApi plexApi, LavaLinkCommands lavaLink, Players.Players visualPlayers) : InteractionModuleBase<SocketInteractionContext>
     {
         private readonly DiscordSocketClient _client = client;
         private readonly PlexApi _plexApi = plexApi;
         private readonly LavaLinkCommands _lavaLinkCommands = lavaLink;
+        private readonly Players.Players _visualPlayers = visualPlayers;
 
         [ComponentInteraction("search_plex:*", runMode: RunMode.Async)]
         public async Task DisplaySearchResults(string customId, string[] selections)
@@ -46,8 +49,31 @@ namespace PlexBot.Core.InteractionComponents
                     if (!string.IsNullOrEmpty(url))
                     {
                         Console.WriteLine($"Playing: {url}");
-                        await player.PlayAsync(url);
-                        await FollowupAsync("Playing...");
+                        string uri = "/library/metadata/54186";
+                        uri = _plexApi.GetPlaybackUrl(uri);
+                        string jsonResponse = await plexApi.PerformRequestAsync(uri);
+                        Dictionary<string, Dictionary<string, string>> parseTrack = await plexApi.ParseSearchResults(jsonResponse, customId);
+                        List<Dictionary<string, string>> track = new List<Dictionary<string, string>>();
+
+                        // Iterate through each entry in the original dictionary
+                        foreach (var entry in parseTrack)
+                        {
+                            // Create a new dictionary for each entry
+                            Dictionary<string, string> newDict = new Dictionary<string, string>();
+
+                            // Copy key-value pairs from the inner dictionary to the new dictionary
+                            foreach (var innerEntry in entry.Value)
+                            {
+                                newDict.Add(innerEntry.Key, innerEntry.Value);
+                            }
+
+                            // Add the new dictionary to the list
+                            track.Add(newDict);
+                        }
+                        EmbedBuilder visualPlayer = await visualPlayers.BuildAndSendPlayer(interaction, track);
+                        await FollowupAsync("Playing...", ephemeral: true);
+                        // send new message to channel with visual player embed
+                        await interaction.Channel.SendMessageAsync(embed: visualPlayer.Build());
                     }
                     break;
                 case "album":

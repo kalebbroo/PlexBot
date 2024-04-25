@@ -59,6 +59,25 @@ namespace PlexBot.Core.LavaLink
             return result.Player;
         }
 
+        public async Task<bool> PlayMedia(SocketInteraction interaction, string url)
+        {
+            QueuedLavalinkPlayer? player = await GetPlayerAsync(interaction, true);
+            if (player == null)
+            {
+                Console.WriteLine("Player not found.");
+            }
+            bool queue = true;
+            if (player.Queue.IsEmpty)
+            {
+                queue = false;
+                Console.WriteLine("Queue is empty.");
+            }
+
+            // Play the track
+            await player.PlayAsync(url).ConfigureAwait(false);
+            return queue;
+        }
+
         public async Task<string> TogglePauseResume(SocketInteraction interaction)
         {
             var player = await GetPlayerAsync(interaction, true);
