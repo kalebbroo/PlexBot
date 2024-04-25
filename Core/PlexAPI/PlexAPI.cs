@@ -236,7 +236,7 @@ namespace PlexBot.Core.PlexAPI
                 trackDetails["Studio"] = item["studio"]?.ToString() ?? "N/A";
                 tracks.Add(trackDetails);
             }
-            Dictionary<string, Dictionary<string, string>> trackList = new();
+            Dictionary<string, Dictionary<string, string>> trackList = [];
             lavaLink.CacheMediaDetails("tracks", Key, trackList, false);
             return tracks;
         }

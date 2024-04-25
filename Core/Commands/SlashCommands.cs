@@ -196,9 +196,9 @@ namespace PlexBot.Core.Commands
 
         [SlashCommand("playlist", "Play a playlist")]
         public async Task PlaylistCommand(
-    [Summary("playlist", "Choose a playlist.")]
-    [Autocomplete(typeof(AutoComplete.AutoComplete))] string playlistKey,
-    [Summary("shuffle", "Shuffle the playlist.")] bool shuffle = false)
+        [Summary("playlist", "Choose a playlist.")]
+        [Autocomplete(typeof(AutoComplete.AutoComplete))] string playlistKey,
+        [Summary("shuffle", "Shuffle the playlist.")] bool shuffle = false)
         {
             await RespondAsync("Loading playlist...", ephemeral: true);
 
@@ -241,7 +241,7 @@ namespace PlexBot.Core.Commands
                 await FollowupAsync($"Playing playlist with {trackDetails.Count} tracks.", ephemeral: true);
 
                 // After queuing all tracks, send the visual player embed
-                var embed = await visualPlayer.CreatePlayer(player, trackDetails);
+                var embed = await visualPlayer.BuildAndSendPlayer(interaction, trackDetails);
                 await FollowupAsync(embed: embed.Build());
             }
             catch (Exception ex)
