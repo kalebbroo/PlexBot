@@ -18,27 +18,15 @@ namespace PlexBot.Core.LavaLink
             _textChannel = properties.Options.Value.TextChannel;
         }
 
-        protected override async ValueTask OnTrackStartedAsync(ITrackQueueItem eventArgs)
+        protected override async ValueTask NotifyTrackStartedAsync(ITrackQueueItem track, CancellationToken cancellationToken = default)
         {
-            await base.OnTrackStartedAsync(eventArgs).ConfigureAwait(false);
+            await base.NotifyTrackStartedAsync(track).ConfigureAwait(false);
 
             // Send a message to the text channel
-            await _textChannel.SendMessageAsync($"Now playing: {eventArgs.Track.Title}").ConfigureAwait(false);
+            await _textChannel.SendMessageAsync($"Now playing: {track.Track.Title}").ConfigureAwait(false);
         }
 
-        protected override async ValueTask OnTrackStartedAsync(ITrackQueueItem track, CancellationToken cancellationToken = default)
-        {
-            await base
-                .OnTrackStartedAsync(track, cancellationToken)
-                .ConfigureAwait(false);
-
-            // send a message to the text channel
-            await _textChannel
-                .SendMessageAsync($"Now playing: {track.Title}")
-                .ConfigureAwait(false);
-        }
-
-        protected override void OnPlayersChanged(PlayerChangedEventArgs eventArgs)
+        protected override void NotifyPlayerUpdateAsync(ITrackQueueItem eventArgs, CancellationToken cancellationToken = default)
         {
             if (eventArgs.NewPlayers.Count == 0)
             {
@@ -61,13 +49,13 @@ namespace PlexBot.Core.LavaLink
 
             if (endReason.MayStartNext() && AutoPlay)
             {
-                await PlayNextAsync(skipCount: 1, respectTrackRepeat: true, cancellationToken).ConfigureAwait(false);
+                //await PlayNextAsync(skipCount: 1, respectTrackRepeat: true, cancellationToken).ConfigureAwait(false);
             }
             else if (endReason is not TrackEndReason.Replaced)
             {
                 CurrentItem = null;
             }
-            var track = await GetNextTrackAsync(skipCount, respectTrackRepeat, respectHistory, cancellationToken).ConfigureAwait(false);
+            //var track = await GetNextTrackAsync(skipCount, respectTrackRepeat, respectHistory, cancellationToken).ConfigureAwait(false);
         }
     }
 
