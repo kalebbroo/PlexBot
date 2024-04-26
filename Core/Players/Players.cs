@@ -32,7 +32,7 @@ namespace PlexBot.Core.Players
                 Dictionary<string, string> firstTrack = tracks[0];
 
                 // Try to get the value associated with the "Url" key
-                if (firstTrack.TryGetValue("Url", out string url))
+                if (firstTrack.TryGetValue("Url", out string? url))
                 {
                     Console.WriteLine($"The 'Url' key was found in the dictionary: {url}");
                     // If the "Url" key exists in the dictionary, proceed with playing the media
@@ -56,7 +56,7 @@ namespace PlexBot.Core.Players
             }
 
             // Return null if there was an error or if the tracks list was empty
-            return null;
+            return null!;
         }
 
         public async Task<EmbedBuilder> CreatePlayer(List<Dictionary<string, string>> tracks, bool hasQueue)

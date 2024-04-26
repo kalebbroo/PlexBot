@@ -8,6 +8,7 @@ using Discord;
 using Microsoft.Extensions.Caching.Memory;
 using static System.Runtime.InteropServices.JavaScript.JSType;
 using System;
+using Lavalink4NET.Events.Players;
 
 namespace PlexBot.Core.LavaLink
 {
@@ -67,7 +68,7 @@ namespace PlexBot.Core.LavaLink
                 Console.WriteLine("Player not found.");
             }
             bool queue = true;
-            if (player.Queue.IsEmpty)
+            if (player!.Queue.IsEmpty)
             {
                 queue = false;
                 Console.WriteLine("Queue is empty.");
