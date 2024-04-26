@@ -217,7 +217,7 @@ namespace PlexBot.Core.Commands
                 // Optionally shuffle the playlist
                 if (shuffle)
                 {
-                    Random rng = new Random();
+                    Random rng = new();
                     trackDetails = trackDetails.OrderBy(x => rng.Next()).ToList();
                 }
 
@@ -233,7 +233,7 @@ namespace PlexBot.Core.Commands
                 // Queue each track in the player
                 foreach (var trackDetail in trackDetails)
                 {
-                    string url = trackDetail["Url"]; // Assuming 'Url' is the key for the track's URL
+                    string url = trackDetail["Url"];
                     Console.WriteLine($"Queuing track: {url}"); // Debugging
                     await player.PlayAsync(url);
                 }
