@@ -7,9 +7,13 @@ using static System.Net.WebRequestMethods;
 
 namespace PlexBot.Core.Players
 {
-    public class Players(LavaLinkCommands lavaLink)
+    public class Players
     {
-        private readonly LavaLinkCommands _lavaLinkCommands = lavaLink;
+        // Constructor that accepts LavaLinkCommands as a dependency
+        public Players()
+        {
+            // Initialize the Players class
+        }
         // Not to be confused with the Players class in Lavalink4NET.Players
         // This class will contain methods for the visual representation of players in the bot
         // The players will be embeds that will contain now playing information, queue information, and other player information
@@ -23,80 +27,41 @@ namespace PlexBot.Core.Players
 
         // Logic needed for image editing and text overlaying
 
-        public async Task<EmbedBuilder> BuildAndSendPlayer(SocketInteraction interaction, List<Dictionary<string, string>> tracks)
+        public async Task<EmbedBuilder> BuildAndSendPlayer(List<Dictionary<string, string>> tracks)
         {
-            // Check if the tracks list is not null and contains at least one dictionary
-            if (tracks != null && tracks.Count > 0)
-            {
-                // Access the first dictionary in the tracks list
-                Dictionary<string, string> firstTrack = tracks[0];
-
-                // Try to get the value associated with the "Url" key
-                if (firstTrack.TryGetValue("Url", out string? url))
-                {
-                    Console.WriteLine($"The 'Url' key was found in the dictionary: {url}");
-                    // If the "Url" key exists in the dictionary, proceed with playing the media
-                    url = $"";
-                    bool hasQueue = await lavaLink.PlayMedia(interaction, url);
-                    EmbedBuilder player = await CreatePlayer(tracks, hasQueue);
-                    return player;
-                }
-                else
-                {
-                    // Handle the case where the "Url" key is not found in the dictionary
-                    Console.WriteLine("The 'Url' key was not found in the dictionary.");
-                    // You might want to return an error message or take appropriate action here
-                }
-            }
-            else
-            {
-                // Handle the case where the tracks list is either null or empty
-                Console.WriteLine("The tracks list is either null or empty.");
-                // You might want to return an error message or take appropriate action here
-            }
-
-            // Return null if there was an error or if the tracks list was empty
-            return null!;
+            // Access the first dictionary in the tracks list
+            Dictionary<string, string> firstTrack = tracks[0];
+            EmbedBuilder player = await CreatePlayer(firstTrack);
+            return player;
         }
 
-        public async Task<EmbedBuilder> CreatePlayer(List<Dictionary<string, string>> tracks, bool hasQueue)
+        public async Task<EmbedBuilder> CreatePlayer(Dictionary<string, string> firstTrack)
         {
-            Dictionary<string, string> firstTrack = tracks[0];
-            // parse the tracks to get the current song
-            string artistName = firstTrack.ContainsKey("grandparentTitle") ? firstTrack["grandparentTitle"] : "Unknown Artist";
-            string songName = firstTrack.ContainsKey("title") ? firstTrack["title"] : "Unknown Song";
-            string albumImage = firstTrack.ContainsKey("thumb") ? firstTrack["thumb"] : "";
-            string albumName = firstTrack.ContainsKey("parentTitle") ? firstTrack["parentTitle"] : "Unknown Album";
-            string studioName = firstTrack.ContainsKey("studio") ? firstTrack["studio"] : "Unknown Studio";
-            string songDuration = firstTrack.ContainsKey("duration") ? firstTrack["duration"] : "0";
-            string songVolume = "100%";
-            string songProgress = "0:00";
+            Dictionary<string, string> variables = new Dictionary<string, string>();
 
-            string title = "Now Playing";
-            string description = $"{artistName} - {songName}\n{albumName} - {studioName}\n\n{songProgress}/{songDuration}";
-            string imageUrl = albumImage;
-            string footer = $"Volume: {songVolume}";
-
-            if (hasQueue)
+            foreach (KeyValuePair<string, string> kvp in firstTrack)
             {
-                title = "Waiting for songs to be played";
-                description = "No songs are currently playing";
-                imageUrl = "";
-                footer = "Volume: 100%";
-
+                variables[kvp.Key] = kvp.Value;
+                Console.WriteLine($"Key = {kvp.Key}, Value = {kvp.Value}");
             }
+            // TODO: Convert milliseconds to minutes and seconds
+            string title = "Now Playing";
+            string description = $"{variables["Artist"]} - {variables["Title"]}\n{variables["Album"]} - {variables["Studio"]}\n\n" +
+                $"{variables.GetValueOrDefault("Progress", "0:00")}/{variables["Duration"]}";
+            string imageUrl = variables["Artwork"];
+            string footer = $"Volume: {variables.GetValueOrDefault("Volume", "100%")}";
+
+            // TODO: Add the correct image URL
             // Create a new embed with the player information
-            // Add the embed to the player list
-            EmbedBuilder embed = new();
-            embed.WithTitle(title);
-            embed.WithDescription(description);
-            embed.WithImageUrl(imageUrl);
-            embed.WithFooter(footer);
-            embed.WithColor(Color.Blue);
-            embed.WithTimestamp(DateTime.Now);
+            EmbedBuilder embed = new EmbedBuilder()
+                .WithTitle(title)
+                .WithDescription(description)
+                //.WithImageUrl(imageUrl)
+                .WithFooter(footer)
+                .WithColor(Color.Blue)
+                .WithTimestamp(DateTime.Now);
 
             return embed;
-            
         }
 
         public async Task UpdatePlayer()

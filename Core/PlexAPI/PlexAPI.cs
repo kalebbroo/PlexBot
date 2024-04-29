@@ -68,10 +68,8 @@ namespace PlexBot.Core.PlexAPI
                 throw new Exception("No results found.");
             }
 
-            var results = await ParseSearchResults(response, type);
+            Dictionary<string, Dictionary<string, string>> results = await ParseSearchResults(response, type);
 
-            // Cache the results using the centralized method
-            lavaLink.CacheMediaDetails("search", cacheKey, results, false);
             return results;
         }
 
@@ -224,20 +222,21 @@ namespace PlexBot.Core.PlexAPI
             foreach (JToken item in items)
             {
                 Console.WriteLine($"\nEach Track:\n{item}\n"); // Debugging
-                var trackDetails = new Dictionary<string, string>();
-                trackDetails["Title"] = item["title"]?.ToString() ?? "Unknown Title";
-                trackDetails["Artist"] = item["grandparentTitle"]?.ToString() ?? "Unknown Artist";
-                trackDetails["Album"] = item["parentTitle"]?.ToString() ?? "Unknown Album";
-                trackDetails["ReleaseDate"] = item["originallyAvailableAt"]?.ToString() ?? "N/A";
-                trackDetails["Artwork"] = item["thumb"]?.ToString() ?? "N/A";
-                trackDetails["Url"] = item.SelectToken("Media[0].Part[0].key")?.ToString() ?? "N/A";
-                trackDetails["ArtistUrl"] = item["grandparentKey"]?.ToString() ?? "N/A";
-                trackDetails["Duration"] = item["duration"]?.ToString() ?? "N/A"; // Duration in milliseconds
-                trackDetails["Studio"] = item["studio"]?.ToString() ?? "N/A";
+                Dictionary<string, string> trackDetails = new()
+                {
+                    ["Title"] = item["title"]?.ToString() ?? "Unknown Title",
+                    ["Artist"] = item["grandparentTitle"]?.ToString() ?? "Unknown Artist",
+                    ["Album"] = item["parentTitle"]?.ToString() ?? "Unknown Album",
+                    ["ReleaseDate"] = item["originallyAvailableAt"]?.ToString() ?? "N/A",
+                    ["Artwork"] = item["thumb"]?.ToString() ?? "N/A",
+                    ["Url"] = item.SelectToken("Media[0].Part[0].key")?.ToString() ?? "N/A",
+                    ["ArtistUrl"] = item["grandparentKey"]?.ToString() ?? "N/A",
+                    ["Duration"] = item["duration"]?.ToString() ?? "N/A", // Duration in milliseconds
+                    ["Studio"] = item["studio"]?.ToString() ?? "N/A"
+                };
                 tracks.Add(trackDetails);
             }
-            Dictionary<string, Dictionary<string, string>> trackList = [];
-            lavaLink.CacheMediaDetails("tracks", Key, trackList, false);
+            lavaLink.AddTracksToCache(tracks);
             return tracks;
         }
 
@@ -250,9 +249,9 @@ namespace PlexBot.Core.PlexAPI
             if (string.IsNullOrEmpty(response))
             {
                 Console.WriteLine("No albums found.");
-                return new List<Dictionary<string, string>>();
+                return [];
             }
-            List<Dictionary<string, string>> albums = new List<Dictionary<string, string>>();
+            List<Dictionary<string, string>> albums = [];
             JObject jObject = JObject.Parse(response);
             var items = jObject["MediaContainer"]["Metadata"];
             if (items == null)
@@ -262,7 +261,7 @@ namespace PlexBot.Core.PlexAPI
             }
             foreach (JToken item in items)
             {
-                var albumDetails = new Dictionary<string, string>
+                Dictionary<string, string> albumDetails = new()
                 {
                     ["Title"] = item["title"]?.ToString() ?? "Unknown Album",
                     ["Url"] = item["key"]?.ToString() ?? "N/A"

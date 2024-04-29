@@ -145,7 +145,7 @@ namespace PlexBot.Core.Commands
                 Console.WriteLine($"after search library async"); // Debugging
                 if (results == null || results.Count == 0)
                 {
-                    await FollowupAsync("No results found.");
+                    await FollowupAsync("No results found.", ephemeral: true);
                     return;
                 }
                 Console.WriteLine($"API Results: {JsonConvert.SerializeObject(results)}"); // Debugging
@@ -185,11 +185,11 @@ namespace PlexBot.Core.Commands
                     .WithMinValues(1)
                     .WithMaxValues(1); 
 
-                await FollowupAsync("Select an item to play.", components: new ComponentBuilder().WithSelectMenu(selectMenu).Build());
+                await FollowupAsync("Select an item to play.", components: new ComponentBuilder().WithSelectMenu(selectMenu).Build(), ephemeral: true);
             }
             catch (Exception ex)
             {
-                await FollowupAsync("An error occurred: " + ex.Message);
+                await FollowupAsync("An error occurred: " + ex.Message, ephemeral: true);
                 Console.WriteLine($"Error: {ex.Message}");
             }
         }
@@ -218,35 +218,25 @@ namespace PlexBot.Core.Commands
                 if (shuffle)
                 {
                     Random rng = new();
-                    trackDetails = trackDetails.OrderBy(x => rng.Next()).ToList();
+                    trackDetails = [.. trackDetails.OrderBy(x => rng.Next())];
                 }
 
                 SocketInteraction interaction = Context.Interaction;
-                ILavalinkPlayer? player = await lavaLinkCommands.GetPlayerAsync(interaction, connectToVoiceChannel: true);
-
-                if (player == null)
-                {
-                    await FollowupAsync("You need to be in a voice channel.");
-                    return;
-                }
-
-                // Queue each track in the player
                 foreach (var trackDetail in trackDetails)
                 {
                     string url = trackDetail["Url"];
                     Console.WriteLine($"Queuing track: {url}"); // Debugging
-                    await player.PlayAsync(url);
+                    if (!url.StartsWith("http"))
+                    {
+                        url = plexApi.GetPlaybackUrl(url);
+                    }
+                    await lavaLinkCommands.PlayMedia(interaction, url);
                 }
-
                 await FollowupAsync($"Playing playlist with {trackDetails.Count} tracks.", ephemeral: true);
-
-                // After queuing all tracks, send the visual player embed
-                var embed = await visualPlayer.BuildAndSendPlayer(interaction, trackDetails);
-                await FollowupAsync(embed: embed.Build());
             }
             catch (Exception ex)
             {
-                await FollowupAsync($"An error occurred: {ex.Message}");
+                await FollowupAsync($"An error occurred: {ex.Message}", ephemeral: true);
                 Console.WriteLine(ex.ToString());
             }
         }
