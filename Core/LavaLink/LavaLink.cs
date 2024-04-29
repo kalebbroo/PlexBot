@@ -9,16 +9,20 @@ using Microsoft.Extensions.Caching.Memory;
 using static System.Runtime.InteropServices.JavaScript.JSType;
 using System;
 using Lavalink4NET.Events.Players;
+using Lavalink4NET.DiscordNet;
+using PlexBot.Core.Players;
+using PlexBot.Core.LavaLink;
 
 namespace PlexBot.Core.LavaLink
 {
-    public class LavaLinkCommands(IAudioService audioService, DiscordSocketClient discordClient, IMemoryCache memoryCache)
+    public class LavaLinkCommands(IAudioService audioService, DiscordSocketClient discordClient, IMemoryCache memoryCache, Players.Players visualPlayer)
     {
         private readonly IAudioService _audioService = audioService;
         private readonly DiscordSocketClient _discordClient = discordClient;
         private readonly IMemoryCache _memoryCache = memoryCache;
+        private readonly Players.Players _players = visualPlayer;
 
-        public async ValueTask<QueuedLavalinkPlayer?> GetPlayerAsync(SocketInteraction interaction, bool connectToVoiceChannel = true)
+        public async Task<CustomPlayer?> GetPlayerAsync(SocketInteraction interaction, bool connectToVoiceChannel = true)
         {
             if (interaction.User is not SocketGuildUser user || user.VoiceChannel == null)
             {
@@ -33,17 +37,23 @@ namespace PlexBot.Core.LavaLink
             PlayerRetrieveOptions retrieveOptions = new(channelBehavior);
 
             // Create the player options
-            QueuedLavalinkPlayerOptions options = new()
+            CustomPlayerOptions options = new()
             {
-                DisconnectOnStop = false
+                DisconnectOnStop = false,
+                TextChannel = interaction.Channel as ITextChannel
+            };
+            // Wrap the options in an IOptions container 
+            IOptions<CustomPlayerOptions> optionsWrapper = Options.Create(options);
+
+            // Create a factory delegate for the custom player
+            PlayerFactory<CustomPlayer, CustomPlayerOptions> factory = (properties, options) =>
+            {
+                return new ValueTask<CustomPlayer>(new CustomPlayer(properties, _players, this));
             };
 
-            // Wrap the options in an IOptions container 
-            IOptions<QueuedLavalinkPlayerOptions> optionsWrapper = Options.Create(options);
-
             // Retrieve or create the player
-            PlayerResult<QueuedLavalinkPlayer> result = await audioService.Players
-                .RetrieveAsync(guildId, voiceChannelId, PlayerFactory.Queued, optionsWrapper, retrieveOptions)
+            PlayerResult<CustomPlayer> result = await _audioService.Players
+                .RetrieveAsync<CustomPlayer, CustomPlayerOptions>(guildId, voiceChannelId, factory, optionsWrapper, retrieveOptions)
                 .ConfigureAwait(false);
 
             if (!result.IsSuccess)
@@ -62,6 +72,7 @@ namespace PlexBot.Core.LavaLink
 
         public async Task<bool> PlayMedia(SocketInteraction interaction, string url)
         {
+            // Get the queue and make the cache match the queue Or maybe not use cache at all? and just save info to the player instance?
             QueuedLavalinkPlayer? player = await GetPlayerAsync(interaction, true);
             if (player == null)
             {
@@ -73,7 +84,7 @@ namespace PlexBot.Core.LavaLink
                 queue = false;
                 Console.WriteLine("Queue is empty.");
             }
-
+            
             // Play the track
             await player.PlayAsync(url).ConfigureAwait(false);
             return queue;
@@ -128,29 +139,46 @@ namespace PlexBot.Core.LavaLink
             //await RespondAsync(embed: embed.Build(), ephemeral: true);
         }
 
-        public void CacheMediaDetails(string mediaType, string mediaId, Dictionary<string, Dictionary<string, string>> details, bool isQueued = false)
+        public void AddTracksToCache(List<Dictionary<string, string>> tracks)
         {
-            string cacheKey = $"{mediaType}:{mediaId}";
+            string cacheKey = "queuedSongs";
 
-            if (!memoryCache.TryGetValue(cacheKey, out _))
-            {
-                var cacheEntryOptions = new MemoryCacheEntryOptions()
-                    .SetSlidingExpiration(TimeSpan.FromHours(1))
-                    .SetPriority(isQueued ? CacheItemPriority.High : CacheItemPriority.Normal);
+            var cacheEntryOptions = new MemoryCacheEntryOptions()
+                .SetSlidingExpiration(TimeSpan.FromHours(1))
+                .SetPriority(CacheItemPriority.High);
 
-                cacheEntryOptions.RegisterPostEvictionCallback((key, value, reason, state) =>
-                    Console.WriteLine($"Cache item evicted: {key} due to {reason}")
-                );
+            cacheEntryOptions.RegisterPostEvictionCallback((key, value, reason, state) =>
+                Console.WriteLine($"Cache item evicted: {key} due to {reason}")
+            );
 
-                memoryCache.Set(cacheKey, details, cacheEntryOptions);
-            }
+            memoryCache.Set(cacheKey, tracks, cacheEntryOptions);
         }
 
         public void RemoveTrackFromCache(string trackId)
         {
-            memoryCache.Remove(trackId);
+            string cacheKey = "queuedSongs";
+
+            if (memoryCache.TryGetValue(cacheKey, out object value) && value is List<Dictionary<string, string>> queuedSongs)
+            {
+                var trackToRemove = queuedSongs.FirstOrDefault(track => track["Url"] == trackId);
+                if (trackToRemove != null)
+                {
+                    queuedSongs.Remove(trackToRemove);
+                    memoryCache.Set(cacheKey, queuedSongs);
+                }
+            }
         }
 
+        public List<Dictionary<string, string>> GetQueuedSongs()
+        {
+            string cacheKey = "queuedSongs";
 
+            if (memoryCache.TryGetValue(cacheKey, out object value) && value is List<Dictionary<string, string>> queuedSongs)
+            {
+                return queuedSongs;
+            }
+
+            return new List<Dictionary<string, string>>();
+        }
     }
 }

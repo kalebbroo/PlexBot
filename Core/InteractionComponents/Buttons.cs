@@ -68,7 +68,7 @@ namespace PlexBot.Core.InteractionComponents
         {
             if (IsOnCooldown(Context.User, "kill"))
             {
-                await FollowupAsync("You are on cooldown.");
+                await FollowupAsync("You are on cooldown.", ephemeral: true);
                 return;
             }
             await DeferAsync();
@@ -78,11 +78,11 @@ namespace PlexBot.Core.InteractionComponents
             {
                 await player.StopAsync();
                 await player.DisconnectAsync();
-                await FollowupAsync("Player stopped and disconnected.");
+                await FollowupAsync("Player stopped and disconnected.", ephemeral: true);
             }
             else
             {
-                await FollowupAsync("No active player to kill.");
+                await FollowupAsync("No active player to kill.", ephemeral: true);
             }
         }
 
@@ -91,7 +91,7 @@ namespace PlexBot.Core.InteractionComponents
         {
             if (IsOnCooldown(Context.User, "repeat"))
             {
-                await FollowupAsync("You are on cooldown.");
+                await FollowupAsync("You are on cooldown.", ephemeral: true);
                 return;
             }
             await DeferAsync();

@@ -34,13 +34,6 @@ namespace PlexBot.Core.InteractionComponents
                 Console.WriteLine("Interaction is null.");
                 return;
             }
-            ILavalinkPlayer? player = await lavaLink.GetPlayerAsync(interaction, connectToVoiceChannel: true);
-            if (player == null)
-            {
-                await FollowupAsync("You need to be in a voice channel.");
-                Console.WriteLine("Player is null.");
-                return;
-            }
 
             switch (customId)
             {
@@ -50,35 +43,34 @@ namespace PlexBot.Core.InteractionComponents
                     {
                         Console.WriteLine($"Playing: {url}");
                         string uri = "/library/metadata/54186";
-                        uri = _plexApi.GetPlaybackUrl(uri);
+                        uri = plexApi.GetPlaybackUrl(uri);
                         string jsonResponse = await plexApi.PerformRequestAsync(uri);
                         Dictionary<string, Dictionary<string, string>> parseTrack = await plexApi.ParseSearchResults(jsonResponse, customId);
-                        List<Dictionary<string, string>> track = new List<Dictionary<string, string>>();
+                        List<Dictionary<string, string>> track = [];
 
                         // Iterate through each entry in the original dictionary
                         foreach (var entry in parseTrack)
                         {
                             // Create a new dictionary for each entry
-                            Dictionary<string, string> newDict = new Dictionary<string, string>();
+                            Dictionary<string, string> newDict = [];
 
                             // Copy key-value pairs from the inner dictionary to the new dictionary
                             foreach (var innerEntry in entry.Value)
                             {
                                 newDict.Add(innerEntry.Key, innerEntry.Value);
                             }
-
                             // Add the new dictionary to the list
                             track.Add(newDict);
+                            // call PlayMedia with the trackUrl
+                            await lavaLink.PlayMedia(interaction, url);
                         }
-                        EmbedBuilder visualPlayer = await visualPlayers.BuildAndSendPlayer(interaction, track);
                         await FollowupAsync("Playing...", ephemeral: true);
-                        // send new message to channel with visual player embed
-                        await interaction.Channel.SendMessageAsync(embed: visualPlayer.Build());
                     }
                     break;
                 case "album":
                 case "artist":
-                    var tracks = await plexApi.GetTracks(selectedValue);
+#warning TODO: When users click an artist another select menu should appear with the albums
+                    List<Dictionary<string, string>> tracks = await plexApi.GetTracks(selectedValue);
                     Console.WriteLine($"Tracks: {tracks.Count}");
                     Console.WriteLine($"Selected Value: {selectedValue}");
                     foreach (var trackDetail in tracks)
@@ -89,10 +81,10 @@ namespace PlexBot.Core.InteractionComponents
                             
                             trackUrl = plexApi.GetPlaybackUrl(trackUrl);
                             Console.WriteLine($"Queuing track: {trackUrl}");
-                            await player.PlayAsync(trackUrl);
+                            await lavaLink.PlayMedia(interaction, trackUrl);
                         }
                     }
-                    await FollowupAsync($"{customId} queued for playback.");
+                    await FollowupAsync($"{customId} queued for playback.", ephemeral: true);
                     break;
             }
         }
