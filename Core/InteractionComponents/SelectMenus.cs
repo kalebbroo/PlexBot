@@ -38,6 +38,7 @@ namespace PlexBot.Core.InteractionComponents
             switch (customId)
             {
                 case "track":
+#warning TODO: Right now the selectedValue is the track URL. It needs to be the track ID Then logic to get the url from the ID needs to be added.
                     string url = plexApi.GetPlaybackUrl(selectedValue) ?? "";
                     if (!string.IsNullOrEmpty(url))
                     {
@@ -69,6 +70,9 @@ namespace PlexBot.Core.InteractionComponents
                 case "album":
                 case "artist":
 #warning TODO: When users click an artist another select menu should appear with the albums
+#warning TODO: When users click an album another select menu should appear with the tracks
+
+#warning TODO: Break this out into a separate method (playAlbums) call it here and in the second select menu that we create for albums of atrists
                     List<Dictionary<string, string>> tracks = await plexApi.GetTracks(selectedValue);
                     Console.WriteLine($"Tracks: {tracks.Count}");
                     Console.WriteLine($"Selected Value: {selectedValue}");

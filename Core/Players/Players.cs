@@ -27,17 +27,19 @@ namespace PlexBot.Core.Players
 
         // Logic needed for image editing and text overlaying
 
-        public async Task<EmbedBuilder> BuildAndSendPlayer(List<Dictionary<string, string>> tracks)
+        public static EmbedBuilder BuildAndSendPlayer(List<Dictionary<string, string>> tracks)
         {
             // Access the first dictionary in the tracks list
             Dictionary<string, string> firstTrack = tracks[0];
-            EmbedBuilder player = await CreatePlayer(firstTrack);
+            //EmbedBuilder player = CreatePlayer(firstTrack);
+            EmbedBuilder player = CreatePlayer(firstTrack); // Makes it clear that CreatePlayer is an instance method
+
             return player;
         }
 
-        public async Task<EmbedBuilder> CreatePlayer(Dictionary<string, string> firstTrack)
+        private static EmbedBuilder CreatePlayer(Dictionary<string, string> firstTrack)
         {
-            Dictionary<string, string> variables = new Dictionary<string, string>();
+            Dictionary<string, string> variables = [];
 
             foreach (KeyValuePair<string, string> kvp in firstTrack)
             {
@@ -62,12 +64,6 @@ namespace PlexBot.Core.Players
                 .WithTimestamp(DateTime.Now);
 
             return embed;
-        }
-
-        public async Task UpdatePlayer()
-        {
-            // Update the player embed with the new information
-            
         }
 
         public async Task BuildImage()
