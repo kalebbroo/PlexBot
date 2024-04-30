@@ -19,14 +19,12 @@ namespace PlexBot.Core.LavaLink
     public sealed class CustomPlayer : QueuedLavalinkPlayer
     {
         private readonly ITextChannel _textChannel;
-        private readonly Players.Players _players;
         private readonly LavaLinkCommands _lavaLinkCommands;
 
-        public CustomPlayer(IPlayerProperties<CustomPlayer, CustomPlayerOptions> properties, Players.Players players, LavaLinkCommands lavaLink)
+        public CustomPlayer(IPlayerProperties<CustomPlayer, CustomPlayerOptions> properties, LavaLinkCommands lavaLink)
         : base(properties)
         {
             _textChannel = properties.Options.Value.TextChannel;
-            _players = players;
             _lavaLinkCommands = lavaLink;
         }
 
@@ -34,43 +32,40 @@ namespace PlexBot.Core.LavaLink
         {
             try
             {
-                await base.NotifyTrackStartedAsync(track).ConfigureAwait(false);
+                await base.NotifyTrackStartedAsync(track, cancellationToken).ConfigureAwait(false);
 
-                // Create a list of dictionaries to store the track information
-                List<Dictionary<string, string>> tracks = [];
-
-                // Get queued songs from cache
-                List<Dictionary<string, string>> queuedSongs = _lavaLinkCommands.GetQueuedSongs();
-
-                try
+                if (track is CustomTrackQueueItem customTrack)
                 {
-                    // Call the BuildAndSendPlayer method and pass the tracks list
-                    EmbedBuilder player = await _players.BuildAndSendPlayer(queuedSongs);
+                    // Get the queue information as a list of dictionaries
+                    List<Dictionary<string, string>> queueInfo = await GetQueueInfo().ConfigureAwait(false);
+                    // Build the new player embed using the custom track information
+                    EmbedBuilder player = Players.Players.BuildAndSendPlayer(queueInfo);
 
                     // Create a ComponentBuilder for the buttons
-                    var components = new ComponentBuilder()
+                    ComponentBuilder components = new ComponentBuilder()
                         .WithButton("Pause", "pause_resume:pause", ButtonStyle.Secondary)
                         .WithButton("Skip", "skip:skip", ButtonStyle.Primary)
                         .WithButton("Queue", "queue:select", ButtonStyle.Primary)
                         .WithButton("Repeat", "repeat:select", ButtonStyle.Secondary)
                         .WithButton("Kill", "kill:kill", ButtonStyle.Danger);
 
-                    // Send the player embed to the text channel
+                    // Find and delete the last player message (if it exists)
+                    var messages = await _textChannel.GetMessagesAsync(10).FlattenAsync().ConfigureAwait(false);
+                    IMessage? lastPlayerMessage = messages.FirstOrDefault(m => m.Embeds.Any(e => e.Title == "Now Playing"));
+                    if (lastPlayerMessage != null)
+                    {
+                        await lastPlayerMessage.DeleteAsync().ConfigureAwait(false);
+                        Console.WriteLine("Deleted last player message.");
+                    }
+
+                    // Send the new player embed to the text channel
                     await _textChannel.SendMessageAsync(components: components.Build(), embed: player.Build()).ConfigureAwait(false);
-                }
-                catch (Exception ex)
-                {
-                    // Log the exception or handle it appropriately
-                    Console.WriteLine($"An error occurred while building and sending the player: {ex.Message}");
-                    // You can also send an error message to the text channel if needed
-                    await _textChannel.SendMessageAsync("An error occurred while starting the track.").ConfigureAwait(false);
                 }
             }
             catch (Exception ex)
             {
                 // Log the exception or handle it appropriately
                 Console.WriteLine($"An error occurred while notifying track started: {ex.Message}");
-                // You can also send an error message to the text channel if needed
                 await _textChannel.SendMessageAsync("An error occurred while starting the track.").ConfigureAwait(false);
             }
         }
@@ -88,18 +83,23 @@ namespace PlexBot.Core.LavaLink
 
             if (endReason.MayStartNext() && AutoPlay)
             {
-                // Remove the first track from the queue
-                List<Dictionary<string, string>> queuedSongs = _lavaLinkCommands.GetQueuedSongs(); // Retrieve the current queue
+                // Retrieve the current queue
+                List<Dictionary<string, string>> queuedSongs = _lavaLinkCommands.GetQueuedSongs();
                 if (queuedSongs.Any())
                 {
-                    // TODO: Add better logic to make sure the track that is getting removed is the currently playing track
-                    // Like matching the name 
-
+                    // Check if the first track in the queue matches the track that ended
                     Dictionary<string, string> currentTrack = queuedSongs.First();
-                    _lavaLinkCommands.RemoveTrackFromCache(currentTrack["Url"]); // Update the cache to remove the track
-
-                    // Here you could also implement logic to start playing the next track if necessary.
-                    // e.g., await PlayNextAsync(skipCount: 1, respectTrackRepeat: true, cancellationToken).ConfigureAwait(false);
+                    if (currentTrack["Title"].Equals(trackTitle))
+                    {
+                        // Remove the track from the cache if it matches
+                        _lavaLinkCommands.RemoveTrackFromCache(currentTrack["Url"]);
+                        Console.WriteLine($"Removed track: {trackTitle}");
+                    }
+                    else
+                    {
+                        // Log error if the track titles do not match
+                        Console.WriteLine($"Error: The track in the queue ('{currentTrack["Title"]}') does not match the ended track ('{trackTitle}').");
+                    }
                 }
             }
             else if (endReason is not TrackEndReason.Replaced)
@@ -136,45 +136,39 @@ namespace PlexBot.Core.LavaLink
             return default; // do nothing
         }
 
-        public async Task GetQueueInfo()
+        public Task<List<Dictionary<string, string>>> GetQueueInfo()
         {
-            // Get the current track
-            ITrackQueueItem? currentTrack = Queue.FirstOrDefault(); 
-            if (currentTrack != null)
-            {
-                Console.WriteLine($"Current track: {currentTrack.Track.Title}");
-            }
-
-            // Get the total number of tracks in the queue
-            int trackCount = Queue.Count;
-            Console.WriteLine($"Total tracks in queue: {trackCount}");
-
-            TimeSpan totalDuration = TimeSpan.Zero;
-            for ( int i = 0; i < trackCount; i++ )
-            {
-                ITrackQueueItem track = Queue.ElementAt(i);
-                totalDuration += track.Track.Duration;
-            }
-            Console.WriteLine($"Total duration of queue: {totalDuration}");
+            List<Dictionary<string, string>> queueInfo = new();
 
             // Iterate through all tracks in the queue
             foreach (ITrackQueueItem track in Queue)
             {
-                Console.WriteLine($"Track: {track.Track.Title}");
+                if (track is CustomTrackQueueItem customTrack)
+                {
+                    // Create a dictionary for each custom track
+                    Dictionary<string, string> trackInfo = new()
+                    {
+                        ["Title"] = customTrack.Title ?? "Unknown Title",
+                        ["Duration"] = customTrack.Duration ?? "00:00",
+                        ["Artist"] = customTrack.Artist ?? "Unknown Artist",
+                        ["Album"] = customTrack.Album ?? "Unknown Album",
+                        ["Studio"] = customTrack.Studio ?? "Unknown Studio",
+                        ["Artwork"] = customTrack.Artwork ?? "https://via.placeholder.com/150",
+                        ["Url"] = customTrack.Url ?? string.Empty
+                    };
+                    // Add the dictionary to the list
+                    queueInfo.Add(trackInfo);
+                    Console.WriteLine($"Track: {trackInfo["Title"]}, Artist: {trackInfo["Artist"]}, Duration: {trackInfo["Duration"]}"); // debug
+                }
             }
-
-            // Get a specific track by index
-            ITrackQueueItem? trackAtIndex = Queue.ElementAtOrDefault(1);
-            if (trackAtIndex != null)
-            {
-                Console.WriteLine($"Track at index 1: {trackAtIndex.Track.Title}");
-            }
+            // Return the list of dictionaries encapsulated in a completed task
+            return Task.FromResult(queueInfo);
         }
     }
 
     public sealed record class CustomPlayerOptions : QueuedLavalinkPlayerOptions
     {
-        public ITextChannel TextChannel { get; init; }
+        public ITextChannel? TextChannel { get; init; }
 
         public CustomPlayerOptions()
         {
@@ -182,4 +176,19 @@ namespace PlexBot.Core.LavaLink
         }
     }
 
+    public class CustomTrackQueueItem(TrackReference reference) : ITrackQueueItem
+    {
+        public TrackReference Reference { get; } = reference;
+        public string? Title { get; set; }
+        public string? Artist { get; set; }
+        public string? Album { get; set; }
+        public string? ReleaseDate { get; set; }
+        public string? Artwork { get; set; }
+        public string? Url { get; set; }
+        public string? ArtistUrl { get; set; }
+        public string? Duration { get; set; }
+        public string? Studio { get; set; }
+
+        public T? As<T>() where T : class, ITrackQueueItem => this as T;
+    }
 }

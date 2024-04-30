@@ -48,7 +48,7 @@ namespace PlexBot.Core.LavaLink
             // Create a factory delegate for the custom player
             PlayerFactory<CustomPlayer, CustomPlayerOptions> factory = (properties, options) =>
             {
-                return new ValueTask<CustomPlayer>(new CustomPlayer(properties, _players, this));
+                return new ValueTask<CustomPlayer>(new CustomPlayer(properties, this));
             };
 
             // Retrieve or create the player
