@@ -77,23 +77,35 @@ namespace PlexBot.Core.LavaLink
 
         protected override async ValueTask NotifyTrackEndedAsync(ITrackQueueItem queueItem, TrackEndReason endReason, CancellationToken cancellationToken = default)
         {
-#warning TODO: Get the queue and match it with the name and then remove the track from the queue
             cancellationToken.ThrowIfCancellationRequested();
             ArgumentNullException.ThrowIfNull(queueItem);
 
-            await base
-                .NotifyTrackEndedAsync(queueItem, endReason, cancellationToken)
-                .ConfigureAwait(false);
+            await base.NotifyTrackEndedAsync(queueItem, endReason, cancellationToken).ConfigureAwait(false);
+
+            string trackTitle = queueItem.Track?.Title ?? "Default Title";
+
+            Console.WriteLine($"Track ended: {trackTitle}");
 
             if (endReason.MayStartNext() && AutoPlay)
             {
-                //await PlayNextAsync(skipCount: 1, respectTrackRepeat: true, cancellationToken).ConfigureAwait(false);
+                // Remove the first track from the queue
+                List<Dictionary<string, string>> queuedSongs = _lavaLinkCommands.GetQueuedSongs(); // Retrieve the current queue
+                if (queuedSongs.Any())
+                {
+                    // TODO: Add better logic to make sure the track that is getting removed is the currently playing track
+                    // Like matching the name 
+
+                    Dictionary<string, string> currentTrack = queuedSongs.First();
+                    _lavaLinkCommands.RemoveTrackFromCache(currentTrack["Url"]); // Update the cache to remove the track
+
+                    // Here you could also implement logic to start playing the next track if necessary.
+                    // e.g., await PlayNextAsync(skipCount: 1, respectTrackRepeat: true, cancellationToken).ConfigureAwait(false);
+                }
             }
             else if (endReason is not TrackEndReason.Replaced)
             {
                 CurrentItem = null;
             }
-            //var track = await GetNextTrackAsync(skipCount, respectTrackRepeat, respectHistory, cancellationToken).ConfigureAwait(false);
         }
 
         public ValueTask NotifyPlayerActiveAsync(CancellationToken cancellationToken = default)

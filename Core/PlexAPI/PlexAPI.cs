@@ -2,6 +2,7 @@
 using System.Web;
 using PlexBot.Core.LavaLink;
 using Microsoft.Extensions.Caching.Memory;
+using System.Diagnostics;
 
 namespace PlexBot.Core.PlexAPI
 {
@@ -122,6 +123,8 @@ namespace PlexBot.Core.PlexAPI
                         details["Duration"] = item["duration"]?.ToString() ?? "N/A"; // Duration in milliseconds
                         details["Studio"] = item["studio"]?.ToString() ?? "N/A";
                         Console.WriteLine(details["Url"]);
+                        List<Dictionary<string, string>> queue = [details];
+                        lavaLink.AddTracksToCache(queue);
                         break;
                     case "artist":
                         details["Title"] = item["title"]?.ToString() ?? "Unknown Artist";
