@@ -42,9 +42,8 @@ namespace PlexBot.Core.InteractionComponents
                     if (!string.IsNullOrEmpty(url))
                     {
                         Console.WriteLine($"Playing: {url}");
-                        string uri = "/library/metadata/54186";
-                        uri = plexApi.GetPlaybackUrl(uri);
-                        string jsonResponse = await plexApi.PerformRequestAsync(uri);
+
+                        string jsonResponse = await plexApi.PerformRequestAsync(url);
                         Dictionary<string, Dictionary<string, string>> parseTrack = await plexApi.ParseSearchResults(jsonResponse, customId);
                         List<Dictionary<string, string>> track = [];
 

@@ -47,7 +47,7 @@ docker-compose down
 
 :: Start the new containers
 echo Starting new containers...
-docker-compose up -d
+docker-compose -p plexbot up -d
 
 echo The application and Lavalink are now running.
 pause
