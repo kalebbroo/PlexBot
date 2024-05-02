@@ -1,15 +1,10 @@
 ﻿using Discord;
-using Discord.WebSocket;
-using PlexBot.Core.LavaLink;
-using static System.Net.WebRequestMethods;
-// add using for Console
-
+using Lavalink4NET.Players.Queued;
 
 namespace PlexBot.Core.Players
 {
     public class Players
     {
-        // Constructor that accepts LavaLinkCommands as a dependency
         public Players()
         {
             // Initialize the Players class
@@ -27,20 +22,15 @@ namespace PlexBot.Core.Players
 
         // Logic needed for image editing and text overlaying
 
-        public static EmbedBuilder BuildAndSendPlayer(List<Dictionary<string, string>> tracks)
+        public static EmbedBuilder BuildAndSendPlayer(Dictionary<string, string> firstTrack)
         {
-            // Access the first dictionary in the tracks list
-            Dictionary<string, string> firstTrack = tracks[0];
-            //EmbedBuilder player = CreatePlayer(firstTrack);
-            EmbedBuilder player = CreatePlayer(firstTrack); // Makes it clear that CreatePlayer is an instance method
-
+            EmbedBuilder player = CreatePlayer(firstTrack);
             return player;
         }
 
         private static EmbedBuilder CreatePlayer(Dictionary<string, string> firstTrack)
         {
             Dictionary<string, string> variables = [];
-
             foreach (KeyValuePair<string, string> kvp in firstTrack)
             {
                 variables[kvp.Key] = kvp.Value;
@@ -62,14 +52,12 @@ namespace PlexBot.Core.Players
                 .WithFooter(footer)
                 .WithColor(Color.Blue)
                 .WithTimestamp(DateTime.Now);
-
             return embed;
         }
 
         public async Task BuildImage()
         {
             // Build the image for the player embed
-            
         }
     }
 }
