@@ -3,23 +3,14 @@ using Discord.WebSocket;
 using Lavalink4NET.Players.Queued;
 using Lavalink4NET.Players;
 using Microsoft.Extensions.Options;
-using PlexBot.Core.Commands;
 using Discord;
-using Microsoft.Extensions.Caching.Memory;
-using static System.Runtime.InteropServices.JavaScript.JSType;
-using System;
-using Lavalink4NET.Events.Players;
-using Lavalink4NET.DiscordNet;
-using PlexBot.Core.Players;
-using PlexBot.Core.LavaLink;
 
 namespace PlexBot.Core.LavaLink
 {
-    public class LavaLinkCommands(IAudioService audioService, DiscordSocketClient discordClient, IMemoryCache memoryCache, Players.Players visualPlayer)
+    public class LavaLinkCommands(IAudioService audioService, DiscordSocketClient discordClient, Players.Players visualPlayer)
     {
         private readonly IAudioService _audioService = audioService;
         private readonly DiscordSocketClient _discordClient = discordClient;
-        private readonly IMemoryCache _memoryCache = memoryCache;
         private readonly Players.Players _players = visualPlayer;
 
         public async Task<CustomPlayer?> GetPlayerAsync(SocketInteraction interaction, bool connectToVoiceChannel = true)
@@ -29,33 +20,23 @@ namespace PlexBot.Core.LavaLink
                 await interaction.FollowupAsync("You must be in a voice channel to play music.").ConfigureAwait(false);
                 return null;
             }
-
             ulong guildId = user.Guild.Id;
             ulong voiceChannelId = user.VoiceChannel.Id;
-
             PlayerChannelBehavior channelBehavior = connectToVoiceChannel ? PlayerChannelBehavior.Join : PlayerChannelBehavior.None;
             PlayerRetrieveOptions retrieveOptions = new(channelBehavior);
-
-            // Create the player options
             CustomPlayerOptions options = new()
             {
                 DisconnectOnStop = false,
                 TextChannel = interaction.Channel as ITextChannel
             };
-            // Wrap the options in an IOptions container 
             IOptions<CustomPlayerOptions> optionsWrapper = Options.Create(options);
-
-            // Create a factory delegate for the custom player
             PlayerFactory<CustomPlayer, CustomPlayerOptions> factory = (properties, options) =>
             {
                 return new ValueTask<CustomPlayer>(new CustomPlayer(properties, this));
             };
-
-            // Retrieve or create the player
             PlayerResult<CustomPlayer> result = await _audioService.Players
                 .RetrieveAsync<CustomPlayer, CustomPlayerOptions>(guildId, voiceChannelId, factory, optionsWrapper, retrieveOptions)
                 .ConfigureAwait(false);
-
             if (!result.IsSuccess)
             {
                 string errorMessage = result.Status switch
@@ -70,34 +51,32 @@ namespace PlexBot.Core.LavaLink
             return result.Player;
         }
 
-        public async Task<bool> PlayMedia(SocketInteraction interaction, string url)
+        public async Task PlayMedia(SocketInteraction interaction, CustomTrackQueueItem track)
         {
-            // Get the queue and make the cache match the queue Or maybe not use cache at all? and just save info to the player instance?
             QueuedLavalinkPlayer? player = await GetPlayerAsync(interaction, true);
             if (player == null)
             {
                 Console.WriteLine("Player not found.");
+                return;
             }
-            bool queue = true;
-            if (player!.Queue.IsEmpty)
+            if (!string.IsNullOrEmpty(track.Url))
             {
-                queue = false;
-                Console.WriteLine("Queue is empty.");
+                Console.WriteLine($"Playing URL: {track.Url}");  // Debugging
+                await player.PlayAsync(track).ConfigureAwait(false);
             }
-            
-            // Play the track
-            await player.PlayAsync(url).ConfigureAwait(false);
-            return queue;
+            else
+            {
+                Console.WriteLine("Invalid track URL.");
+            }
         }
 
         public async Task<string> TogglePauseResume(SocketInteraction interaction)
         {
-            var player = await GetPlayerAsync(interaction, true);
+            QueuedLavalinkPlayer? player = await GetPlayerAsync(interaction, true);
             if (player == null)
             {
                 return "Player not found.";
             }
-
             if (player.State == PlayerState.Paused)
             {
                 await player.ResumeAsync();
@@ -118,17 +97,14 @@ namespace PlexBot.Core.LavaLink
                 //await RespondAsync("No queued player is currently active.", ephemeral: true);
                 return;
             }
-
             if (player.Queue.IsEmpty)
             {
                 //await RespondAsync("The queue is currently empty.", ephemeral: true);
                 return;
             }
-
             var embed = new EmbedBuilder()
                 .WithTitle("Current Music Queue")
                 .WithDescription("Here are the details of the tracks in the queue:");
-
             foreach (var item in player.Queue)
             {
                 // Access track details
@@ -139,46 +115,90 @@ namespace PlexBot.Core.LavaLink
             //await RespondAsync(embed: embed.Build(), ephemeral: true);
         }
 
-        public void AddTracksToCache(List<Dictionary<string, string>> tracks)
+        //public async Task<List<Dictionary<string, string>>> GetQueueInfo()
+        //{
+        //    QueuedLavalinkPlayer? player = await GetPlayerAsync(interaction, true);
+        //    List<Dictionary<string, string>> queueInfo = [];
+        //    // Access the queue from the player
+        //    ITrackQueue tracks = player.Queue;
+        //    // Iterate through all tracks in the queue
+        //    foreach (ITrackQueue track in tracks)
+        //    {
+        //        if (track is CustomTrackQueueItem customTrack)
+        //        {
+        //            // Create a dictionary for each custom track
+        //            Dictionary<string, string> trackInfo = new()
+        //            {
+        //                ["Title"] = customTrack.Title ?? "Unknown Title",
+        //                ["Duration"] = customTrack.Duration ?? "00:00",
+        //                ["Artist"] = customTrack.Artist ?? "Unknown Artist",
+        //                ["Album"] = customTrack.Album ?? "Unknown Album",
+        //                ["Studio"] = customTrack.Studio ?? "Unknown Studio",
+        //                ["Artwork"] = customTrack.Artwork ?? "https://via.placeholder.com/150",
+        //                ["Url"] = customTrack.Url ?? string.Empty
+        //            };
+        //            // Add the dictionary to the list
+        //            queueInfo.Add(trackInfo);
+        //            Console.WriteLine($"Track: {trackInfo["Title"]}, Artist: {trackInfo["Artist"]}, Duration: {trackInfo["Duration"]}"); // debug
+        //        }
+        //        else
+        //        {
+        //            Console.WriteLine("Error: Track is not a CustomTrackQueueItem.");
+        //        }
+        //    }
+        //    return await Task.FromResult(queueInfo);
+        //}
+
+        private Dictionary<string, CustomTrackQueueItem> _trackMetadata = [];
+
+        public async Task AddToQueue(SocketInteraction interaction, List<Dictionary<string, string>> trackDetailsList)
         {
-            string cacheKey = "queuedSongs";
-
-            var cacheEntryOptions = new MemoryCacheEntryOptions()
-                .SetSlidingExpiration(TimeSpan.FromHours(1))
-                .SetPriority(CacheItemPriority.High);
-
-            cacheEntryOptions.RegisterPostEvictionCallback((key, value, reason, state) =>
-                Console.WriteLine($"Cache item evicted: {key} due to {reason}")
-            );
-
-            memoryCache.Set(cacheKey, tracks, cacheEntryOptions);
-        }
-
-        public void RemoveTrackFromCache(string trackId)
-        {
-            string cacheKey = "queuedSongs";
-
-            if (memoryCache.TryGetValue(cacheKey, out object value) && value is List<Dictionary<string, string>> queuedSongs)
+            QueuedLavalinkPlayer? player = await GetPlayerAsync(interaction, true);
+            if (player == null)
             {
-                var trackToRemove = queuedSongs.FirstOrDefault(track => track["Url"] == trackId);
-                if (trackToRemove != null)
+                Console.WriteLine("Player not found.");
+                return;
+            }
+            foreach (var details in trackDetailsList)
+            {
+                string trackUrl = details["Url"];
+                if (!string.IsNullOrEmpty(trackUrl))
                 {
-                    queuedSongs.Remove(trackToRemove);
-                    memoryCache.Set(cacheKey, queuedSongs);
+                    CustomTrackQueueItem customTrack = new()
+                    {
+                        Title = details.TryGetValue("Title", out var title) ? title : "Unknown Title",
+                        Artist = details.TryGetValue("Artist", out var artist) ? artist : "Unknown Artist",
+                        Album = details.TryGetValue("Album", out var album) ? album : "Unknown Album",
+                        ReleaseDate = details.TryGetValue("ReleaseDate", out var releaseDate) ? releaseDate : "N/A",
+                        Artwork = details.TryGetValue("Artwork", out var artwork) ? artwork : "https://via.placeholder.com/150",
+                        Url = trackUrl,
+                        ArtistUrl = details.TryGetValue("ArtistUrl", out var artistUrl) ? artistUrl : "N/A",
+                        Duration = details.TryGetValue("Duration", out var duration) ? duration : "00:00",
+                        Studio = details.TryGetValue("Studio", out var studio) ? studio : "Unknown Studio"
+                    };
+                    _trackMetadata[trackUrl] = customTrack;
+                    await PlayMedia(interaction, customTrack);
+                }
+                else
+                {
+                    Console.WriteLine($"Could not load track from URL: {trackUrl}");
                 }
             }
         }
+    }
+    public class CustomTrackQueueItem : ITrackQueueItem
+    {
+        public TrackReference Reference { get; private set; }
+        public string? Title { get; set; }
+        public string? Artist { get; set; }
+        public string? Album { get; set; }
+        public string? ReleaseDate { get; set; }
+        public string? Artwork { get; set; }
+        public string? Url { get; set; }
+        public string? ArtistUrl { get; set; }
+        public string? Duration { get; set; }
+        public string? Studio { get; set; }
 
-        public List<Dictionary<string, string>> GetQueuedSongs()
-        {
-            string cacheKey = "queuedSongs";
-
-            if (memoryCache.TryGetValue(cacheKey, out object value) && value is List<Dictionary<string, string>> queuedSongs)
-            {
-                return queuedSongs;
-            }
-
-            return new List<Dictionary<string, string>>();
-        }
+        public T? As<T>() where T : class, ITrackQueueItem => this as T;
     }
 }

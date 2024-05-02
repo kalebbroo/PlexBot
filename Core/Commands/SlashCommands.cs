@@ -46,7 +46,6 @@ namespace PlexBot.Core.Commands
                     .WithColor(Color.Blue)
                     .WithFooter(footer => footer.Text = "For more information, visit Hartsy.AI")
                     .WithCurrentTimestamp();
-
                 await RespondAsync(embed: embed.Build());
             }
             catch (Exception ex)
@@ -62,7 +61,6 @@ namespace PlexBot.Core.Commands
             await DeferAsync().ConfigureAwait(false);
             SocketInteraction interaction = Context.Interaction;
             var player = await lavaLinkCommands.GetPlayerAsync(interaction, connectToVoiceChannel: true).ConfigureAwait(false);
-
             if (player == null)
             {
                 await FollowupAsync("You need to be in a voice channel.").ConfigureAwait(false);
@@ -78,57 +76,12 @@ namespace PlexBot.Core.Commands
                 await FollowupAsync("😖 No results.").ConfigureAwait(false);
                 return;
             }
-
             // Play the track
             await player.PlayAsync(track);
             await FollowupAsync($"Playing: {track.Title}").ConfigureAwait(false);
         }
 
-        /// <summary>Main search command for Plex</summary>
-        //[SlashCommand("play", "play a song")]
-        //public async Task PlayCommand(string query, string type = "track")
-        //{
-        //    await RespondAsync($"Searching for: {query} as a {type}...");
-
-        //    try
-        //    {
-        //        var results = await _plexApi.SearchLibraryAsync(query, type);
-        //        if (results == null || results.Count == 0)
-        //        {
-        //            await FollowupAsync("No results found.");
-        //            return;
-        //        }
-
-        //        // For simplicity, let's use the first result
-        //        var firstResult = results.First();
-
-        //        // Handling based on type
-        //        string mediaUrl = "";
-        //        if (type == "track" && !string.IsNullOrEmpty(firstResult.PartKey))
-        //        {
-        //            Console.WriteLine($"Found media part key: {firstResult.PartKey}");
-        //            mediaUrl = _plexApi.GetPlaybackUrl(firstResult.PartKey);
-        //        }
-
-        //        #warning TODO: Get embed from player class
-        //        // Create and send an embed with details about the result
-        //        var embed = new EmbedBuilder()
-        //            .WithTitle($"Search Result for {type}")
-        //            .WithDescription($"**Title:** {firstResult.Title}\n**Artist:** {firstResult.Artist}\n**Album:** {firstResult.Album}")
-        //            //.WithThumbnailUrl(firstResult.Thumb)
-        //            .WithColor(Color.Blue)
-        //            .Build();
-
-        //        await PlayPlexInLavalink(mediaUrl, command: (SocketSlashCommand)Context.Interaction);
-        //        await FollowupAsync(embed: embed);
-        //    }
-        //    catch (Exception ex)
-        //    {
-        //        await FollowupAsync($"An error occurred: {ex.Message}");
-        //    }
-        //}
-
-        [SlashCommand("search", "Search Plex for media")]
+        [SlashCommand("search", "Search Plex for media", runMode: RunMode.Async)]
         public async Task SearchCommand(
         [Choice("track", "track"),
          Choice("artist", "artist"),
@@ -149,7 +102,6 @@ namespace PlexBot.Core.Commands
                     return;
                 }
                 Console.WriteLine($"API Results: {JsonConvert.SerializeObject(results)}"); // Debugging
-
                 string url = "";
                 List<SelectMenuOptionBuilder> selectMenuOptions = results.Select(result =>
                 {
@@ -170,21 +122,17 @@ namespace PlexBot.Core.Commands
                     string value = result.Key ?? "Unknown";
                     url = result.Value["Url"];
                     Console.WriteLine($"Url for {result.Key}: {url}");
-
                     return new SelectMenuOptionBuilder()
                         .WithLabel(result.Value["Title"] ?? "Unknown Title")
                         .WithValue(url)
                         .WithDescription(description);
-                }).ToList();
-
-                
+                        }).ToList();
                 SelectMenuBuilder selectMenu = new SelectMenuBuilder()
                     .WithCustomId($"search_plex:{type}")
                     .WithPlaceholder($"Select a/an {type}")
                     .WithOptions(selectMenuOptions)
                     .WithMinValues(1)
                     .WithMaxValues(1); 
-
                 await FollowupAsync("Select an item to play.", components: new ComponentBuilder().WithSelectMenu(selectMenu).Build(), ephemeral: true);
             }
             catch (Exception ex)
@@ -194,44 +142,31 @@ namespace PlexBot.Core.Commands
             }
         }
 
-        [SlashCommand("playlist", "Play a playlist")]
+        [SlashCommand("playlist", "Play a playlist", runMode: RunMode.Async)]
         public async Task PlaylistCommand(
         [Summary("playlist", "Choose a playlist.")]
         [Autocomplete(typeof(AutoComplete.AutoComplete))] string playlistKey,
         [Summary("shuffle", "Shuffle the playlist.")] bool shuffle = false)
         {
             await RespondAsync("Loading playlist...", ephemeral: true);
-
             try
             {
                 // Retrieve track details from the playlist
                 List<Dictionary<string, string>> trackDetails = await plexApi.GetTracks(playlistKey);
-
                 if (trackDetails.Count == 0)
                 {
                     await FollowupAsync("The playlist is empty or could not be loaded.");
                     Console.WriteLine("Playlist is empty or could not be loaded.");
                     return;
                 }
-
                 // Optionally shuffle the playlist
                 if (shuffle)
                 {
                     Random rng = new();
                     trackDetails = [.. trackDetails.OrderBy(x => rng.Next())];
                 }
-
                 SocketInteraction interaction = Context.Interaction;
-                foreach (var trackDetail in trackDetails)
-                {
-                    string url = trackDetail["Url"];
-                    Console.WriteLine($"Queuing track: {url}"); // Debugging
-                    if (!url.StartsWith("http"))
-                    {
-                        url = plexApi.GetPlaybackUrl(url);
-                    }
-                    await lavaLinkCommands.PlayMedia(interaction, url);
-                }
+                await lavaLinkCommands.AddToQueue(interaction, trackDetails);
                 await FollowupAsync($"Playing playlist with {trackDetails.Count} tracks.", ephemeral: true);
             }
             catch (Exception ex)
@@ -301,14 +236,5 @@ namespace PlexBot.Core.Commands
             Console.WriteLine(response);
             await FollowupAsync("Check the console for the response.");
         }
-    }
-
-    public class SearchResult(string title, string artist, string album, string artwork, string url)
-    {
-        public string? Title { get; } = title;
-        public string? Artist { get; } = artist;
-        public string? Album { get; } = album;
-        public string? Artwork { get; } = artwork;
-        public string? Url { get; } = url;
     }
 }

@@ -1,5 +1,4 @@
-﻿using System;
-using Discord;
+﻿using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
 using Microsoft.Extensions.DependencyInjection;
@@ -16,7 +15,6 @@ using PlexBot.Core.AutoComplete;
 using PlexBot.Core.EventHandlers;
 using PlexBot.Core.Commands;
 using PlexBot.Core.Players;
-using Microsoft.Extensions.Caching.Memory;
 
 namespace PlexBot
 {
@@ -103,11 +101,9 @@ namespace PlexBot
                 GatewayIntents = GatewayIntents.All,
                 LogLevel = LogSeverity.Debug
             }));
-
             // Configure InteractionService for handling interactions from commands, buttons, modals, and selects
             services.AddSingleton<InteractionService>();
-
-            // Add other bot components
+            // Add other bot components so they can be passed between each other
             services.AddSingleton<Buttons>();
             services.AddSingleton<SlashCommands>();
             services.AddSingleton<AutoComplete>();
@@ -121,10 +117,8 @@ namespace PlexBot
                 string baseAddress = Environment.GetEnvironmentVariable("PLEX_URL") ?? "";
                 string plexToken = Environment.GetEnvironmentVariable("PLEX_TOKEN") ?? "";
                 LavaLinkCommands lavaLinkCommands = serviceProvider.GetRequiredService<LavaLinkCommands>();
-                IMemoryCache memoryCache = serviceProvider.GetRequiredService<IMemoryCache>();
-                return new PlexApi(baseAddress, plexToken, lavaLinkCommands, memoryCache);
+                return new PlexApi(baseAddress, plexToken, lavaLinkCommands);
             });
-
             // Add Lavalink and configure it
             services.AddLavalink();
             services.ConfigureLavalink(options =>
@@ -136,14 +130,11 @@ namespace PlexBot
                 options.BaseAddress = new Uri($"http://{options.HttpClientName}:2333");
                 options.ResumptionOptions = new LavalinkSessionResumptionOptions(TimeSpan.FromSeconds(60));
             });
-            services.AddMemoryCache();
-
             // Setup logging
             services.AddLogging(loggingBuilder =>
             {
                 loggingBuilder.SetMinimumLevel(LogLevel.Debug);
             });
-
             return services.BuildServiceProvider();
         }
 

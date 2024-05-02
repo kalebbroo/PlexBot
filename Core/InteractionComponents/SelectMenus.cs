@@ -62,31 +62,21 @@ namespace PlexBot.Core.InteractionComponents
                             // Add the new dictionary to the list
                             track.Add(newDict);
                             // call PlayMedia with the trackUrl
-                            await lavaLink.PlayMedia(interaction, url);
+                            //await lavaLink.PlayMedia(interaction, url);
                         }
                         await FollowupAsync("Playing...", ephemeral: true);
                     }
                     break;
                 case "album":
                 case "artist":
-#warning TODO: When users click an artist another select menu should appear with the albums
-#warning TODO: When users click an album another select menu should appear with the tracks
+                    #warning TODO: When users click an artist another select menu should appear with the albums
+                    #warning TODO: When users click an album another select menu should appear with the tracks
 
-#warning TODO: Break this out into a separate method (playAlbums) call it here and in the second select menu that we create for albums of atrists
+                    #warning TODO: Break this out into a separate method (playAlbums) call it here and in the second select menu that we create for albums of atrists
                     List<Dictionary<string, string>> tracks = await plexApi.GetTracks(selectedValue);
                     Console.WriteLine($"Tracks: {tracks.Count}");
                     Console.WriteLine($"Selected Value: {selectedValue}");
-                    foreach (var trackDetail in tracks)
-                    {
-                        string trackUrl = trackDetail["Url"];
-                        if (!string.IsNullOrEmpty(trackUrl))
-                        {
-                            
-                            trackUrl = plexApi.GetPlaybackUrl(trackUrl);
-                            Console.WriteLine($"Queuing track: {trackUrl}");
-                            await lavaLink.PlayMedia(interaction, trackUrl);
-                        }
-                    }
+                    await lavaLink.AddToQueue(interaction, tracks);
                     await FollowupAsync($"{customId} queued for playback.", ephemeral: true);
                     break;
             }

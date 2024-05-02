@@ -1,18 +1,14 @@
 ﻿using Newtonsoft.Json.Linq;
 using System.Web;
 using PlexBot.Core.LavaLink;
-using Microsoft.Extensions.Caching.Memory;
-using System.Diagnostics;
 
 namespace PlexBot.Core.PlexAPI
 {
-    public class PlexApi(string plexUrl, string plexToken, LavaLinkCommands lavaLink, IMemoryCache memoryCache)
+    public class PlexApi(string plexUrl, string plexToken, LavaLinkCommands lavaLinkCommands)
     {
         private readonly string _plexURL = plexUrl;
         private readonly string _plexToken = plexToken;
-        private readonly LavaLinkCommands _lavaLinkCommands = lavaLink;
-        private readonly IMemoryCache _memoryCache = memoryCache;
-
+        private readonly LavaLinkCommands _lavaLinkCommands = lavaLinkCommands;
 
         // Private method to perform the HTTP request
         public async Task<string> PerformRequestAsync(string uri)
@@ -53,24 +49,13 @@ namespace PlexBot.Core.PlexAPI
             int typeId = GetTypeID(type);
             string encodedQuery = HttpUtility.UrlEncode(query);
             string uri = $"{plexUrl}/library/sections/5/search?type={typeId}&query={encodedQuery}&limit=25";
-            string cacheKey = $"search:{type}:{encodedQuery}"; // Unique cache key
-
-            // Check cache first
-            if (memoryCache.TryGetValue(cacheKey, out Dictionary<string, Dictionary<string, string>> cachedResults))
-            {
-                Console.WriteLine("Returning cached results");
-                return cachedResults;
-            }
-
             string response = await PerformRequestAsync(uri);
             if (string.IsNullOrEmpty(response))
             {
                 Console.WriteLine("No results found.");
                 throw new Exception("No results found.");
             }
-
             Dictionary<string, Dictionary<string, string>> results = await ParseSearchResults(response, type);
-
             return results;
         }
 
@@ -92,7 +77,6 @@ namespace PlexBot.Core.PlexAPI
             string uri = $"{plexUrl}/library/sections/{libraryId}/refresh";
             return await PerformRequestAsync(uri);
         }
-
         // Method to add a new item to the music library
         public async Task<string> AddToLibraryAsync(int libraryId, string metadata)
         {
@@ -105,11 +89,9 @@ namespace PlexBot.Core.PlexAPI
             Dictionary<string, Dictionary<string, string>> results = [];
             JObject jObject = JObject.Parse(jsonResponse);
             int id = 0;
-
             foreach (JToken item in jObject["MediaContainer"]["Metadata"])
             {
                 Dictionary<string, string> details = [];
-
                 switch (type.ToLower())
                 {
                     case "track":
@@ -124,7 +106,6 @@ namespace PlexBot.Core.PlexAPI
                         details["Studio"] = item["studio"]?.ToString() ?? "N/A";
                         Console.WriteLine(details["Url"]);
                         List<Dictionary<string, string>> queue = [details];
-                        lavaLink.AddTracksToCache(queue);
                         break;
                     case "artist":
                         details["Title"] = item["title"]?.ToString() ?? "Unknown Artist";
@@ -195,10 +176,18 @@ namespace PlexBot.Core.PlexAPI
         // Method to fetch playlists from Plex
         public async Task<Dictionary<string, Dictionary<string, string>>> GetPlaylists()
         {
-            string uri = $"{plexUrl}/playlists?playlistType=audio";
-            string response = await PerformRequestAsync(uri);
-            Console.WriteLine(response); // Debugging
-            return await ParseSearchResults(response, "playlist");
+            try
+            {
+                string uri = $"{plexUrl}/playlists?playlistType=audio";
+                string response = await PerformRequestAsync(uri);
+                Console.WriteLine(response); // Debugging
+                return await ParseSearchResults(response, "playlist");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Failed to fetch playlists: {ex.Message}");
+                return [];
+            }
         }
 
         public async Task<List<Dictionary<string, string>>> GetTracks(string Key)
@@ -212,7 +201,6 @@ namespace PlexBot.Core.PlexAPI
                 Console.WriteLine("No results found.");
                 throw new Exception("No results found.");
             }
-
             List<Dictionary<string, string>> tracks = [];
             JObject jObject = JObject.Parse(response);
             JToken items = jObject["MediaContainer"]["Metadata"];
@@ -221,9 +209,10 @@ namespace PlexBot.Core.PlexAPI
                 Console.WriteLine("No track metadata available.");
                 return tracks; // Return an empty list if no metadata found
             }
-
             foreach (JToken item in items)
             {
+                string partKey = item.SelectToken("Media[0].Part[0].key")?.ToString() ?? "N/A";
+                string playableUrl = GetPlaybackUrl(partKey);
                 Console.WriteLine($"\nEach Track:\n{item}\n"); // Debugging
                 Dictionary<string, string> trackDetails = new()
                 {
@@ -232,14 +221,13 @@ namespace PlexBot.Core.PlexAPI
                     ["Album"] = item["parentTitle"]?.ToString() ?? "Unknown Album",
                     ["ReleaseDate"] = item["originallyAvailableAt"]?.ToString() ?? "N/A",
                     ["Artwork"] = item["thumb"]?.ToString() ?? "N/A",
-                    ["Url"] = item.SelectToken("Media[0].Part[0].key")?.ToString() ?? "N/A",
+                    ["Url"] = playableUrl,
                     ["ArtistUrl"] = item["grandparentKey"]?.ToString() ?? "N/A",
                     ["Duration"] = item["duration"]?.ToString() ?? "N/A", // Duration in milliseconds
                     ["Studio"] = item["studio"]?.ToString() ?? "N/A"
                 };
                 tracks.Add(trackDetails);
             }
-            lavaLink.AddTracksToCache(tracks);
             return tracks;
         }
 
