@@ -68,7 +68,7 @@ namespace PlexBot.Core.LavaLink
             };
             if (!string.IsNullOrEmpty(track.Url))
             {
-                Console.WriteLine($"Playing Track - Title: {track.Title}, URL: {track.Url}"); // Debugging
+                //Console.WriteLine($"Playing Track - Title: {track.Title}, URL: {track.Url}"); // Debugging
                 try
                 {
                     await player.PlayAsync(track, playProperties).ConfigureAwait(false);

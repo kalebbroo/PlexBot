@@ -35,12 +35,12 @@ namespace PlexBot.Core.LavaLink
                 ComponentBuilder components = new ComponentBuilder()
                     .WithButton("Pause", "pause_resume:pause", ButtonStyle.Secondary)
                     .WithButton("Skip", "skip:skip", ButtonStyle.Primary)
-                    .WithButton("Queue", "queue:select", ButtonStyle.Primary)
+                    .WithButton("Queue", "queue:select", ButtonStyle.Success)
                     .WithButton("Repeat", "repeat:select", ButtonStyle.Secondary)
                     .WithButton("Kill", "kill:kill", ButtonStyle.Danger);
 
                 // Find and delete the last player message (if it exists)
-                var messages = await _textChannel.GetMessagesAsync(10).FlattenAsync().ConfigureAwait(false);
+                var messages = await _textChannel!.GetMessagesAsync(10).FlattenAsync().ConfigureAwait(false);
                 IMessage? lastPlayerMessage = messages.FirstOrDefault(m => m.Embeds.Any(e => e.Title == "Now Playing"));
                 if (lastPlayerMessage != null)
                 {
@@ -55,7 +55,7 @@ namespace PlexBot.Core.LavaLink
             {
                 // Log the exception or handle it appropriately
                 Console.WriteLine($"An error occurred while notifying track started: {ex.Message}");
-                await _textChannel.SendMessageAsync("An error occurred while starting the track.").ConfigureAwait(false);
+                await _textChannel!.SendMessageAsync("An error occurred while starting the track.").ConfigureAwait(false);
             }
         }
 
@@ -88,7 +88,7 @@ namespace PlexBot.Core.LavaLink
             // Add your custom logic here to handle the event when the player becomes inactive
             // For example, you can stop the player and send a message:
             await StopAsync(cancellationToken).ConfigureAwait(false);
-            await _textChannel.SendMessageAsync("The player has been stopped due to inactivity.").ConfigureAwait(false);
+            await _textChannel!.SendMessageAsync("The player has been stopped due to inactivity.").ConfigureAwait(false);
         }
 
         public ValueTask NotifyPlayerTrackedAsync(CancellationToken cancellationToken = default)

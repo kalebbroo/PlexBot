@@ -136,6 +136,26 @@ namespace PlexBot.Core.InteractionComponents
             await FollowupAsync($"Repeat mode set to {player.RepeatMode}.", ephemeral: true);
         }
 
+        [ComponentInteraction("skip:*", runMode: RunMode.Async)]
+        public async Task Skip(string customId)
+        {
+            if (IsOnCooldown(Context.User, "skip"))
+            {
+                await FollowupAsync("You are on cooldown.", ephemeral: true);
+                return;
+            }
+            await DeferAsync();
+
+            var player = await lavaLink.GetPlayerAsync(Context.Interaction, true);
+            if (player == null)
+            {
+                await FollowupAsync("No active player found.", ephemeral: true);
+                return;
+            }
+
+            await player.SkipAsync();
+            await FollowupAsync("Skipped the current track.", ephemeral: true);
+        }
 
         [ComponentInteraction("queue:*", runMode: RunMode.Async)]
         public async Task Queue(string customId)
