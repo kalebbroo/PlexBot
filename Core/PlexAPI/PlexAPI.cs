@@ -1,6 +1,9 @@
 ﻿using Newtonsoft.Json.Linq;
 using System.Web;
 using PlexBot.Core.LavaLink;
+using Discord;
+using static System.Runtime.InteropServices.JavaScript.JSType;
+using System;
 
 namespace PlexBot.Core.PlexAPI
 {
@@ -115,9 +118,8 @@ namespace PlexBot.Core.PlexAPI
                         // Fetch album and track count
                         try
                         {
-                            var albumDetails = await GetAlbums(details["Url"]);
+                            List<Dictionary<string, string>> albumDetails = await GetAlbums(details["Url"]);
                             details["AlbumCount"] = albumDetails.Count.ToString();
-
                             int trackCount = 0;
                             foreach (var album in albumDetails)
                             {
@@ -173,14 +175,13 @@ namespace PlexBot.Core.PlexAPI
             return results;
         }
 
-        // Method to fetch playlists from Plex
         public async Task<Dictionary<string, Dictionary<string, string>>> GetPlaylists()
         {
             try
             {
                 string uri = $"{plexUrl}/playlists?playlistType=audio";
                 string response = await PerformRequestAsync(uri);
-                Console.WriteLine(response); // Debugging
+                //Console.WriteLine(response); // Debugging
                 return await ParseSearchResults(response, "playlist");
             }
             catch (Exception ex)
@@ -213,7 +214,7 @@ namespace PlexBot.Core.PlexAPI
             {
                 string partKey = item.SelectToken("Media[0].Part[0].key")?.ToString() ?? "N/A";
                 string playableUrl = GetPlaybackUrl(partKey);
-                Console.WriteLine($"\nEach Track:\n{item}\n"); // Debugging
+                //Console.WriteLine($"\nEach Track:\n{item}\n"); // Debugging
                 Dictionary<string, string> trackDetails = new()
                 {
                     ["Title"] = item["title"]?.ToString() ?? "Unknown Title",
