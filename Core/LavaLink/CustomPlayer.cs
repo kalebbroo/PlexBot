@@ -15,45 +15,41 @@ namespace PlexBot.Core.LavaLink
             try
             {
                 await base.NotifyTrackStartedAsync(track, cancellationToken).ConfigureAwait(false);
-
-                if (track is CustomTrackQueueItem customTrack)
+                CustomTrackQueueItem customTrack = (CustomTrackQueueItem)track;
+                Dictionary<string, string> customTracks = new()
                 {
-                    Dictionary<string, string> customTracks = new()
-                    {
-                        ["Title"] = customTrack.Title ?? "Unknown Title",
-                        ["Artist"] = customTrack.Artist ?? "Unknown Artist",
-                        ["Album"] = customTrack.Album ?? "Unknown Album",
-                        ["Duration"] = customTrack.Duration ?? "00:00",
-                        ["Url"] = customTrack.Url ?? "N/A",
-                        // Add more custom track information
-                    };
-                    // Build the new player embed using the custom track information
-                    EmbedBuilder player = Players.Players.BuildAndSendPlayer(customTracks);
+                    ["Title"] = customTrack.Title ?? "Missing Title",
+                    ["Artist"] = customTrack.Artist ?? "Missing Artist",
+                    ["Album"] = customTrack.Album ?? "Missing Album",
+                    ["Duration"] = customTrack.Duration ?? "00:00",
+                    ["Url"] = customTrack.Url ?? "N/A",
+                    ["ArtistUrl"] = customTrack.ArtistUrl ?? "N/A",
+                    ["ReleaseDate"] = customTrack.ReleaseDate ?? "N/A",
+                    ["Artwork"] = customTrack.Artwork ?? "https://via.placeholder.com/150",
+                    ["Studio"] = customTrack.Studio ?? "Missing Studio"
+                };
+                Console.WriteLine($"Track: {customTracks["Title"]}, Artist: {customTracks["Artist"]}, Duration: {customTracks["Duration"]}"); // debug
+                // Build the new player embed using the custom track information
+                EmbedBuilder player = Players.Players.BuildAndSendPlayer(customTracks);
+                // Create a ComponentBuilder for the buttons
+                ComponentBuilder components = new ComponentBuilder()
+                    .WithButton("Pause", "pause_resume:pause", ButtonStyle.Secondary)
+                    .WithButton("Skip", "skip:skip", ButtonStyle.Primary)
+                    .WithButton("Queue", "queue:select", ButtonStyle.Primary)
+                    .WithButton("Repeat", "repeat:select", ButtonStyle.Secondary)
+                    .WithButton("Kill", "kill:kill", ButtonStyle.Danger);
 
-                    // Create a ComponentBuilder for the buttons
-                    ComponentBuilder components = new ComponentBuilder()
-                        .WithButton("Pause", "pause_resume:pause", ButtonStyle.Secondary)
-                        .WithButton("Skip", "skip:skip", ButtonStyle.Primary)
-                        .WithButton("Queue", "queue:select", ButtonStyle.Primary)
-                        .WithButton("Repeat", "repeat:select", ButtonStyle.Secondary)
-                        .WithButton("Kill", "kill:kill", ButtonStyle.Danger);
-
-                    // Find and delete the last player message (if it exists)
-                    var messages = await _textChannel.GetMessagesAsync(10).FlattenAsync().ConfigureAwait(false);
-                    IMessage? lastPlayerMessage = messages.FirstOrDefault(m => m.Embeds.Any(e => e.Title == "Now Playing"));
-                    if (lastPlayerMessage != null)
-                    {
-                        await lastPlayerMessage.DeleteAsync().ConfigureAwait(false);
-                        Console.WriteLine("Deleted last player message.");
-                    }
-
-                    // Send the new player embed to the text channel
-                    await _textChannel.SendMessageAsync(components: components.Build(), embed: player.Build()).ConfigureAwait(false);
-                }
-                else
+                // Find and delete the last player message (if it exists)
+                var messages = await _textChannel.GetMessagesAsync(10).FlattenAsync().ConfigureAwait(false);
+                IMessage? lastPlayerMessage = messages.FirstOrDefault(m => m.Embeds.Any(e => e.Title == "Now Playing"));
+                if (lastPlayerMessage != null)
                 {
-                    Console.WriteLine("Error: Track is not a CustomTrackQueueItem.");
+                    await lastPlayerMessage.DeleteAsync().ConfigureAwait(false);
+                    Console.WriteLine("Deleted last player message.");
                 }
+
+                // Send the new player embed to the text channel
+                await _textChannel.SendMessageAsync(components: components.Build(), embed: player.Build()).ConfigureAwait(false);
             }
             catch (Exception ex)
             {

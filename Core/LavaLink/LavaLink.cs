@@ -4,6 +4,9 @@ using Lavalink4NET.Players.Queued;
 using Lavalink4NET.Players;
 using Microsoft.Extensions.Options;
 using Discord;
+using Lavalink4NET.Tracks;
+using Lavalink4NET.Rest.Entities.Tracks;
+using Lavalink4NET.Rest;
 
 namespace PlexBot.Core.LavaLink
 {
@@ -59,10 +62,21 @@ namespace PlexBot.Core.LavaLink
                 Console.WriteLine("Player not found.");
                 return;
             }
+            TrackPlayProperties playProperties = new()
+            {
+                NoReplace = true,
+            };
             if (!string.IsNullOrEmpty(track.Url))
             {
-                Console.WriteLine($"Playing URL: {track.Url}");  // Debugging
-                await player.PlayAsync(track).ConfigureAwait(false);
+                Console.WriteLine($"Playing Track - Title: {track.Title}, URL: {track.Url}"); // Debugging
+                try
+                {
+                    await player.PlayAsync(track, playProperties).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Failed to play track: {ex.Message}");
+                }
             }
             else
             {
@@ -149,8 +163,6 @@ namespace PlexBot.Core.LavaLink
         //    return await Task.FromResult(queueInfo);
         //}
 
-        private Dictionary<string, CustomTrackQueueItem> _trackMetadata = [];
-
         public async Task AddToQueue(SocketInteraction interaction, List<Dictionary<string, string>> trackDetailsList)
         {
             QueuedLavalinkPlayer? player = await GetPlayerAsync(interaction, true);
@@ -164,31 +176,37 @@ namespace PlexBot.Core.LavaLink
                 string trackUrl = details["Url"];
                 if (!string.IsNullOrEmpty(trackUrl))
                 {
-                    CustomTrackQueueItem customTrack = new()
+                    LavalinkTrack? lavalinkTrack = await _audioService.Tracks.LoadTrackAsync(
+                        trackUrl, TrackSearchMode.None);
+                    if (lavalinkTrack != null)
                     {
-                        Title = details.TryGetValue("Title", out var title) ? title : "Unknown Title",
-                        Artist = details.TryGetValue("Artist", out var artist) ? artist : "Unknown Artist",
-                        Album = details.TryGetValue("Album", out var album) ? album : "Unknown Album",
-                        ReleaseDate = details.TryGetValue("ReleaseDate", out var releaseDate) ? releaseDate : "N/A",
-                        Artwork = details.TryGetValue("Artwork", out var artwork) ? artwork : "https://via.placeholder.com/150",
-                        Url = trackUrl,
-                        ArtistUrl = details.TryGetValue("ArtistUrl", out var artistUrl) ? artistUrl : "N/A",
-                        Duration = details.TryGetValue("Duration", out var duration) ? duration : "00:00",
-                        Studio = details.TryGetValue("Studio", out var studio) ? studio : "Unknown Studio"
-                    };
-                    _trackMetadata[trackUrl] = customTrack;
-                    await PlayMedia(interaction, customTrack);
-                }
-                else
-                {
-                    Console.WriteLine($"Could not load track from URL: {trackUrl}");
+                        CustomTrackQueueItem customTrack = new()
+                        {
+                            Reference = new TrackReference(lavalinkTrack),
+                            Title = details["Title"],
+                            Artist = details["Artist"],
+                            Album = details["Album"],
+                            ReleaseDate = details["ReleaseDate"],
+                            Artwork = details["Artwork"],
+                            Url = trackUrl,
+                            ArtistUrl = details["ArtistUrl"],
+                            Duration = details["Duration"],
+                            Studio = details["Studio"]
+                        };
+                        await PlayMedia(interaction, customTrack);
+                    }
+                    else
+                    {
+                        Console.WriteLine($"Could not load track from URL: {trackUrl}");
+                    }
                 }
             }
         }
     }
+
     public class CustomTrackQueueItem : ITrackQueueItem
     {
-        public TrackReference Reference { get; private set; }
+        public TrackReference Reference { get; set; }
         public string? Title { get; set; }
         public string? Artist { get; set; }
         public string? Album { get; set; }
