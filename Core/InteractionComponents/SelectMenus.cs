@@ -81,5 +81,34 @@ namespace PlexBot.Core.InteractionComponents
                     break;
             }
         }
+
+        [ComponentInteraction("queue:selectNext")]
+        public async Task HandlePlayNextSelection(string customId, string[] selectedValues)
+        {
+            await DeferAsync(ephemeral: true);
+            if (selectedValues.Length == 0)
+            {
+                await FollowupAsync("No track selected.", ephemeral: true);
+                return;
+            }
+            int selectedIndex = int.Parse(selectedValues[0]);
+            CustomPlayer? player = await lavaLink.GetPlayerAsync(Context.Interaction, true);
+            if (player == null)
+            {
+                await FollowupAsync("Player not found.", ephemeral: true);
+                return;
+            }
+            if (selectedIndex >= 0 && selectedIndex < player.Queue.Count)
+            {
+                ITrackQueueItem itemToMove = player.Queue.ElementAt(selectedIndex);
+                await player.Queue.RemoveAsync(itemToMove);
+                await player.Queue.InsertAsync(0, itemToMove);
+                await FollowupAsync($"Moved '{itemToMove?.Track!.Title}' to play next.", ephemeral: true);
+            }
+            else
+            {
+                await FollowupAsync("Invalid track selection.", ephemeral: true);
+            }
+        }
     }
 }
