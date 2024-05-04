@@ -16,14 +16,14 @@ namespace PlexBot.Core.PlexAPI
         // Private method to perform the HTTP request
         public async Task<string> PerformRequestAsync(string uri)
         {
-            Console.WriteLine($"Performing request to: {uri}");
+            //Console.WriteLine($"Performing request to: {uri}"); // debug
             HttpClient client = new();
             HttpRequestMessage request = new(HttpMethod.Get, uri);
             request.Headers.Add("Accept", "application/json");
             request.Headers.Add("X-Plex-Token", $"{plexToken}");
             HttpResponseMessage response = await client.SendAsync(request);
             response.EnsureSuccessStatusCode();
-            Console.WriteLine($"Response status code: {response.StatusCode}");
+            //Console.WriteLine($"Response status code: {response.StatusCode}"); // debug
             // if call is not successful, throw an exception
             if (!response.IsSuccessStatusCode)
             {
@@ -107,7 +107,6 @@ namespace PlexBot.Core.PlexAPI
                         details["ArtistUrl"] = item["grandparentKey"]?.ToString() ?? "N/A";
                         details["Duration"] = item["duration"]?.ToString() ?? "N/A"; // Duration in milliseconds
                         details["Studio"] = item["studio"]?.ToString() ?? "N/A";
-                        Console.WriteLine(details["Url"]);
                         List<Dictionary<string, string>> queue = [details];
                         break;
                     case "artist":
@@ -194,9 +193,7 @@ namespace PlexBot.Core.PlexAPI
         public async Task<List<Dictionary<string, string>>> GetTracks(string Key)
         {
             string uri = GetPlaybackUrl(Key);
-            Console.WriteLine(uri);
             string response = await PerformRequestAsync(uri);
-            Console.WriteLine(response);
             if (string.IsNullOrEmpty(response))
             {
                 Console.WriteLine("No results found.");

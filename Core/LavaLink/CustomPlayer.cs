@@ -35,7 +35,7 @@ namespace PlexBot.Core.LavaLink
                 ComponentBuilder components = new ComponentBuilder()
                     .WithButton("Pause", "pause_resume:pause", ButtonStyle.Secondary)
                     .WithButton("Skip", "skip:skip", ButtonStyle.Primary)
-                    .WithButton("Queue", "queue:select", ButtonStyle.Success)
+                    .WithButton("Queue", "queue:view:1", ButtonStyle.Success)
                     .WithButton("Repeat", "repeat:select", ButtonStyle.Secondary)
                     .WithButton("Kill", "kill:kill", ButtonStyle.Danger);
 

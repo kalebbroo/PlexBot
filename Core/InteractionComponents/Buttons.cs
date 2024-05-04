@@ -5,6 +5,14 @@ using PlexBot.Core.LavaLink;
 using PlexBot.Core.Players;
 using PlexBot.Core.Commands;
 using Lavalink4NET.Players.Queued;
+using Lavalink4NET.Tracks;
+using Lavalink4NET.Players;
+using static System.Console;
+using Microsoft.VisualBasic;
+using static System.Runtime.InteropServices.JavaScript.JSType;
+using System.Reflection;
+using System;
+using Discord.Rest;
 
 namespace PlexBot.Core.InteractionComponents
 {
@@ -158,68 +166,170 @@ namespace PlexBot.Core.InteractionComponents
         }
 
         [ComponentInteraction("queue:*", runMode: RunMode.Async)]
-        public async Task Queue(string customId)
+        public async Task HandleQueueInteraction(string customId)
         {
-            if (IsOnCooldown(Context.User, "queue"))
+            await DeferAsync();
+            Console.WriteLine($"\nQueue Button: {customId}\n"); // debug
+            string[] args = customId.Split(':');
+            if (args.Length < 2)
             {
-                await FollowupAsync("You are on cooldown.", ephemeral: true);
+                await FollowupAsync("Invalid queue command.", ephemeral: true);
                 return;
             }
-
-            await DeferAsync();
-
-            var player = await lavaLink.GetPlayerAsync(Context.Interaction, true);
+            string action = args[0]; // 'view', 'next', 'back', 'shuffle', 'playNext', or 'clear'
+            if (!int.TryParse(args[1], out int currentPage)) // Page number
+            {
+                await FollowupAsync("Invalid page number.", ephemeral: true);
+                return;
+            }
+            WriteLine($"Action: {action}, Current Page Before Switch: {currentPage}"); // debug
+            CustomPlayer? player = await lavaLink.GetPlayerAsync(Context.Interaction, true);
             if (player == null || player.Queue.Count == 0)
             {
                 await FollowupAsync("The queue is currently empty.", ephemeral: true);
                 return;
             }
-            EmbedBuilder embed = new();
-                embed.WithTitle("Queue");
-                embed.WithDescription("Queue information");
-                embed.WithColor(Color.Blue);
-                // TODO: Add the queue information to the embed
-                embed.WithTimestamp(DateTime.Now);
-                embed.WithFooter("Queue footer");
-            ComponentBuilder components = new();
-                components.WithButton("Clear Queue", "queue:clear", ButtonStyle.Danger);
-                components.WithButton("Remove Track", "queue:remove", ButtonStyle.Secondary);
-                components.WithButton("Shuffle Queue", "queue:shuffle", ButtonStyle.Secondary);
-                components.WithButton("Next", "next_back:next", ButtonStyle.Secondary);
-                components.WithButton("Back", "next_back:back", ButtonStyle.Secondary);
-            
-            await RespondAsync(embed: embed.Build(), components: components.Build());
-
-            // Display the queue in an embed with buttons to clear, remove tracks, shuffle, and go to the next or previous page
-        }
-
-        [ComponentInteraction("next_back:*", runMode: RunMode.Async)]
-        public async Task NextBack(string customId)
-        {
-            if (IsOnCooldown(Context.User, "next_back"))
+            switch (action)
             {
-                await FollowupAsync("You are on cooldown.", ephemeral: true);
-                return;
+                case "view":
+                    Console.WriteLine("View current page"); // debug
+                    break;
+                case "next":
+                    currentPage++;
+                    Console.WriteLine("Incremented Page Number to: " + currentPage); // debug
+                    break;
+                case "back":
+                    currentPage = Math.Max(1, currentPage - 1);
+                    Console.WriteLine("Decremented Page Number to: " + currentPage); // debug
+                    break;
+                case "shuffle":
+                    await player.Queue.ShuffleAsync();
+                    currentPage = 1;
+                    Console.WriteLine("Shuffled Queue, Reset Page to: " + currentPage); // debug
+                    break;
+                case "playNext":
+                    // TODO: This should be moved to the select menu
+                    await NextTrack(player, currentPage);
+                    return;
+                case "edit":
+#warning TODO: Create a select menu to choose if the user wants to remove a track, move a track, or cancel
+                    await FollowupAsync("Edit Queue is not yet implemented.", ephemeral: true);
+                    return;
+                case "clear":
+                    await player.Queue.ClearAsync();
+                    await Context.Interaction.DeleteOriginalResponseAsync();
+                    await FollowupAsync("Queue cleared.", ephemeral: true);
+                    return;
+                case "close":
+                    await Context.Interaction.DeleteOriginalResponseAsync();
+                    return;
             }
-
-            await DeferAsync();
-
-            var player = await lavaLink.GetPlayerAsync(Context.Interaction, true);
-            if (player == null || player.Queue.Count == 0)
+            EmbedBuilder embed = CreateQueueEmbed(player, currentPage);
+            ComponentBuilder components = BuildQueueComponents(currentPage, player.Queue.Count, 23);
+            Console.WriteLine($"Modifying Response to Show Page: {currentPage}");
+            RestInteractionMessage msg = await Context.Interaction.GetOriginalResponseAsync();
+            if (msg.Embeds.Any())
             {
-                await FollowupAsync("The queue is currently empty.", ephemeral: true);
-                return;
-            }
-
-            if (customId == "next")
-            {
-                // TODO: Go to the next page
+                string title = msg.Embeds.First().Title;
+                if (title == "Now Playing")
+                {
+                    await FollowupAsync(embed: embed.Build(), components: components.Build(), ephemeral: false);
+                }
+                else
+                {
+                    await ModifyOriginalResponseAsync(msg =>
+                    {
+                        msg.Embed = embed.Build();
+                        msg.Components = components.Build();
+                    });
+                }
             }
             else
             {
-                // TODO: Go to the previous page
+                await FollowupAsync(embed: embed.Build(), components: components.Build(), ephemeral: false);
             }
         }
 
+        private ComponentBuilder BuildQueueComponents(int currentPage, int totalItems, int itemsPerPage)
+        {
+            ComponentBuilder components = new ComponentBuilder()
+                .WithButton("Back", $"queue:back:{currentPage}", ButtonStyle.Secondary, row: 1, disabled: currentPage == 1)
+                .WithButton("Next", $"queue:next:{currentPage}", ButtonStyle.Secondary, row: 1, disabled: (currentPage * itemsPerPage) >= totalItems)
+                .WithButton("Shuffle Queue", "queue:shuffle:1", ButtonStyle.Primary, row: 0)
+                .WithButton("Edit Queue", $"queue:edit:{currentPage}", ButtonStyle.Primary, row: 0)
+                .WithButton("Clear Queue", "queue:clear:1", ButtonStyle.Danger, row: 0)
+                .WithButton("Close", "queue:close:1", ButtonStyle.Danger, row: 0);
+            return components;
+        }
+
+        private static EmbedBuilder CreateQueueEmbed(QueuedLavalinkPlayer player, int currentPage, int itemsPerPage = 23)
+        {
+            int totalTracks = player.Queue.Count;
+            int totalPages = (totalTracks + itemsPerPage - 1) / itemsPerPage;
+            EmbedBuilder embed = new EmbedBuilder()
+                .WithTitle("Current Music Queue")
+                .WithColor(Color.Blue)
+                .WithFooter($"Page {currentPage} of {totalPages} ({totalTracks} Queued Tracks)")
+                .WithTimestamp(DateTime.Now);
+            int startIndex = (currentPage - 1) * itemsPerPage;
+            // Display the "Now Playing" track only on the first page and separately from the queue
+            if (currentPage == 1 && player.CurrentTrack != null)
+            {
+                embed.AddField(
+                    "Now Playing: " + player.CurrentTrack.Title,
+                    $"Artist: {player.CurrentTrack.Author}\nDuration: {player.CurrentTrack.Duration}\nURL: [Listen]({player.CurrentTrack.Uri})",
+                    inline: true
+                );
+            }
+            IEnumerable<ITrackQueueItem> queueItems = player.Queue.Skip(startIndex).Take(itemsPerPage);
+            int itemNumber = startIndex;  // Start numbering from the index of the first item on this page
+
+            foreach (var item in queueItems)
+            {
+                itemNumber++; // Increment first to start from the next number
+                string trackLabel = $"#{itemNumber}"; // Label according to the actual position in the queue
+                if (item is CustomTrackQueueItem customTrack)
+                {
+                    embed.AddField(
+                        $"{trackLabel}: {customTrack.Title}",
+                        $"Artist: {customTrack.Artist}\nAlbum: {customTrack.Album}\nDuration: {customTrack.Duration}",
+                        inline: true
+                    );
+                }
+                else
+                {
+                    LavalinkTrack? track = item.Track;
+                    embed.AddField(
+                        $"{trackLabel}: {track!.Title}",
+                        $"Artist: {track.Author}\nDuration: {track.Duration}",
+                        inline: true
+                    );
+                }
+            }
+            return embed;
+        }
+
+        private async Task NextTrack(QueuedLavalinkPlayer player, int currentPage)
+        {
+            int itemsPerPage = 23;
+            int startIndex = (currentPage - 1) * itemsPerPage;
+            List<ITrackQueueItem> queueItems = player.Queue.Skip(startIndex).Take(itemsPerPage).ToList();
+            List<SelectMenuOptionBuilder> options = queueItems.Select((track, index) => new SelectMenuOptionBuilder()
+                .WithLabel($"{startIndex + index + 1}: {track?.Track!.Title}")
+                .WithValue($"{startIndex + index}")
+                .WithDescription($"Move to play next")).ToList();
+            SelectMenuBuilder menu = new SelectMenuBuilder()
+                .WithCustomId("queue:selectNext")
+                .WithPlaceholder("Select a track to play next")
+                .WithOptions(options)
+                .WithMinValues(1)
+                .WithMaxValues(1);
+            ComponentBuilder builder = new ComponentBuilder().WithSelectMenu(menu);
+            await ModifyOriginalResponseAsync(msg =>
+            {
+                msg.Components = builder.Build();
+                msg.Content = "Select a track to play next:";
+            });
+        }
     }
 }
