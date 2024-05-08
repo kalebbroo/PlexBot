@@ -82,32 +82,74 @@ namespace PlexBot.Core.InteractionComponents
             }
         }
 
-        [ComponentInteraction("queue:selectNext")]
+        [ComponentInteraction("queue:*")]
         public async Task HandlePlayNextSelection(string customId, string[] selectedValues)
         {
             await DeferAsync(ephemeral: true);
-            if (selectedValues.Length == 0)
-            {
-                await FollowupAsync("No track selected.", ephemeral: true);
-                return;
-            }
-            int selectedIndex = int.Parse(selectedValues[0]);
             CustomPlayer? player = await lavaLink.GetPlayerAsync(Context.Interaction, true);
-            if (player == null)
+            string selectedAction = selectedValues[0];
+            switch (customId)
             {
-                await FollowupAsync("Player not found.", ephemeral: true);
-                return;
-            }
-            if (selectedIndex >= 0 && selectedIndex < player.Queue.Count)
-            {
-                ITrackQueueItem itemToMove = player.Queue.ElementAt(selectedIndex);
-                await player.Queue.RemoveAsync(itemToMove);
-                await player.Queue.InsertAsync(0, itemToMove);
-                await FollowupAsync($"Moved '{itemToMove?.Track!.Title}' to play next.", ephemeral: true);
-            }
-            else
-            {
-                await FollowupAsync("Invalid track selection.", ephemeral: true);
+                case "edit":
+                    switch (selectedAction)
+                    {
+                        case "playNext":
+                            int totalItems = player.Queue.Count;
+                            int itemsPerPage = 24; // Max number of items per select menu
+                            int totalPages = (int)Math.Ceiling(totalItems / (double)itemsPerPage);
+                            for (int page = 1; page <= totalPages; page++)
+                            {
+                                int startIndex = (page - 1) * itemsPerPage;
+                                List<ITrackQueueItem> queueItems = player.Queue.Skip(startIndex).Take(itemsPerPage).ToList();
+                                List<SelectMenuOptionBuilder> options = queueItems.Select((track, index) => new SelectMenuOptionBuilder()
+                                    .WithLabel($"{startIndex + index + 1}: {track?.Track!.Title}")
+                                    .WithValue($"{startIndex + index}")
+                                    .WithDescription("Move to play next"))
+                                    .ToList();
+                                SelectMenuBuilder menu = new SelectMenuBuilder()
+                                    .WithCustomId($"queue:selectNextPage{page}")
+                                    .WithPlaceholder("Select a track to play next")
+                                    .WithOptions(options)
+                                    .WithMinValues(1)
+                                    .WithMaxValues(1);
+                                ComponentBuilder builder = new ComponentBuilder().WithSelectMenu(menu);
+                                await FollowupAsync("Select a track to play next:", components: builder.Build(), ephemeral: true);
+                            }
+                            break;
+
+                        case "remove":
+                            // Implement logic to remove a track from the queue
+                            break;
+                        case "rearrange":
+                            // Implement logic to rearrange tracks within the queue
+                            break;
+                    }
+                    break;
+                case "playNext":
+                    if (selectedValues.Length == 0)
+                    {
+                        await FollowupAsync("No track selected.", ephemeral: true);
+                        return;
+                    }
+                    int selectedIndex = int.Parse(selectedValues[0]);
+                    if (player == null)
+                    {
+                        await FollowupAsync("Player not found.", ephemeral: true);
+                        return;
+                    }
+                    if (selectedIndex >= 0 && selectedIndex < player.Queue.Count)
+                    {
+                        ITrackQueueItem itemToMove = player.Queue.ElementAt(selectedIndex);
+                        await player.Queue.RemoveAsync(itemToMove);
+                        await player.Queue.InsertAsync(0, itemToMove);
+                        await FollowupAsync($"Moved '{itemToMove?.Track!.Title}' to the top of the queue!", ephemeral: true);
+                    }
+                    else
+                    {
+                        await FollowupAsync("Invalid track selection.", ephemeral: true);
+                    }
+                    break;
+                
             }
         }
     }

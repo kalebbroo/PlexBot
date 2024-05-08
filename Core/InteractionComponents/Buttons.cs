@@ -45,30 +45,25 @@ namespace PlexBot.Core.InteractionComponents
         public async Task TogglePauseResumePlayer(string customId)
         {
             await DeferAsync();
-
-            // Check the current state and toggle
+            RestInteractionMessage msg = await Context.Interaction.GetOriginalResponseAsync();
             string statusMessage = await lavaLink.TogglePauseResume(Context.Interaction);
-
-            // Prepare to update the buttons based on the new state
             var builder = new ComponentBuilder();
-
             if (statusMessage.Contains("Paused"))
             {
-                // Player was paused, show only the resume button
-                builder.WithButton("Resume", "pause_resume:resume", ButtonStyle.Success);
+                builder.WithButton("Resume", "pause_resume:resume", ButtonStyle.Success, row: 0);
+                builder.WithButton("Skip", "skip:skip", ButtonStyle.Primary, row: 0);
+                builder.WithButton("Queue Options", "queue:options:1", ButtonStyle.Success, row: 0);
+                builder.WithButton("Repeat", "repeat:select", ButtonStyle.Secondary, row: 0);
+                builder.WithButton("Kill", "kill:kill", ButtonStyle.Danger, row: 0);
+                await ModifyOriginalResponseAsync(x =>
+                {
+                    x.Components = builder.Build();
+                });
             }
             else
             {
-                // Player was resumed, show only the pause button
-                builder.WithButton("Pause", "pause_resume:pause", ButtonStyle.Danger);
+                await BuildDefaultComponents(msg);
             }
-
-            // Update the original message with the new button and status
-            await ModifyOriginalResponseAsync(x =>
-            {
-                x.Content = statusMessage;
-                x.Components = builder.Build();
-            });
         }
 
         [ComponentInteraction("kill:*", runMode: RunMode.Async)]
@@ -86,7 +81,6 @@ namespace PlexBot.Core.InteractionComponents
             {
                 await player.StopAsync();
                 await player.DisconnectAsync();
-                await FollowupAsync("Player stopped and disconnected.", ephemeral: true);
             }
             else
             {
@@ -153,23 +147,19 @@ namespace PlexBot.Core.InteractionComponents
                 return;
             }
             await DeferAsync();
-
             var player = await lavaLink.GetPlayerAsync(Context.Interaction, true);
             if (player == null)
             {
                 await FollowupAsync("No active player found.", ephemeral: true);
                 return;
             }
-
             await player.SkipAsync();
-            await FollowupAsync("Skipped the current track.", ephemeral: true);
         }
 
         [ComponentInteraction("queue:*", runMode: RunMode.Async)]
         public async Task HandleQueueInteraction(string customId)
         {
             await DeferAsync();
-            Console.WriteLine($"\nQueue Button: {customId}\n"); // debug
             string[] args = customId.Split(':');
             if (args.Length < 2)
             {
@@ -182,43 +172,79 @@ namespace PlexBot.Core.InteractionComponents
                 await FollowupAsync("Invalid page number.", ephemeral: true);
                 return;
             }
-            WriteLine($"Action: {action}, Current Page Before Switch: {currentPage}"); // debug
             CustomPlayer? player = await lavaLink.GetPlayerAsync(Context.Interaction, true);
             if (player == null || player.Queue.Count == 0)
             {
                 await FollowupAsync("The queue is currently empty.", ephemeral: true);
                 return;
             }
+            RestInteractionMessage msg = await Context.Interaction.GetOriginalResponseAsync();
             switch (action)
             {
+                case "options":
+                    ComponentBuilder newComponents = new ComponentBuilder()
+                        .WithButton("View Queue", "queue:view:1", ButtonStyle.Success, row: 1)
+                        .WithButton("Shuffle", "queue:shuffle:1", ButtonStyle.Primary, row: 0)
+                        .WithButton("Edit", $"queue:edit:1", ButtonStyle.Primary, row: 0)
+                        .WithButton("Clear", "queue:clear:1", ButtonStyle.Danger, row: 0)
+                        .WithButton("Return Buttons", "queue:return:1", ButtonStyle.Danger, row: 0);
+                    await ModifyOriginalResponseAsync(msg =>
+                    {
+                        msg.Components = newComponents.Build();
+                    });
+                    return;
                 case "view":
-                    Console.WriteLine("View current page"); // debug
                     break;
                 case "next":
                     currentPage++;
-                    Console.WriteLine("Incremented Page Number to: " + currentPage); // debug
                     break;
                 case "back":
                     currentPage = Math.Max(1, currentPage - 1);
-                    Console.WriteLine("Decremented Page Number to: " + currentPage); // debug
                     break;
                 case "shuffle":
-                    await player.Queue.ShuffleAsync();
-                    currentPage = 1;
-                    Console.WriteLine("Shuffled Queue, Reset Page to: " + currentPage); // debug
-                    break;
-                case "playNext":
-                    // TODO: This should be moved to the select menu
-                    await NextTrack(player, currentPage);
-                    return;
+                    if (msg.Embeds.Count != 0)
+                    {
+                        string title = msg.Embeds.First().Title;
+                        if (title == "Now Playing")
+                        {
+                            await BuildDefaultComponents(msg);
+                            return;
+                        }
+                        else
+                        {
+                            await player.Queue.ShuffleAsync();
+                            currentPage = 1;
+                        }
+                    }
+                        break;
                 case "edit":
-#warning TODO: Create a select menu to choose if the user wants to remove a track, move a track, or cancel
-                    await FollowupAsync("Edit Queue is not yet implemented.", ephemeral: true);
+                    SelectMenuBuilder menu = new SelectMenuBuilder()
+                        .WithCustomId("queue:edit")
+                        .WithPlaceholder("How do you want to edit the Queue?");
+                    menu.AddOption("Play Next", "playNext", "Move A Track to The Top");
+                    menu.AddOption("Remove", "remove", "Remove Track(s) From The Queue");
+                    menu.AddOption("Rearrange", "rearrange", "Move items around the queue");
+                    ComponentBuilder menuComponents = new ComponentBuilder().WithSelectMenu(menu);
+                    await FollowupAsync("Select an option to edit the queue:", components: menuComponents.Build(), ephemeral: true);
                     return;
                 case "clear":
                     await player.Queue.ClearAsync();
-                    await Context.Interaction.DeleteOriginalResponseAsync();
-                    await FollowupAsync("Queue cleared.", ephemeral: true);
+                    if (msg.Embeds.Count != 0)
+                    {
+                        string title = msg.Embeds.First().Title;
+                        if (title == "Now Playing")
+                        {
+                            await BuildDefaultComponents(msg);
+                            return;
+                        }
+                        else
+                        { 
+                            await Context.Interaction.DeleteOriginalResponseAsync();
+                        }
+                    }
+                    return;
+                case "return":
+                    await BuildDefaultComponents(msg);
                     return;
                 case "close":
                     await Context.Interaction.DeleteOriginalResponseAsync();
@@ -226,18 +252,17 @@ namespace PlexBot.Core.InteractionComponents
             }
             EmbedBuilder embed = CreateQueueEmbed(player, currentPage);
             ComponentBuilder components = BuildQueueComponents(currentPage, player.Queue.Count, 23);
-            Console.WriteLine($"Modifying Response to Show Page: {currentPage}");
-            RestInteractionMessage msg = await Context.Interaction.GetOriginalResponseAsync();
-            if (msg.Embeds.Any())
+            if (msg.Embeds.Count != 0)
             {
                 string title = msg.Embeds.First().Title;
                 if (title == "Now Playing")
                 {
-                    await FollowupAsync(embed: embed.Build(), components: components.Build(), ephemeral: false);
+                    await FollowupAsync(embed: embed.Build(), components: components.Build(), ephemeral: true);
                 }
                 else
                 {
-                    await ModifyOriginalResponseAsync(msg =>
+                    IComponentInteraction interaction = (IComponentInteraction)Context.Interaction;
+                    await interaction.ModifyOriginalResponseAsync(msg =>
                     {
                         msg.Embed = embed.Build();
                         msg.Components = components.Build();
@@ -246,11 +271,11 @@ namespace PlexBot.Core.InteractionComponents
             }
             else
             {
-                await FollowupAsync(embed: embed.Build(), components: components.Build(), ephemeral: false);
+                await FollowupAsync(embed: embed.Build(), components: components.Build(), ephemeral: true);
             }
         }
 
-        private ComponentBuilder BuildQueueComponents(int currentPage, int totalItems, int itemsPerPage)
+        private static ComponentBuilder BuildQueueComponents(int currentPage, int totalItems, int itemsPerPage)
         {
             ComponentBuilder components = new ComponentBuilder()
                 .WithButton("Back", $"queue:back:{currentPage}", ButtonStyle.Secondary, row: 1, disabled: currentPage == 1)
@@ -260,6 +285,20 @@ namespace PlexBot.Core.InteractionComponents
                 .WithButton("Clear Queue", "queue:clear:1", ButtonStyle.Danger, row: 0)
                 .WithButton("Close", "queue:close:1", ButtonStyle.Danger, row: 0);
             return components;
+        }
+
+        private async Task BuildDefaultComponents(RestInteractionMessage originalResponse)
+        {
+            ComponentBuilder components = new ComponentBuilder()
+                .WithButton("Pause", "pause_resume:pause", ButtonStyle.Secondary, row: 0) 
+                .WithButton("Skip", "skip:skip", ButtonStyle.Primary, row: 0)
+                .WithButton("Queue Options", "queue:options:1", ButtonStyle.Success, row: 0)
+                .WithButton("Repeat", "repeat:select", ButtonStyle.Secondary, row: 0)
+                .WithButton("Kill", "kill:kill", ButtonStyle.Danger, row: 0);
+            await originalResponse.ModifyAsync(props =>
+            {
+                props.Components = components.Build();
+            });
         }
 
         private static EmbedBuilder CreateQueueEmbed(QueuedLavalinkPlayer player, int currentPage, int itemsPerPage = 23)
@@ -307,29 +346,6 @@ namespace PlexBot.Core.InteractionComponents
                 }
             }
             return embed;
-        }
-
-        private async Task NextTrack(QueuedLavalinkPlayer player, int currentPage)
-        {
-            int itemsPerPage = 23;
-            int startIndex = (currentPage - 1) * itemsPerPage;
-            List<ITrackQueueItem> queueItems = player.Queue.Skip(startIndex).Take(itemsPerPage).ToList();
-            List<SelectMenuOptionBuilder> options = queueItems.Select((track, index) => new SelectMenuOptionBuilder()
-                .WithLabel($"{startIndex + index + 1}: {track?.Track!.Title}")
-                .WithValue($"{startIndex + index}")
-                .WithDescription($"Move to play next")).ToList();
-            SelectMenuBuilder menu = new SelectMenuBuilder()
-                .WithCustomId("queue:selectNext")
-                .WithPlaceholder("Select a track to play next")
-                .WithOptions(options)
-                .WithMinValues(1)
-                .WithMaxValues(1);
-            ComponentBuilder builder = new ComponentBuilder().WithSelectMenu(menu);
-            await ModifyOriginalResponseAsync(msg =>
-            {
-                msg.Components = builder.Build();
-                msg.Content = "Select a track to play next:";
-            });
         }
     }
 }
