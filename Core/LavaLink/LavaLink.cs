@@ -129,40 +129,6 @@ namespace PlexBot.Core.LavaLink
             //await RespondAsync(embed: embed.Build(), ephemeral: true);
         }
 
-        //public async Task<List<Dictionary<string, string>>> GetQueueInfo()
-        //{
-        //    QueuedLavalinkPlayer? player = await GetPlayerAsync(interaction, true);
-        //    List<Dictionary<string, string>> queueInfo = [];
-        //    // Access the queue from the player
-        //    ITrackQueue tracks = player.Queue;
-        //    // Iterate through all tracks in the queue
-        //    foreach (ITrackQueue track in tracks)
-        //    {
-        //        if (track is CustomTrackQueueItem customTrack)
-        //        {
-        //            // Create a dictionary for each custom track
-        //            Dictionary<string, string> trackInfo = new()
-        //            {
-        //                ["Title"] = customTrack.Title ?? "Unknown Title",
-        //                ["Duration"] = customTrack.Duration ?? "00:00",
-        //                ["Artist"] = customTrack.Artist ?? "Unknown Artist",
-        //                ["Album"] = customTrack.Album ?? "Unknown Album",
-        //                ["Studio"] = customTrack.Studio ?? "Unknown Studio",
-        //                ["Artwork"] = customTrack.Artwork ?? "https://via.placeholder.com/150",
-        //                ["Url"] = customTrack.Url ?? string.Empty
-        //            };
-        //            // Add the dictionary to the list
-        //            queueInfo.Add(trackInfo);
-        //            Console.WriteLine($"Track: {trackInfo["Title"]}, Artist: {trackInfo["Artist"]}, Duration: {trackInfo["Duration"]}"); // debug
-        //        }
-        //        else
-        //        {
-        //            Console.WriteLine("Error: Track is not a CustomTrackQueueItem.");
-        //        }
-        //    }
-        //    return await Task.FromResult(queueInfo);
-        //}
-
         public async Task AddToQueue(SocketInteraction interaction, List<Dictionary<string, string>> trackDetailsList)
         {
             QueuedLavalinkPlayer? player = await GetPlayerAsync(interaction, true);

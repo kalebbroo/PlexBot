@@ -12,10 +12,13 @@ namespace PlexBot.Core.LavaLink
 
         protected override async ValueTask NotifyTrackStartedAsync(ITrackQueueItem track, CancellationToken cancellationToken = default)
         {
+            string plexUrl = Environment.GetEnvironmentVariable("PLEX_URL") ?? "";
+            string plexToken = Environment.GetEnvironmentVariable("PLEX_TOKEN") ?? "";
             try
             {
                 await base.NotifyTrackStartedAsync(track, cancellationToken).ConfigureAwait(false);
                 CustomTrackQueueItem customTrack = (CustomTrackQueueItem)track;
+                string thumbnailUrl = $"{plexUrl}{customTrack.Artwork}?X-Plex-Token={plexToken}";
                 Dictionary<string, string> customTracks = new()
                 {
                     ["Title"] = customTrack.Title ?? "Missing Title",
@@ -25,17 +28,17 @@ namespace PlexBot.Core.LavaLink
                     ["Url"] = customTrack.Url ?? "N/A",
                     ["ArtistUrl"] = customTrack.ArtistUrl ?? "N/A",
                     ["ReleaseDate"] = customTrack.ReleaseDate ?? "N/A",
-                    ["Artwork"] = customTrack.Artwork ?? "https://via.placeholder.com/150",
+                    ["Artwork"] = thumbnailUrl ?? "https://via.placeholder.com/150",
                     ["Studio"] = customTrack.Studio ?? "Missing Studio"
                 };
-                Console.WriteLine($"Track: {customTracks["Title"]}, Artist: {customTracks["Artist"]}, Duration: {customTracks["Duration"]}"); // debug
+                //Console.WriteLine($"Track: {customTracks["Title"]}, Artist: {customTracks["Artist"]}, Duration: {customTracks["Duration"]}"); // debug
                 // Build the new player embed using the custom track information
                 EmbedBuilder player = Players.Players.BuildAndSendPlayer(customTracks);
                 // Create a ComponentBuilder for the buttons
                 ComponentBuilder components = new ComponentBuilder()
                     .WithButton("Pause", "pause_resume:pause", ButtonStyle.Secondary)
                     .WithButton("Skip", "skip:skip", ButtonStyle.Primary)
-                    .WithButton("Queue", "queue:view:1", ButtonStyle.Success)
+                    .WithButton("Queue Options", "queue:options:1", ButtonStyle.Success)
                     .WithButton("Repeat", "repeat:select", ButtonStyle.Secondary)
                     .WithButton("Kill", "kill:kill", ButtonStyle.Danger);
 
@@ -47,13 +50,11 @@ namespace PlexBot.Core.LavaLink
                     await lastPlayerMessage.DeleteAsync().ConfigureAwait(false);
                     Console.WriteLine("Deleted last player message.");
                 }
-
                 // Send the new player embed to the text channel
                 await _textChannel.SendMessageAsync(components: components.Build(), embed: player.Build()).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
-                // Log the exception or handle it appropriately
                 Console.WriteLine($"An error occurred while notifying track started: {ex.Message}");
                 await _textChannel!.SendMessageAsync("An error occurred while starting the track.").ConfigureAwait(false);
             }
@@ -63,12 +64,9 @@ namespace PlexBot.Core.LavaLink
         {
             cancellationToken.ThrowIfCancellationRequested();
             ArgumentNullException.ThrowIfNull(queueItem);
-
             await base.NotifyTrackEndedAsync(queueItem, endReason, cancellationToken).ConfigureAwait(false);
-
             string trackTitle = queueItem.Track?.Title ?? "Default Title";
-
-            Console.WriteLine($"Track ended: {trackTitle}");
+            //Console.WriteLine($"Track ended: {trackTitle}");
         }
 
         public ValueTask NotifyPlayerActiveAsync(CancellationToken cancellationToken = default)

@@ -42,13 +42,11 @@ namespace PlexBot.Core.Players
                 $"{variables.GetValueOrDefault("Progress", "0:00")}/{variables["Duration"]}";
             string imageUrl = variables["Artwork"];
             string footer = $"Volume: {variables.GetValueOrDefault("Volume", "100%")}";
-
-            // TODO: Add the correct image URL
             // Create a new embed with the player information
             EmbedBuilder embed = new EmbedBuilder()
                 .WithTitle(title)
                 .WithDescription(description)
-                //.WithImageUrl(imageUrl)
+                .WithImageUrl(imageUrl)
                 .WithFooter(footer)
                 .WithColor(Color.Blue)
                 .WithTimestamp(DateTime.Now);
