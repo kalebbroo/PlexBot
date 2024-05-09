@@ -121,10 +121,11 @@ namespace PlexBot.Core.Commands
                     string label = result.Value.TryGetValue("Title", out var title) ? title : "Unknown Title";
                     string value = result.Key ?? "Unknown";
                     url = result.Value["Url"];
+                    string trackKey = result.Value["TrackKey"];
                     Console.WriteLine($"Url for {result.Key}: {url}");
                     return new SelectMenuOptionBuilder()
                         .WithLabel(result.Value["Title"] ?? "Unknown Title")
-                        .WithValue(url)
+                        .WithValue(trackKey)
                         .WithDescription(description);
                         }).ToList();
                 SelectMenuBuilder selectMenu = new SelectMenuBuilder()
