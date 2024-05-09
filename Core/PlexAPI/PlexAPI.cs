@@ -14,7 +14,7 @@ namespace PlexBot.Core.PlexAPI
         private readonly LavaLinkCommands _lavaLinkCommands = lavaLinkCommands;
 
         // Private method to perform the HTTP request
-        public async Task<string> PerformRequestAsync(string uri)
+        public async Task<string?> PerformRequestAsync(string uri)
         {
             //Console.WriteLine($"Performing request to: {uri}"); // debug
             HttpClient client = new();
@@ -30,7 +30,14 @@ namespace PlexBot.Core.PlexAPI
                 Console.WriteLine($"Failed to fetch data from Plex: {response.StatusCode}");
                 throw new Exception($"Failed to fetch data from Plex: {response.StatusCode}");
             }
+            string? contentType = response?.Content?.Headers?.ContentType?.MediaType;
+            if (contentType != "application/json")
+            {
+                Console.WriteLine($"Unexpected content type: {contentType}");
+                return null;
+            }
             string responseContent = await response.Content.ReadAsStringAsync();
+            //Console.WriteLine($"Response content: {responseContent}"); // debug
             return responseContent;
         }
 
@@ -52,13 +59,14 @@ namespace PlexBot.Core.PlexAPI
             int typeId = GetTypeID(type);
             string encodedQuery = HttpUtility.UrlEncode(query);
             string uri = $"{plexUrl}/library/sections/5/search?type={typeId}&query={encodedQuery}&limit=25";
-            string response = await PerformRequestAsync(uri);
+            string? response = await PerformRequestAsync(uri);
             if (string.IsNullOrEmpty(response))
             {
                 Console.WriteLine("No results found.");
                 throw new Exception("No results found.");
             }
             Dictionary<string, Dictionary<string, string>> results = await ParseSearchResults(response, type);
+            Console.WriteLine($"Search results: {results}"); // Debugging
             return results;
         }
 
@@ -107,6 +115,7 @@ namespace PlexBot.Core.PlexAPI
                         details["ArtistUrl"] = item["grandparentKey"]?.ToString() ?? "N/A";
                         details["Duration"] = item["duration"]?.ToString() ?? "N/A"; // Duration in milliseconds
                         details["Studio"] = item["studio"]?.ToString() ?? "N/A";
+                        details["TrackKey"] = item["key"]?.ToString() ?? "N/A";
                         List<Dictionary<string, string>> queue = [details];
                         break;
                     case "artist":
@@ -122,7 +131,7 @@ namespace PlexBot.Core.PlexAPI
                             int trackCount = 0;
                             foreach (var album in albumDetails)
                             {
-                                var tracks = await GetTracks(album["Url"]);
+                                List<Dictionary<string, string>> tracks = await GetTracks(album["Url"]);
                                 trackCount += tracks.Count;
                             }
                             details["TrackCount"] = trackCount.ToString();
@@ -190,10 +199,45 @@ namespace PlexBot.Core.PlexAPI
             }
         }
 
+        public async Task<Dictionary<string, string>> GetTrackDetails(string trackKey)
+        {
+            string uri = GetPlaybackUrl(trackKey);
+            string response = await PerformRequestAsync(uri);
+            if (string.IsNullOrEmpty(response))
+            {
+                Console.WriteLine("No track details found.");
+                return null; // Handle no data found
+            }
+            JObject jObject = JObject.Parse(response);
+            JToken item = jObject["MediaContainer"]["Metadata"].FirstOrDefault(); // Assuming only one track is expected
+            if (item == null)
+            {
+                Console.WriteLine("No track metadata available.");
+                return null;
+            }
+
+            string partKey = item.SelectToken("Media[0].Part[0].key")?.ToString() ?? "N/A";
+            string playableUrl = GetPlaybackUrl(partKey);
+
+            Dictionary<string, string> trackDetails = new()
+            {
+                ["Title"] = item["title"]?.ToString() ?? "Unknown Title",
+                ["Artist"] = item["grandparentTitle"]?.ToString() ?? "Unknown Artist",
+                ["Album"] = item["parentTitle"]?.ToString() ?? "Unknown Album",
+                ["ReleaseDate"] = item["originallyAvailableAt"]?.ToString() ?? "N/A",
+                ["Artwork"] = item["thumb"]?.ToString() ?? "N/A",
+                ["Url"] = playableUrl,
+                ["ArtistUrl"] = item["grandparentKey"]?.ToString() ?? "N/A",
+                ["Duration"] = item["duration"]?.ToString() ?? "N/A", // Duration in milliseconds
+                ["Studio"] = item["studio"]?.ToString() ?? "N/A"
+            };
+            return trackDetails;
+        }
+
         public async Task<List<Dictionary<string, string>>> GetTracks(string Key)
         {
             string uri = GetPlaybackUrl(Key);
-            string response = await PerformRequestAsync(uri);
+            string? response = await PerformRequestAsync(uri);
             if (string.IsNullOrEmpty(response))
             {
                 Console.WriteLine("No results found.");
@@ -233,7 +277,7 @@ namespace PlexBot.Core.PlexAPI
         {
             string uri = GetPlaybackUrl(artistKey + "/children");
             Console.WriteLine($"Fetching albums with URI: {uri}");
-            string response = await PerformRequestAsync(uri);
+            string? response = await PerformRequestAsync(uri);
             Console.WriteLine(response);
             if (string.IsNullOrEmpty(response))
             {
@@ -241,8 +285,8 @@ namespace PlexBot.Core.PlexAPI
                 return [];
             }
             List<Dictionary<string, string>> albums = [];
-            JObject jObject = JObject.Parse(response);
-            var items = jObject["MediaContainer"]["Metadata"];
+            JObject? jObject = JObject.Parse(response);
+            JToken? items = jObject?["MediaContainer"]?["Metadata"];
             if (items == null)
             {
                 Console.WriteLine("No album metadata available.");

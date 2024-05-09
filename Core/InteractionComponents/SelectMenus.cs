@@ -18,67 +18,85 @@ namespace PlexBot.Core.InteractionComponents
         [ComponentInteraction("search_plex:*", runMode: RunMode.Async)]
         public async Task DisplaySearchResults(string customId, string[] selections)
         {
-            await DeferAsync();
-            string selectedValue = selections.FirstOrDefault()!;
-            Console.WriteLine(selectedValue);
-            Console.WriteLine($"Custom ID: {customId}");
-            if (string.IsNullOrEmpty(customId))
+            await DeferAsync(ephemeral: true);
+            string? selectedValue = selections.FirstOrDefault();
+            if (string.IsNullOrEmpty(selectedValue))
             {
                 await FollowupAsync("No selection made.");
-                return;
-            }
-            SocketInteraction interaction = Context.Interaction;
-            if (interaction == null)
-            {
-                await FollowupAsync("An error occurred.");
-                Console.WriteLine("Interaction is null.");
                 return;
             }
 
             switch (customId)
             {
                 case "track":
-#warning TODO: Right now the selectedValue is the track URL. It needs to be the track ID Then logic to get the url from the ID needs to be added.
-                    string url = plexApi.GetPlaybackUrl(selectedValue) ?? "";
-                    if (!string.IsNullOrEmpty(url))
+                    string? jsonResponse = await plexApi.PerformRequestAsync(plexApi.GetPlaybackUrl(selectedValue));
+                    if (!string.IsNullOrEmpty(jsonResponse))
                     {
-                        Console.WriteLine($"Playing: {url}");
-
-                        string jsonResponse = await plexApi.PerformRequestAsync(url);
                         Dictionary<string, Dictionary<string, string>> parseTrack = await plexApi.ParseSearchResults(jsonResponse, customId);
-                        List<Dictionary<string, string>> track = [];
-
-                        // Iterate through each entry in the original dictionary
+                        List<Dictionary<string, string>> trackDetailsList = [];
                         foreach (var entry in parseTrack)
                         {
-                            // Create a new dictionary for each entry
-                            Dictionary<string, string> newDict = [];
-
-                            // Copy key-value pairs from the inner dictionary to the new dictionary
-                            foreach (var innerEntry in entry.Value)
+                            if (entry.Value.TryGetValue("Url", out string? value) && !string.IsNullOrEmpty(value))
                             {
-                                newDict.Add(innerEntry.Key, innerEntry.Value);
+                                string partKey = value;
+                                string fullUrl = plexApi.GetPlaybackUrl(partKey);
+                                entry.Value["Url"] = fullUrl;
+                                Console.WriteLine($"Track URL: {fullUrl}"); // Debug
                             }
-                            // Add the new dictionary to the list
-                            track.Add(newDict);
-                            // call PlayMedia with the trackUrl
-                            //await lavaLink.PlayMedia(interaction, url);
+                            trackDetailsList.Add(entry.Value);
                         }
-                        await FollowupAsync("Playing...", ephemeral: true);
+
+                        if (trackDetailsList.Count != 0)
+                        {
+                            await lavaLink.AddToQueue(Context.Interaction, trackDetailsList);
+                            await FollowupAsync("Track(s) added to queue.", ephemeral: true);
+                        }
+                        else
+                        {
+                            await FollowupAsync("No tracks found to add to the queue.", ephemeral: true);
+                        }
+                    }
+                    else
+                    {
+                        await FollowupAsync("Failed to retrieve track information.", ephemeral: true);
                     }
                     break;
                 case "album":
-                case "artist":
-                    #warning TODO: When users click an artist another select menu should appear with the albums
-                    #warning TODO: When users click an album another select menu should appear with the tracks
-
-                    #warning TODO: Break this out into a separate method (playAlbums) call it here and in the second select menu that we create for albums of atrists
-                    List<Dictionary<string, string>> tracks = await plexApi.GetTracks(selectedValue);
-                    Console.WriteLine($"Tracks: {tracks.Count}");
-                    Console.WriteLine($"Selected Value: {selectedValue}");
-                    await lavaLink.AddToQueue(interaction, tracks);
-                    await FollowupAsync($"{customId} queued for playback.", ephemeral: true);
+                    // Display albums or tracks under an artist
+                    await HandleAlbumOrArtist(selectedValue, "album");
                     break;
+
+                case "artist":
+                    // Display albums for the selected artist
+                    await HandleAlbumOrArtist(selectedValue, "artist");
+                    break;
+            }
+        }
+
+        private async Task HandleAlbumOrArtist(string selectedValue, string type)
+        {
+            List<Dictionary<string, string>> items = await plexApi.GetTracks(selectedValue);
+            if (items.Count > 0)
+            {
+                List<SelectMenuOptionBuilder> options = items.Select(item =>
+                    new SelectMenuOptionBuilder()
+                        .WithLabel(item["Title"])
+                        .WithValue(item["RatingKey"])
+                        .WithDescription($"Play {type}")).ToList();
+
+                SelectMenuBuilder menu = new SelectMenuBuilder()
+                    .WithCustomId($"plex:select_{type}")
+                    .WithPlaceholder($"Select a {type} to play")
+                    .WithOptions(options)
+                    .WithMinValues(1)
+                    .WithMaxValues(1);
+
+                ComponentBuilder components = new ComponentBuilder().WithSelectMenu(menu);
+                await FollowupAsync($"Select a {type}:", components: components.Build(), ephemeral: true);
+            }
+            else
+            {
+                await FollowupAsync($"No {type}s found for the selected value.", ephemeral: true);
             }
         }
 
