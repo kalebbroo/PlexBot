@@ -4,6 +4,7 @@ using PlexBot.Core.LavaLink;
 using Discord;
 using static System.Runtime.InteropServices.JavaScript.JSType;
 using System;
+using Newtonsoft.Json;
 
 namespace PlexBot.Core.PlexAPI
 {
@@ -23,7 +24,7 @@ namespace PlexBot.Core.PlexAPI
             request.Headers.Add("X-Plex-Token", $"{plexToken}");
             HttpResponseMessage response = await client.SendAsync(request);
             response.EnsureSuccessStatusCode();
-            //Console.WriteLine($"Response status code: {response.StatusCode}"); // debug
+            Console.WriteLine($"Response status code: {response.StatusCode}"); // debug
             // if call is not successful, throw an exception
             if (!response.IsSuccessStatusCode)
             {
@@ -36,7 +37,7 @@ namespace PlexBot.Core.PlexAPI
                 Console.WriteLine($"Unexpected content type: {contentType}");
                 return null;
             }
-            string responseContent = await response.Content.ReadAsStringAsync();
+            string responseContent = await response!.Content.ReadAsStringAsync();
             //Console.WriteLine($"Response content: {responseContent}"); // debug
             return responseContent;
         }
@@ -123,7 +124,7 @@ namespace PlexBot.Core.PlexAPI
                         details["Summary"] = item["summary"]?.ToString() ?? "No description available.";
                         details["Artwork"] = item["thumb"]?.ToString() ?? "N/A";
                         details["Url"] = item["key"]?.ToString() ?? "N/A";
-                        // Fetch album and track count
+                        details["TrackKey"] = item["key"]?.ToString() ?? "N/A";
                         try
                         {
                             List<Dictionary<string, string>> albumDetails = await GetAlbums(details["Url"]);
@@ -153,6 +154,7 @@ namespace PlexBot.Core.PlexAPI
                         details["Studio"] = item["studio"]?.ToString() ?? "N/A";
                         details["Genre"] = item["Genre"]?.ToString() ?? "N/A";
                         details["Summary"] = item["summary"]?.ToString() ?? "No description available.";
+                        details["TrackKey"] = item["key"]?.ToString() ?? "N/A";
                         // TODO: Limit the summary to 100 characters. This should be done in select menu not here
                         if (details["Summary"].Length > 100)
                         {
@@ -275,10 +277,10 @@ namespace PlexBot.Core.PlexAPI
 
         public async Task<List<Dictionary<string, string>>> GetAlbums(string artistKey)
         {
-            string uri = GetPlaybackUrl(artistKey + "/children");
-            Console.WriteLine($"Fetching albums with URI: {uri}");
+            string uri = GetPlaybackUrl(artistKey);
+            Console.WriteLine($"Fetching albums with URI: {uri}"); // Debugging
             string? response = await PerformRequestAsync(uri);
-            Console.WriteLine(response);
+            Console.WriteLine(response); // Debugging
             if (string.IsNullOrEmpty(response))
             {
                 Console.WriteLine("No albums found.");
@@ -300,7 +302,11 @@ namespace PlexBot.Core.PlexAPI
                     ["Url"] = item["key"]?.ToString() ?? "N/A"
                 };
                 albums.Add(albumDetails);
+                Console.WriteLine($"Album Title: {albumDetails["Title"]}, Album URL: {albumDetails["Url"]}"); // Debugging
+
             }
+            string json = JsonConvert.SerializeObject(albums, Formatting.Indented); // Debugging
+            Console.WriteLine($"Albums: {json}"); // Debugging
             return albums;
         }
     }
