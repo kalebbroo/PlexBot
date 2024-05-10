@@ -42,9 +42,15 @@ namespace PlexBot.Core.PlexAPI
             return responseContent;
         }
 
-        // Gets the playback URL for a media item using the part_id and the key together in the url
+        // Gets the playback URL for a media item, removing duplicated '/children' if present.
         public string GetPlaybackUrl(string partKey)
         {
+            // TODO: Figure out why /children is duplicated in the URL Then remove this band-aid fix
+            string childrenSegment = "/children";
+            if (partKey.Contains(childrenSegment + childrenSegment))
+            {
+                partKey = partKey.Replace(childrenSegment + childrenSegment, childrenSegment);
+            }
             return $"{plexUrl}{partKey}?X-Plex-Token={plexToken}";
         }
 
@@ -71,16 +77,16 @@ namespace PlexBot.Core.PlexAPI
             return results;
         }
 
-        private int GetTypeID(string type)
+        private static int GetTypeID(string type)
         {
-            switch (type.ToLower())
+            return type.ToLower() switch
             {
-                case "track": return 10;
-                case "album": return 9;
-                case "artist": return 8;
-                case "playlist": return 15;
-                default: return -1;
-            }
+                "track" => 10,
+                "album" => 9,
+                "artist" => 8,
+                "playlist" => 15,
+                _ => -1,
+            };
         }
 
         // Method to refresh the music library
@@ -190,7 +196,7 @@ namespace PlexBot.Core.PlexAPI
             try
             {
                 string uri = $"{plexUrl}/playlists?playlistType=audio";
-                string response = await PerformRequestAsync(uri);
+                string? response = await PerformRequestAsync(uri);
                 //Console.WriteLine(response); // Debugging
                 return await ParseSearchResults(response, "playlist");
             }
@@ -204,14 +210,14 @@ namespace PlexBot.Core.PlexAPI
         public async Task<Dictionary<string, string>> GetTrackDetails(string trackKey)
         {
             string uri = GetPlaybackUrl(trackKey);
-            string response = await PerformRequestAsync(uri);
+            string? response = await PerformRequestAsync(uri);
             if (string.IsNullOrEmpty(response))
             {
                 Console.WriteLine("No track details found.");
                 return null; // Handle no data found
             }
             JObject jObject = JObject.Parse(response);
-            JToken item = jObject["MediaContainer"]["Metadata"].FirstOrDefault(); // Assuming only one track is expected
+            JToken? item = jObject["MediaContainer"]["Metadata"].FirstOrDefault(); // Assuming only one track is expected
             if (item == null)
             {
                 Console.WriteLine("No track metadata available.");
@@ -268,8 +274,9 @@ namespace PlexBot.Core.PlexAPI
                     ["Url"] = playableUrl,
                     ["ArtistUrl"] = item["grandparentKey"]?.ToString() ?? "N/A",
                     ["Duration"] = item["duration"]?.ToString() ?? "N/A", // Duration in milliseconds
-                    ["Studio"] = item["studio"]?.ToString() ?? "N/A"
-                };
+                    ["Studio"] = item["studio"]?.ToString() ?? "N/A",
+                    ["Trackkey"] = item["key"]?.ToString() ?? "N/A"
+            };
                 tracks.Add(trackDetails);
             }
             return tracks;
