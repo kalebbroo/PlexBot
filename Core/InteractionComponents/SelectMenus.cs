@@ -75,28 +75,56 @@ namespace PlexBot.Core.InteractionComponents
 
         private async Task HandleAlbumOrArtist(string selectedValue, string type)
         {
-            List<Dictionary<string, string>> items = await plexApi.GetTracks(selectedValue);
-            if (items.Count > 0)
+            if (type == "artist")
             {
-                List<SelectMenuOptionBuilder> options = items.Select(item =>
+                // Fetch albums for the selected artist
+                List<Dictionary<string, string>> albums = await plexApi.GetAlbums(selectedValue);
+                if (albums.Count > 0)
+                {
+                    albums.Add(new Dictionary<string, string> { { "Title", "Play All Albums" }, { "RatingKey", "play_all" } });
+                }
+                Console.WriteLine($"Albums: {albums}"); // Debug
+                // Build select menu for albums
+                List<SelectMenuOptionBuilder> options = albums.Select(album =>
                     new SelectMenuOptionBuilder()
-                        .WithLabel(item["Title"])
-                        .WithValue(item["RatingKey"])
-                        .WithDescription($"Play {type}")).ToList();
+                        .WithLabel(album["Title"])
+                        .WithValue(album.TryGetValue("Url", out string? url) ? url : "N/A")
+                        .WithDescription("Select an album")).ToList();
 
                 SelectMenuBuilder menu = new SelectMenuBuilder()
-                    .WithCustomId($"plex:select_{type}")
-                    .WithPlaceholder($"Select a {type} to play")
+                    .WithCustomId("select_album")
+                    .WithPlaceholder("Select an album or play all")
                     .WithOptions(options)
                     .WithMinValues(1)
                     .WithMaxValues(1);
 
                 ComponentBuilder components = new ComponentBuilder().WithSelectMenu(menu);
-                await FollowupAsync($"Select a {type}:", components: components.Build(), ephemeral: true);
+                await FollowupAsync("Select an album or play all:", components: components.Build(), ephemeral: true);
             }
-            else
+            else if (type == "album")
             {
-                await FollowupAsync($"No {type}s found for the selected value.", ephemeral: true);
+                // Fetch tracks for the selected album
+                List<Dictionary<string, string>> tracks = await plexApi.GetTracks(selectedValue);
+                if (tracks.Count > 0)
+                {
+                    tracks.Add(new Dictionary<string, string> { { "Title", "Play All Tracks" }, { "RatingKey", "play_all" } });
+                }
+                // Build select menu for tracks
+                List<SelectMenuOptionBuilder> options = tracks.Select(track =>
+                    new SelectMenuOptionBuilder()
+                        .WithLabel(track["Title"])
+                        .WithValue(track["Url"])
+                        .WithDescription("Select a track")).ToList();
+
+                SelectMenuBuilder menu = new SelectMenuBuilder()
+                    .WithCustomId("select_track")
+                    .WithPlaceholder("Select a track or play all")
+                    .WithOptions(options)
+                    .WithMinValues(1)
+                    .WithMaxValues(1);
+
+                ComponentBuilder components = new ComponentBuilder().WithSelectMenu(menu);
+                await FollowupAsync("Select a track or play all:", components: components.Build(), ephemeral: true);
             }
         }
 
@@ -112,7 +140,7 @@ namespace PlexBot.Core.InteractionComponents
                     switch (selectedAction)
                     {
                         case "playNext":
-                            int totalItems = player.Queue.Count;
+                            int totalItems = player!.Queue.Count;
                             int itemsPerPage = 24; // Max number of items per select menu
                             int totalPages = (int)Math.Ceiling(totalItems / (double)itemsPerPage);
                             for (int page = 1; page <= totalPages; page++)
