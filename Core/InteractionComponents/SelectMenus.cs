@@ -45,7 +45,6 @@ namespace PlexBot.Core.InteractionComponents
                             }
                             trackDetailsList.Add(entry.Value);
                         }
-
                         if (trackDetailsList.Count != 0)
                         {
                             await lavaLink.AddToQueue(Context.Interaction, trackDetailsList);
@@ -65,7 +64,6 @@ namespace PlexBot.Core.InteractionComponents
                     // Display albums or tracks under an artist
                     await HandleAlbumOrArtist(selectedValue, "album");
                     break;
-
                 case "artist":
                     // Display albums for the selected artist
                     await HandleAlbumOrArtist(selectedValue, "artist");
@@ -92,7 +90,7 @@ namespace PlexBot.Core.InteractionComponents
                         .WithDescription("Select an album")).ToList();
 
                 SelectMenuBuilder menu = new SelectMenuBuilder()
-                    .WithCustomId("select_album")
+                    .WithCustomId("handle_search:artist")
                     .WithPlaceholder("Select an album or play all")
                     .WithOptions(options)
                     .WithMinValues(1)
@@ -113,11 +111,11 @@ namespace PlexBot.Core.InteractionComponents
                 List<SelectMenuOptionBuilder> options = tracks.Select(track =>
                     new SelectMenuOptionBuilder()
                         .WithLabel(track["Title"])
-                        .WithValue(track["Url"])
+                        .WithValue(track.TryGetValue("Url", out string? url) ? url : "N/A")
                         .WithDescription("Select a track")).ToList();
 
                 SelectMenuBuilder menu = new SelectMenuBuilder()
-                    .WithCustomId("select_track")
+                    .WithCustomId("handle_search:album")
                     .WithPlaceholder("Select a track or play all")
                     .WithOptions(options)
                     .WithMinValues(1)
@@ -125,6 +123,114 @@ namespace PlexBot.Core.InteractionComponents
 
                 ComponentBuilder components = new ComponentBuilder().WithSelectMenu(menu);
                 await FollowupAsync("Select a track or play all:", components: components.Build(), ephemeral: true);
+            }
+        }
+
+        [ComponentInteraction("handle_search:*", runMode: RunMode.Async)]
+        public async Task HandleSearchResults(string customId, string[] selections)
+        {
+            await DeferAsync(ephemeral: true);
+            string selectedValue = selections.FirstOrDefault() ?? string.Empty;
+            if (string.IsNullOrEmpty(selectedValue))
+            {
+                await FollowupAsync("No selection made.");
+                return;
+            }
+            switch (customId)
+            {
+                case "artist":
+                    // Handle artist-specific actions
+                    if (selectedValue == "play_all")
+                    {
+                        // Implement logic to play all albums for the selected artist
+                        await FollowupAsync("Playing all albums for the selected artist.", ephemeral: true);
+                        // Example call to a function that handles playback
+                        // await PlayAllAlbumsForArtist(artistId);
+                    }
+                    else
+                    {
+                        // Fetch albums for the selected artist and update the menu
+                        List<Dictionary<string, string>> albums = await plexApi.GetAlbums(selectedValue);
+                        if (albums.Count > 0)
+                        {
+                            albums.Add(new Dictionary<string, string> { { "Title", "Play All Albums" }, { "RatingKey", "play_all" } });
+                        }
+                        List<SelectMenuOptionBuilder> options = albums.Select(album =>
+                            new SelectMenuOptionBuilder()
+                                .WithLabel(album["Title"])
+                                .WithValue(album.TryGetValue("Url", out string? url) ? url : "N/A")
+                                .WithDescription("Select an album to play or play all")).ToList();
+
+                        SelectMenuBuilder menu = new SelectMenuBuilder()
+                            .WithCustomId("handle_search:album")
+                            .WithPlaceholder("Select an album or play all")
+                            .WithOptions(options)
+                            .WithMinValues(1)
+                            .WithMaxValues(1);
+
+                        ComponentBuilder components = new ComponentBuilder().WithSelectMenu(menu);
+                        await FollowupAsync("Select an album or play all:", components: components.Build(), ephemeral: true);
+                    }
+                    break;
+                case "album":
+                    // Handle album-specific actions
+                    if (selectedValue == "play_all")
+                    {
+                        // Implement logic to play all tracks for the selected album
+                        await FollowupAsync("Playing all tracks for the selected album.", ephemeral: true);
+                        // Example call to a function that handles playback
+                        // await PlayAllTracksForAlbum(albumId);
+                    }
+                    else
+                    {
+                        // Fetch tracks for the selected album and update the menu
+                        List<Dictionary<string, string>> tracks = await plexApi.GetTracks(selectedValue);
+                        if (tracks.Count > 0)
+                        {
+                            tracks.Add(new Dictionary<string, string> { { "Title", "Play All Tracks" }, { "RatingKey", "play_all" } });
+                        }
+                        List<SelectMenuOptionBuilder> options = tracks.Select(track =>
+                            new SelectMenuOptionBuilder()
+                                .WithLabel(track["Title"])
+                                .WithValue(track.TryGetValue("Url", out string? url) ? url : "N/A")
+                                .WithDescription("Select a track to play or play all")).ToList();
+
+                        SelectMenuBuilder menu = new SelectMenuBuilder()
+                            .WithCustomId("handle_search:track")
+                            .WithPlaceholder("Select a track or play all")
+                            .WithOptions(options)
+                            .WithMinValues(1)
+                            .WithMaxValues(1);
+
+                        ComponentBuilder components = new ComponentBuilder().WithSelectMenu(menu);
+                        await FollowupAsync("Select a track or play all:", components: components.Build(), ephemeral: true);
+                    }
+                    break;
+                case "track":
+                    // Specific track selected or play all tracks in an album
+                    if (selectedValue == "play_all")
+                    {
+                        // Assume you have a method to get all tracks of an album
+                        List<Dictionary<string, string>> tracks = await plexApi.GetTracks(selectedValue);
+                        await lavaLink.AddToQueue(Context.Interaction, tracks);
+                        await FollowupAsync("Playing all tracks.");
+                    }
+                    else
+                    {
+                        // Single track selection, fetch and queue the track
+                        List<Dictionary<string, string>> tracks = await plexApi.GetTracks(selectedValue);
+                        Dictionary<string, string>? trackDetails = tracks.FirstOrDefault(t => t["Url"].Contains(selectedValue));
+                        if (trackDetails != null)
+                        {
+                            await lavaLink.AddToQueue(Context.Interaction, new List<Dictionary<string, string>> { trackDetails });
+                            await FollowupAsync($"Playing track: {trackDetails["Title"]}");
+                        }
+                        else
+                        {
+                            await FollowupAsync("Track details not found.");
+                        }
+                    }
+                    break;
             }
         }
 

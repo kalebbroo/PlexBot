@@ -33,10 +33,10 @@ namespace PlexBot.Core.LavaLink
                 TextChannel = interaction.Channel as ITextChannel
             };
             IOptions<CustomPlayerOptions> optionsWrapper = Options.Create(options);
-            PlayerFactory<CustomPlayer, CustomPlayerOptions> factory = (properties, options) =>
+            ValueTask<CustomPlayer> factory(IPlayerProperties<CustomPlayer, CustomPlayerOptions> properties, CancellationToken options = default)
             {
                 return new ValueTask<CustomPlayer>(new CustomPlayer(properties, this));
-            };
+            }
             PlayerResult<CustomPlayer> result = await _audioService.Players
                 .RetrieveAsync<CustomPlayer, CustomPlayerOptions>(guildId, voiceChannelId, factory, optionsWrapper, retrieveOptions)
                 .ConfigureAwait(false);

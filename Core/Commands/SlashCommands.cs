@@ -89,7 +89,7 @@ namespace PlexBot.Core.Commands
          Choice("youtube", "youtube")] string type,
         [Summary("query", "The query to search for")] string query)
         {
-            await DeferAsync();
+            await DeferAsync(ephemeral: true);
             Console.WriteLine($"Searching for: {query} as a {type}...");
 
             try
@@ -168,7 +168,6 @@ namespace PlexBot.Core.Commands
                 }
                 SocketInteraction interaction = Context.Interaction;
                 await lavaLinkCommands.AddToQueue(interaction, trackDetails);
-                await FollowupAsync($"Playing playlist with {trackDetails.Count} tracks.", ephemeral: true);
             }
             catch (Exception ex)
             {
@@ -233,7 +232,7 @@ namespace PlexBot.Core.Commands
                     return;
             }
             uri = plexApi.GetSearchUrl(uri);
-            string response = await plexApi.PerformRequestAsync(uri);
+            string? response = await plexApi.PerformRequestAsync(uri);
             Console.WriteLine(response);
             await FollowupAsync("Check the console for the response.");
         }
