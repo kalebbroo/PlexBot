@@ -25,105 +25,86 @@ namespace PlexBot.Core.InteractionComponents
                 await FollowupAsync("No selection made.");
                 return;
             }
-
             switch (customId)
             {
                 case "track":
-                    string? jsonResponse = await plexApi.PerformRequestAsync(plexApi.GetPlaybackUrl(selectedValue));
-                    if (!string.IsNullOrEmpty(jsonResponse))
-                    {
-                        Dictionary<string, Dictionary<string, string>> parseTrack = await plexApi.ParseSearchResults(jsonResponse, customId);
-                        List<Dictionary<string, string>> trackDetailsList = [];
-                        foreach (var entry in parseTrack)
-                        {
-                            if (entry.Value.TryGetValue("Url", out string? value) && !string.IsNullOrEmpty(value))
-                            {
-                                string partKey = value;
-                                string fullUrl = plexApi.GetPlaybackUrl(partKey);
-                                entry.Value["Url"] = fullUrl;
-                                Console.WriteLine($"Track URL: {fullUrl}"); // Debug
-                            }
-                            trackDetailsList.Add(entry.Value);
-                        }
-                        if (trackDetailsList.Count != 0)
-                        {
-                            await lavaLink.AddToQueue(Context.Interaction, trackDetailsList);
-                            await FollowupAsync("Track(s) added to queue.", ephemeral: true);
-                        }
-                        else
-                        {
-                            await FollowupAsync("No tracks found to add to the queue.", ephemeral: true);
-                        }
-                    }
-                    else
-                    {
-                        await FollowupAsync("Failed to retrieve track information.", ephemeral: true);
-                    }
+                    await HandleTrackSelection(selectedValue);
                     break;
                 case "album":
-                    // Display albums or tracks under an artist
-                    await HandleAlbumOrArtist(selectedValue, "album");
+                    await HandleAlbumSelection(selectedValue);
                     break;
                 case "artist":
-                    // Display albums for the selected artist
-                    await HandleAlbumOrArtist(selectedValue, "artist");
+                    await HandleArtistSelection(selectedValue);
                     break;
             }
         }
 
-        private async Task HandleAlbumOrArtist(string selectedValue, string type)
+        private async Task HandleTrackSelection(string selectedValue)
         {
-            if (type == "artist")
+            string? jsonResponse = await plexApi.PerformRequestAsync(plexApi.GetPlaybackUrl(selectedValue));
+            if (!string.IsNullOrEmpty(jsonResponse))
             {
-                // Fetch albums for the selected artist
-                List<Dictionary<string, string>> albums = await plexApi.GetAlbums(selectedValue);
-                if (albums.Count > 0)
-                {
-                    albums.Add(new Dictionary<string, string> { { "Title", "Play All Albums" }, { "RatingKey", "play_all" } });
-                }
-                Console.WriteLine($"Albums: {albums}"); // Debug
-                // Build select menu for albums
-                List<SelectMenuOptionBuilder> options = albums.Select(album =>
-                    new SelectMenuOptionBuilder()
-                        .WithLabel(album["Title"])
-                        .WithValue(album.TryGetValue("Url", out string? url) ? url : "N/A")
-                        .WithDescription("Select an album")).ToList();
-
-                SelectMenuBuilder menu = new SelectMenuBuilder()
-                    .WithCustomId("handle_search:artist")
-                    .WithPlaceholder("Select an album or play all")
-                    .WithOptions(options)
-                    .WithMinValues(1)
-                    .WithMaxValues(1);
-
-                ComponentBuilder components = new ComponentBuilder().WithSelectMenu(menu);
-                await FollowupAsync("Select an album or play all:", components: components.Build(), ephemeral: true);
+                Dictionary<string, Dictionary<string, string>> parseTrack = await plexApi.ParseSearchResults(jsonResponse, "track");
+                List<Dictionary<string, string>> trackDetailsList = [.. parseTrack.Values];
+                await lavaLink.AddToQueue(Context.Interaction, trackDetailsList);
+                await FollowupAsync("Track(s) added to queue.", ephemeral: true);
             }
-            else if (type == "album")
+            else
             {
-                // Fetch tracks for the selected album
-                List<Dictionary<string, string>> tracks = await plexApi.GetTracks(selectedValue);
-                if (tracks.Count > 0)
-                {
-                    tracks.Add(new Dictionary<string, string> { { "Title", "Play All Tracks" }, { "RatingKey", "play_all" } });
-                }
-                // Build select menu for tracks
-                List<SelectMenuOptionBuilder> options = tracks.Select(track =>
-                    new SelectMenuOptionBuilder()
-                        .WithLabel(track["Title"])
-                        .WithValue(track.TryGetValue("Url", out string? url) ? url : "N/A")
-                        .WithDescription("Select a track")).ToList();
-
-                SelectMenuBuilder menu = new SelectMenuBuilder()
-                    .WithCustomId("handle_search:album")
-                    .WithPlaceholder("Select a track or play all")
-                    .WithOptions(options)
-                    .WithMinValues(1)
-                    .WithMaxValues(1);
-
-                ComponentBuilder components = new ComponentBuilder().WithSelectMenu(menu);
-                await FollowupAsync("Select a track or play all:", components: components.Build(), ephemeral: true);
+                await FollowupAsync("Failed to retrieve track information.", ephemeral: true);
             }
+        }
+
+        private async Task HandleAlbumSelection(string selectedValue)
+        {
+            List<Dictionary<string, string>> tracks = await plexApi.GetTracks(selectedValue);
+            tracks.Add(new Dictionary<string, string> { { "Title", "Play All Tracks" }, { "RatingKey", "play_all" } });
+            List<SelectMenuOptionBuilder> options = tracks.Select(track =>
+                new SelectMenuOptionBuilder()
+                    .WithLabel(track["Title"])
+                    .WithValue(track.TryGetValue("TrackKey", out string? trackKey) ? trackKey : "N/A")
+                    .WithDescription("Select a track")).ToList();
+            SelectMenuBuilder menu = new SelectMenuBuilder()
+                .WithCustomId("handle_search:album")
+                .WithPlaceholder("Select a track or play all")
+                .WithOptions(options)
+                .WithMinValues(1)
+                .WithMaxValues(1);
+            Console.WriteLine($"HandleAlbumSelection: {tracks[0].TryGetValue("TrackKey", out string? albumKey)}");
+            ComponentBuilder components = new ComponentBuilder().WithSelectMenu(menu);
+            IComponentInteraction interaction = (IComponentInteraction)Context.Interaction;
+            await interaction.ModifyOriginalResponseAsync(msg =>
+            {
+                msg.Content = "Select a track or play all:";
+                msg.Components = components.Build();
+            });
+            //await FollowupAsync("Select a track or play all:", components: components.Build(), ephemeral: true);
+        }
+
+        private async Task HandleArtistSelection(string selectedValue)
+        {
+            List<Dictionary<string, string>> albums = await plexApi.GetAlbums(selectedValue);
+            albums.Add(new Dictionary<string, string> { { "Title", "Play All Albums" }, { "RatingKey", "play_all" } });
+            List<SelectMenuOptionBuilder> options = albums.Select(album =>
+                new SelectMenuOptionBuilder()
+                    .WithLabel(album["Title"])
+                    .WithValue(album.TryGetValue("TrackKey", out string? albumKey) ? albumKey : "N/A")
+                    .WithDescription("Select an album")).ToList();
+            SelectMenuBuilder menu = new SelectMenuBuilder()
+                .WithCustomId("handle_search:artist")
+                .WithPlaceholder("Select an album or play all")
+                .WithOptions(options)
+                .WithMinValues(1)
+                .WithMaxValues(1);
+            ComponentBuilder components = new ComponentBuilder().WithSelectMenu(menu);
+            Console.WriteLine($"HandleArtistSelection: {albums[0].TryGetValue("TrackKey", out string? albumKey)}");
+            IComponentInteraction interaction = (IComponentInteraction)Context.Interaction;
+            await interaction.ModifyOriginalResponseAsync(msg =>
+            {
+                msg.Content = "Select an album or play all:";
+                msg.Components = components.Build();
+            });
+            //await FollowupAsync("Select an album or play all:", components: components.Build(), ephemeral: true);
         }
 
         [ComponentInteraction("handle_search:*", runMode: RunMode.Async)]
@@ -139,98 +120,73 @@ namespace PlexBot.Core.InteractionComponents
             switch (customId)
             {
                 case "artist":
-                    // Handle artist-specific actions
-                    if (selectedValue == "play_all")
-                    {
-                        // Implement logic to play all albums for the selected artist
-                        await FollowupAsync("Playing all albums for the selected artist.", ephemeral: true);
-                        // Example call to a function that handles playback
-                        // await PlayAllAlbumsForArtist(artistId);
-                    }
-                    else
-                    {
-                        // Fetch albums for the selected artist and update the menu
-                        List<Dictionary<string, string>> albums = await plexApi.GetAlbums(selectedValue);
-                        if (albums.Count > 0)
-                        {
-                            albums.Add(new Dictionary<string, string> { { "Title", "Play All Albums" }, { "RatingKey", "play_all" } });
-                        }
-                        List<SelectMenuOptionBuilder> options = albums.Select(album =>
-                            new SelectMenuOptionBuilder()
-                                .WithLabel(album["Title"])
-                                .WithValue(album.TryGetValue("Url", out string? url) ? url : "N/A")
-                                .WithDescription("Select an album to play or play all")).ToList();
-
-                        SelectMenuBuilder menu = new SelectMenuBuilder()
-                            .WithCustomId("handle_search:album")
-                            .WithPlaceholder("Select an album or play all")
-                            .WithOptions(options)
-                            .WithMinValues(1)
-                            .WithMaxValues(1);
-
-                        ComponentBuilder components = new ComponentBuilder().WithSelectMenu(menu);
-                        await FollowupAsync("Select an album or play all:", components: components.Build(), ephemeral: true);
-                    }
+                    await HandleArtistSearchResult(selectedValue);
                     break;
                 case "album":
-                    // Handle album-specific actions
-                    if (selectedValue == "play_all")
-                    {
-                        // Implement logic to play all tracks for the selected album
-                        await FollowupAsync("Playing all tracks for the selected album.", ephemeral: true);
-                        // Example call to a function that handles playback
-                        // await PlayAllTracksForAlbum(albumId);
-                    }
-                    else
-                    {
-                        // Fetch tracks for the selected album and update the menu
-                        List<Dictionary<string, string>> tracks = await plexApi.GetTracks(selectedValue);
-                        if (tracks.Count > 0)
-                        {
-                            tracks.Add(new Dictionary<string, string> { { "Title", "Play All Tracks" }, { "RatingKey", "play_all" } });
-                        }
-                        List<SelectMenuOptionBuilder> options = tracks.Select(track =>
-                            new SelectMenuOptionBuilder()
-                                .WithLabel(track["Title"])
-                                .WithValue(track.TryGetValue("Url", out string? url) ? url : "N/A")
-                                .WithDescription("Select a track to play or play all")).ToList();
-
-                        SelectMenuBuilder menu = new SelectMenuBuilder()
-                            .WithCustomId("handle_search:track")
-                            .WithPlaceholder("Select a track or play all")
-                            .WithOptions(options)
-                            .WithMinValues(1)
-                            .WithMaxValues(1);
-
-                        ComponentBuilder components = new ComponentBuilder().WithSelectMenu(menu);
-                        await FollowupAsync("Select a track or play all:", components: components.Build(), ephemeral: true);
-                    }
+                    await HandleAlbumSearchResult(selectedValue);
                     break;
                 case "track":
-                    // Specific track selected or play all tracks in an album
-                    if (selectedValue == "play_all")
-                    {
-                        // Assume you have a method to get all tracks of an album
-                        List<Dictionary<string, string>> tracks = await plexApi.GetTracks(selectedValue);
-                        await lavaLink.AddToQueue(Context.Interaction, tracks);
-                        await FollowupAsync("Playing all tracks.");
-                    }
-                    else
-                    {
-                        // Single track selection, fetch and queue the track
-                        List<Dictionary<string, string>> tracks = await plexApi.GetTracks(selectedValue);
-                        Dictionary<string, string>? trackDetails = tracks.FirstOrDefault(t => t["Url"].Contains(selectedValue));
-                        if (trackDetails != null)
-                        {
-                            await lavaLink.AddToQueue(Context.Interaction, new List<Dictionary<string, string>> { trackDetails });
-                            await FollowupAsync($"Playing track: {trackDetails["Title"]}");
-                        }
-                        else
-                        {
-                            await FollowupAsync("Track details not found.");
-                        }
-                    }
+                    await HandleTrackSearchResult(selectedValue);
                     break;
+            }
+        }
+
+        private async Task HandleArtistSearchResult(string selectedValue)
+        {
+            if (selectedValue == "play_all")
+            {
+                List<Dictionary<string, string>> albums = await plexApi.GetAlbums(selectedValue);
+                List<Dictionary<string, string>> tracks = new List<Dictionary<string, string>>();
+                foreach (var album in albums)
+                {
+                    tracks.AddRange(await plexApi.GetTracks(album["RatingKey"]));
+                }
+                await lavaLink.AddToQueue(Context.Interaction, tracks);
+                await ModifyOriginalResponseAsync(msg => msg.Content = "Playing all albums for the selected artist.");
+            }
+            else
+            {
+                await HandleAlbumSelection(selectedValue);
+            }
+        }
+
+        private async Task HandleAlbumSearchResult(string selectedValue)
+        {
+            if (selectedValue == "play_all")
+            {
+                List<Dictionary<string, string>> tracks = await plexApi.GetTracks(selectedValue);
+                await lavaLink.AddToQueue(Context.Interaction, tracks);
+                await ModifyOriginalResponseAsync(msg => msg.Content = "Playing all tracks for the selected album.");
+            }
+            else
+            {
+                List<Dictionary<string, string>> tracks = await plexApi.GetTracks(selectedValue);
+                await lavaLink.AddToQueue(Context.Interaction, tracks);
+                await FollowupAsync("Track(s) added to queue.", ephemeral: true);
+            }
+        }
+
+        private async Task HandleTrackSearchResult(string selectedValue)
+        {
+            if (selectedValue == "play_all")
+            {
+                List<Dictionary<string, string>> tracks = await plexApi.GetTracks(selectedValue);
+                await lavaLink.AddToQueue(Context.Interaction, tracks);
+                await FollowupAsync("Playing all tracks.");
+            }
+            else
+            {
+                // Get the track details using the selectedValue as the track key
+                Dictionary<string, string>? trackDetails = await plexApi.GetTrackDetails(selectedValue);
+                if (trackDetails != null)
+                {
+                    await lavaLink.AddToQueue(Context.Interaction, [trackDetails]);
+                    await FollowupAsync($"Playing track: {trackDetails["Title"]}");
+                }
+                else
+                {
+                    await FollowupAsync("Track details not found.");
+                }
             }
         }
 

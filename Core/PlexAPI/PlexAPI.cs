@@ -17,7 +17,7 @@ namespace PlexBot.Core.PlexAPI
         // Private method to perform the HTTP request
         public async Task<string?> PerformRequestAsync(string uri)
         {
-            //Console.WriteLine($"Performing request to: {uri}"); // debug
+            Console.WriteLine($"PerformRequestAsync used this URI: {uri}"); // debug
             HttpClient client = new();
             HttpRequestMessage request = new(HttpMethod.Get, uri);
             request.Headers.Add("Accept", "application/json");
@@ -45,6 +45,12 @@ namespace PlexBot.Core.PlexAPI
         // Gets the playback URL for a media item, removing duplicated '/children' if present.
         public string GetPlaybackUrl(string partKey)
         {
+            // Check if the partKey already starts with "http"
+            if (partKey.StartsWith("http"))
+            {
+                return partKey;
+            }
+
             // TODO: Figure out why /children is duplicated in the URL Then remove this band-aid fix
             string childrenSegment = "/children";
             if (partKey.Contains(childrenSegment + childrenSegment))
@@ -275,7 +281,7 @@ namespace PlexBot.Core.PlexAPI
                     ["ArtistUrl"] = item["grandparentKey"]?.ToString() ?? "N/A",
                     ["Duration"] = item["duration"]?.ToString() ?? "N/A", // Duration in milliseconds
                     ["Studio"] = item["studio"]?.ToString() ?? "N/A",
-                    ["Trackkey"] = item["key"]?.ToString() ?? "N/A"
+                    ["TrackKey"] = item["key"]?.ToString() ?? "N/A"
             };
                 tracks.Add(trackDetails);
             }
@@ -306,7 +312,8 @@ namespace PlexBot.Core.PlexAPI
                 Dictionary<string, string> albumDetails = new()
                 {
                     ["Title"] = item["title"]?.ToString() ?? "Unknown Album",
-                    ["Url"] = item["key"]?.ToString() ?? "N/A"
+                    ["Url"] = item["key"]?.ToString() ?? "N/A",
+                    ["TrackKey"] = item["key"]?.ToString() ?? "N/A"
                 };
                 albums.Add(albumDetails);
                 Console.WriteLine($"Album Title: {albumDetails["Title"]}, Album URL: {albumDetails["Url"]}"); // Debugging

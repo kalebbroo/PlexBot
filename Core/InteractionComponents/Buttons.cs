@@ -167,6 +167,7 @@ namespace PlexBot.Core.InteractionComponents
                 return;
             }
             string action = args[0]; // 'view', 'next', 'back', 'shuffle', 'playNext', or 'clear'
+            WriteLine($"Queue Options Pressed: {action}");
             if (!int.TryParse(args[1], out int currentPage)) // Page number
             {
                 await FollowupAsync("Invalid page number.", ephemeral: true);
