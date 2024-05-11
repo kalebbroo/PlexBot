@@ -115,14 +115,15 @@ namespace PlexBot.Core.Commands
                     // Ensure description is truncated to 97 characters plus ellipsis.
                     description = description.Length > 100 ? description[..97] + "..." : description;
                     string trackcount = result.Value.TryGetValue("TrackCount", out var count) ? count : "Unknown";
-                    Console.WriteLine($"Number of Tracks: {trackcount}");
+                    Console.WriteLine($"Number of Tracks: {trackcount}"); // Debugging
 
                     // Safeguarding against null values in labels and values
                     string label = result.Value.TryGetValue("Title", out var title) ? title : "Unknown Title";
                     string value = result.Key ?? "Unknown";
                     url = result.Value["Url"];
                     string trackKey = result.Value["TrackKey"];
-                    Console.WriteLine($"Url for {result.Key}: {url}");
+                    Console.WriteLine($"SearchCommand: {trackKey}"); // Debugging
+                    Console.WriteLine($"Url for {result.Key}: {url}"); // Debugging
                     return new SelectMenuOptionBuilder()
                         .WithLabel(result.Value["Title"] ?? "Unknown Title")
                         .WithValue(trackKey)
@@ -133,7 +134,7 @@ namespace PlexBot.Core.Commands
                     .WithPlaceholder($"Select a/an {type}")
                     .WithOptions(selectMenuOptions)
                     .WithMinValues(1)
-                    .WithMaxValues(1); 
+                    .WithMaxValues(1);
                 await FollowupAsync("Select an item to play.", components: new ComponentBuilder().WithSelectMenu(selectMenu).Build(), ephemeral: true);
             }
             catch (Exception ex)
