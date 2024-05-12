@@ -223,14 +223,14 @@ namespace PlexBot.Core.PlexAPI
                 return null; // Handle no data found
             }
             JObject jObject = JObject.Parse(response);
-            JToken? item = jObject["MediaContainer"]["Metadata"].FirstOrDefault(); // Assuming only one track is expected
+            JToken? item = jObject["MediaContainer"]["Metadata"].FirstOrDefault();
             if (item == null)
             {
                 Console.WriteLine("No track metadata available.");
                 return null;
             }
 
-            string partKey = item.SelectToken("Media[0].Part[0].key")?.ToString() ?? "N/A";
+            string partKey = item.SelectToken("Media[0].Part[0].key")?.ToString() ?? "Play URL Missing in GetTrackDetails";
             string playableUrl = GetPlaybackUrl(partKey);
 
             Dictionary<string, string> trackDetails = new()
@@ -245,6 +245,9 @@ namespace PlexBot.Core.PlexAPI
                 ["Duration"] = item["duration"]?.ToString() ?? "N/A", // Duration in milliseconds
                 ["Studio"] = item["studio"]?.ToString() ?? "N/A"
             };
+            Console.WriteLine($"Track details:\nTitle: {trackDetails["Title"]}, Artist: {trackDetails["Artist"]}, Album: {trackDetails["Album"]}, " +
+                $"Release Date: {trackDetails["ReleaseDate"]}, Artwork: {trackDetails["Artwork"]}, URL: {trackDetails["Url"]}, " +
+                $"Artist URL: {trackDetails["ArtistUrl"]}, Duration: {trackDetails["Duration"]}, Studio: {trackDetails["Studio"]}"); // Debugging
             return trackDetails;
         }
 
@@ -267,21 +270,21 @@ namespace PlexBot.Core.PlexAPI
             }
             foreach (JToken item in items)
             {
-                string partKey = item.SelectToken("Media[0].Part[0].key")?.ToString() ?? "N/A";
+                string partKey = item.SelectToken("Media[0].Part[0].key")?.ToString() ?? "Play URL Missing in GetTracks";
                 string playableUrl = GetPlaybackUrl(partKey);
-                //Console.WriteLine($"\nEach Track:\n{item}\n"); // Debugging
+                Console.WriteLine($"\nEach Track:\n{item}\n"); // Debugging
                 Dictionary<string, string> trackDetails = new()
                 {
-                    ["Title"] = item["title"]?.ToString() ?? "Unknown Title",
-                    ["Artist"] = item["grandparentTitle"]?.ToString() ?? "Unknown Artist",
-                    ["Album"] = item["parentTitle"]?.ToString() ?? "Unknown Album",
-                    ["ReleaseDate"] = item["originallyAvailableAt"]?.ToString() ?? "N/A",
-                    ["Artwork"] = item["thumb"]?.ToString() ?? "N/A",
+                    ["Title"] = item["title"]?.ToString() ?? "Title Missing in GetTracks",
+                    ["Artist"] = item["grandparentTitle"]?.ToString() ?? "Artist Missing in GetTracks",
+                    ["Album"] = item["parentTitle"]?.ToString() ?? "Album Missing in GetTracks",
+                    ["ReleaseDate"] = item["originallyAvailableAt"]?.ToString() ?? "Release Date Missing in GetTracks",
+                    ["Artwork"] = item["thumb"]?.ToString() ?? "Artwork Missing in GetTracks",
                     ["Url"] = playableUrl,
-                    ["ArtistUrl"] = item["grandparentKey"]?.ToString() ?? "N/A",
-                    ["Duration"] = item["duration"]?.ToString() ?? "N/A", // Duration in milliseconds
-                    ["Studio"] = item["studio"]?.ToString() ?? "N/A",
-                    ["TrackKey"] = item["key"]?.ToString() ?? "N/A"
+                    ["ArtistUrl"] = item["grandparentKey"]?.ToString() ?? "Artist URL Missing in GetTracks",
+                    ["Duration"] = item["duration"]?.ToString() ?? "Duration Missing in GetTracks", // Duration in milliseconds
+                    ["Studio"] = item["studio"]?.ToString() ?? "Studio Missing in GetTracks",
+                    ["TrackKey"] = item["key"]?.ToString() ?? "TrackKey Missing in GetTracks"
             };
                 tracks.Add(trackDetails);
             }
@@ -311,9 +314,9 @@ namespace PlexBot.Core.PlexAPI
             {
                 Dictionary<string, string> albumDetails = new()
                 {
-                    ["Title"] = item["title"]?.ToString() ?? "Unknown Album",
-                    ["Url"] = item["key"]?.ToString() ?? "N/A",
-                    ["TrackKey"] = item["key"]?.ToString() ?? "N/A"
+                    ["Title"] = item["title"]?.ToString() ?? "Title Missing in GetAlbums",
+                    ["Url"] = item["key"]?.ToString() ?? "Url Missing in GetAlbums",
+                    ["TrackKey"] = item["key"]?.ToString() ?? "TrackKey Missing in GetAlbums"
                 };
                 albums.Add(albumDetails);
                 Console.WriteLine($"Album Title: {albumDetails["Title"]}, Album URL: {albumDetails["Url"]}"); // Debugging

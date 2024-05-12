@@ -156,7 +156,7 @@ namespace PlexBot.Core.InteractionComponents
             await player.SkipAsync();
         }
 
-        [ComponentInteraction("queue:*", runMode: RunMode.Async)]
+        [ComponentInteraction("queue_options:*", runMode: RunMode.Async)]
         public async Task HandleQueueInteraction(string customId)
         {
             await DeferAsync();
@@ -184,11 +184,11 @@ namespace PlexBot.Core.InteractionComponents
             {
                 case "options":
                     ComponentBuilder newComponents = new ComponentBuilder()
-                        .WithButton("View Queue", "queue:view:1", ButtonStyle.Success, row: 1)
-                        .WithButton("Shuffle", "queue:shuffle:1", ButtonStyle.Primary, row: 0)
-                        .WithButton("Edit", $"queue:edit:1", ButtonStyle.Primary, row: 0)
-                        .WithButton("Clear", "queue:clear:1", ButtonStyle.Danger, row: 0)
-                        .WithButton("Return Buttons", "queue:return:1", ButtonStyle.Danger, row: 0);
+                        .WithButton("View Queue", "queue_options:view:1", ButtonStyle.Success, row: 1)
+                        .WithButton("Shuffle", "queue_options:shuffle:1", ButtonStyle.Primary, row: 0)
+                        .WithButton("Edit", $"queue_options:edit:1", ButtonStyle.Primary, row: 0)
+                        .WithButton("Clear", "queue_options:clear:1", ButtonStyle.Danger, row: 0)
+                        .WithButton("Return Buttons", "queue_options:return:1", ButtonStyle.Danger, row: 0);
                     await ModifyOriginalResponseAsync(msg =>
                     {
                         msg.Components = newComponents.Build();
