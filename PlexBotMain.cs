@@ -93,16 +93,16 @@ namespace PlexBot
         /// <returns>A <see cref="IServiceProvider"/> containing the configured services, ready for application use.</returns>
         public static IServiceProvider ConfigureServices()
         {
-            var services = new ServiceCollection();
+            ServiceCollection services = new();
 
             // Configure Discord client
-            services.AddSingleton<DiscordSocketClient>(new DiscordSocketClient(new DiscordSocketConfig
+            services.AddSingleton(new DiscordSocketClient(new DiscordSocketConfig
             {
                 GatewayIntents = GatewayIntents.All,
                 LogLevel = LogSeverity.Debug
             }));
             // Configure InteractionService for handling interactions from commands, buttons, modals, and selects
-            services.AddSingleton<InteractionService>();
+            services.AddSingleton(p => new InteractionService(p.GetRequiredService<DiscordSocketClient>()));
             // Add other bot components so they can be passed between each other
             services.AddSingleton<Buttons>();
             services.AddSingleton<SlashCommands>();
