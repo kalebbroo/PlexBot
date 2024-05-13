@@ -312,16 +312,28 @@ namespace PlexBot.Core.InteractionComponents
                 .WithFooter($"Page {currentPage} of {totalPages} ({totalTracks} Queued Tracks)")
                 .WithTimestamp(DateTime.Now);
             int startIndex = (currentPage - 1) * itemsPerPage;
+            ITrackQueueItem? currentTrack = player.CurrentItem;
             // Display the "Now Playing" track only on the first page and separately from the queue
-            if (currentPage == 1 && player.CurrentTrack != null)
+            if (currentPage == 1 && currentTrack != null)
             {
-                embed.AddField(
-                    "Now Playing: " + player.CurrentTrack.Title,
-                    $"Artist: {player.CurrentTrack.Author}\nDuration: {player.CurrentTrack.Duration}",
-                    inline: true
-                );
+                if (currentTrack is CustomTrackQueueItem customCurrentTrack)
+                {
+                    embed.AddField(
+                        "Now Playing: " + customCurrentTrack.Title,
+                        $"Artist: {customCurrentTrack.Artist}\nAlbum: {customCurrentTrack.Album}\nDuration: {customCurrentTrack.Duration}",
+                        inline: true
+                    );
+                }
+                else
+                {
+                    embed.AddField(
+                        "Now Playing: " + player?.CurrentTrack?.Title,
+                        $"Artist: {player?.CurrentTrack?.Author}\nDuration: {player?.CurrentTrack?.Duration}",
+                        inline: true
+                    );
+                }
             }
-            IEnumerable<ITrackQueueItem> queueItems = player.Queue.Skip(startIndex).Take(itemsPerPage);
+            IEnumerable<ITrackQueueItem> queueItems = player!.Queue.Skip(startIndex).Take(itemsPerPage);
             int itemNumber = startIndex;  // Start numbering from the index of the first item on this page
 
             foreach (var item in queueItems)
