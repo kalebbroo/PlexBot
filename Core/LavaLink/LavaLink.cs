@@ -103,32 +103,6 @@ namespace PlexBot.Core.LavaLink
             }
         }
 
-        public async Task DisplayQueueAsync(SocketInteraction interaction)
-        {
-            var player = await GetPlayerAsync(interaction, true);
-            if (player == null)
-            {
-                //await RespondAsync("No queued player is currently active.", ephemeral: true);
-                return;
-            }
-            if (player.Queue.IsEmpty)
-            {
-                //await RespondAsync("The queue is currently empty.", ephemeral: true);
-                return;
-            }
-            var embed = new EmbedBuilder()
-                .WithTitle("Current Music Queue")
-                .WithDescription("Here are the details of the tracks in the queue:");
-            foreach (var item in player.Queue)
-            {
-                // Access track details
-                var track = item.Track;
-                //embed.AddField(track.Title, $"Artist: {track.Author}\nDuration: {TimeSpan.FromMilliseconds(track.Duration).ToString(@"hh\:mm\:ss")}\nURL: [Listen]({track.Uri})");
-            }
-
-            //await RespondAsync(embed: embed.Build(), ephemeral: true);
-        }
-
         public async Task AddToQueue(SocketInteraction interaction, List<Dictionary<string, string>> trackDetailsList)
         {
             QueuedLavalinkPlayer? player = await GetPlayerAsync(interaction, true);
