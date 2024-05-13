@@ -134,8 +134,8 @@ namespace PlexBot.Core.InteractionComponents
                 "all" => TrackRepeatMode.Queue,
                 _ => player.RepeatMode
             };
-
-            await FollowupAsync($"Repeat mode set to {player.RepeatMode}.", ephemeral: true);
+            // TODO: Change visual player to show current repeat mode
+            await RespondAsync($"Repeat mode set to {player.RepeatMode}.", ephemeral: true);
         }
 
         [ComponentInteraction("skip:*", runMode: RunMode.Async)]
