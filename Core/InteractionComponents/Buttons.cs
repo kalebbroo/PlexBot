@@ -98,36 +98,36 @@ namespace PlexBot.Core.InteractionComponents
             }
             await DeferAsync();
 
-            var options = new List<SelectMenuOptionBuilder>()
-            {
+            List<SelectMenuOptionBuilder> options =
+            [
                 new("Off", "off", "Turn off repeat"),
                 new("Repeat One", "one", "Repeat the current track"),
                 new("Repeat All", "all", "Repeat the entire queue")
-            };
+            ];
 
-            var menu = new SelectMenuBuilder()
-                .WithCustomId("set_repeat")
+            SelectMenuBuilder menu = new SelectMenuBuilder()
+                .WithCustomId($"set_repeat")
                 .WithPlaceholder("Choose repeat mode")
                 .WithOptions(options)
                 .WithMinValues(1)
                 .WithMaxValues(1);
 
-            var builder = new ComponentBuilder().WithSelectMenu(menu);
+            ComponentBuilder builder = new ComponentBuilder().WithSelectMenu(menu);
 
             await FollowupAsync("Select the repeat mode:", components: builder.Build(), ephemeral: true);
         }
 
-        [ComponentInteraction("set_repeat:*")]
-        public async Task SetRepeat(string repeatMode)
+        [ComponentInteraction("set_repeat")]
+        public async Task SetRepeat(string[] selections)
         {
-            var player = await lavaLink.GetPlayerAsync(Context.Interaction, true);
+            CustomPlayer? player = await lavaLink.GetPlayerAsync(Context.Interaction, true);
             if (player == null)
             {
                 await FollowupAsync("No active player found.", ephemeral: true);
                 return;
             }
-
-            player.RepeatMode = repeatMode switch
+            string? selectedRepeatMode = selections.FirstOrDefault();
+            player.RepeatMode = selectedRepeatMode switch
             {
                 "off" => TrackRepeatMode.None,
                 "one" => TrackRepeatMode.Track,
@@ -147,7 +147,7 @@ namespace PlexBot.Core.InteractionComponents
                 return;
             }
             await DeferAsync();
-            var player = await lavaLink.GetPlayerAsync(Context.Interaction, true);
+            CustomPlayer? player = await lavaLink.GetPlayerAsync(Context.Interaction, true);
             if (player == null)
             {
                 await FollowupAsync("No active player found.", ephemeral: true);
@@ -279,21 +279,21 @@ namespace PlexBot.Core.InteractionComponents
         private static ComponentBuilder BuildQueueComponents(int currentPage, int totalItems, int itemsPerPage)
         {
             ComponentBuilder components = new ComponentBuilder()
-                .WithButton("Back", $"queue:back:{currentPage}", ButtonStyle.Secondary, row: 1, disabled: currentPage == 1)
-                .WithButton("Next", $"queue:next:{currentPage}", ButtonStyle.Secondary, row: 1, disabled: (currentPage * itemsPerPage) >= totalItems)
-                .WithButton("Shuffle Queue", "queue:shuffle:1", ButtonStyle.Primary, row: 0)
-                .WithButton("Edit Queue", $"queue:edit:{currentPage}", ButtonStyle.Primary, row: 0)
-                .WithButton("Clear Queue", "queue:clear:1", ButtonStyle.Danger, row: 0)
-                .WithButton("Close", "queue:close:1", ButtonStyle.Danger, row: 0);
+                .WithButton("Back", $"queue_options:back:{currentPage}", ButtonStyle.Secondary, row: 1, disabled: currentPage == 1)
+                .WithButton("Next", $"queue_options:next:{currentPage}", ButtonStyle.Secondary, row: 1, disabled: (currentPage * itemsPerPage) >= totalItems)
+                .WithButton("Shuffle Queue", "queue_options:shuffle:1", ButtonStyle.Primary, row: 0)
+                .WithButton("Edit Queue", $"queue_options:edit:{currentPage}", ButtonStyle.Primary, row: 0)
+                .WithButton("Clear Queue", "queue_options:clear:1", ButtonStyle.Danger, row: 0)
+                .WithButton("Close", "queue_options:close:1", ButtonStyle.Danger, row: 0);
             return components;
         }
 
-        private async Task BuildDefaultComponents(RestInteractionMessage originalResponse)
+        private static async Task BuildDefaultComponents(RestInteractionMessage originalResponse)
         {
             ComponentBuilder components = new ComponentBuilder()
                 .WithButton("Pause", "pause_resume:pause", ButtonStyle.Secondary, row: 0) 
                 .WithButton("Skip", "skip:skip", ButtonStyle.Primary, row: 0)
-                .WithButton("Queue Options", "queue:options:1", ButtonStyle.Success, row: 0)
+                .WithButton("Queue Options", "queue_options:options:1", ButtonStyle.Success, row: 0)
                 .WithButton("Repeat", "repeat:select", ButtonStyle.Secondary, row: 0)
                 .WithButton("Kill", "kill:kill", ButtonStyle.Danger, row: 0);
             await originalResponse.ModifyAsync(props =>
@@ -302,7 +302,7 @@ namespace PlexBot.Core.InteractionComponents
             });
         }
 
-        private static EmbedBuilder CreateQueueEmbed(QueuedLavalinkPlayer player, int currentPage, int itemsPerPage = 23)
+        private static EmbedBuilder CreateQueueEmbed(CustomPlayer player, int currentPage, int itemsPerPage = 23)
         {
             int totalTracks = player.Queue.Count;
             int totalPages = (totalTracks + itemsPerPage - 1) / itemsPerPage;
@@ -317,7 +317,7 @@ namespace PlexBot.Core.InteractionComponents
             {
                 embed.AddField(
                     "Now Playing: " + player.CurrentTrack.Title,
-                    $"Artist: {player.CurrentTrack.Author}\nDuration: {player.CurrentTrack.Duration}\nURL: [Listen]({player.CurrentTrack.Uri})",
+                    $"Artist: {player.CurrentTrack.Author}\nDuration: {player.CurrentTrack.Duration}",
                     inline: true
                 );
             }
