@@ -126,7 +126,7 @@ namespace PlexBot.Core.PlexAPI
                         details["Artwork"] = item["thumb"]?.ToString() ?? "N/A";
                         details["Url"] = item.SelectToken("Media[0].Part[0].key")?.ToString() ?? "N/A";
                         details["ArtistUrl"] = item["grandparentKey"]?.ToString() ?? "N/A";
-                        details["Duration"] = item["duration"]?.ToString() ?? "N/A"; // Duration in milliseconds
+                        details["Duration"] = item["duration"]?.ToString() ?? "N/A";
                         details["Studio"] = item["studio"]?.ToString() ?? "N/A";
                         details["TrackKey"] = item["key"]?.ToString() ?? "N/A";
                         List<Dictionary<string, string>> queue = [details];
