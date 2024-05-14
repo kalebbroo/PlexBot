@@ -86,7 +86,7 @@ namespace PlexBot.Core.Commands
         [Choice("track", "track"),
          Choice("artist", "artist"),
          Choice("album", "album"),
-         Choice("youtube", "youtube")] string type,
+         Choice("search-all", "search")] string type,
         [Summary("query", "The query to search for")] string query)
         {
             await DeferAsync(ephemeral: true);
