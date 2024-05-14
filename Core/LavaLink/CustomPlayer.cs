@@ -43,7 +43,7 @@ namespace PlexBot.Core.LavaLink
                     .WithButton("Kill", "kill:kill", ButtonStyle.Danger);
 
                 // Find and delete the last player message (if it exists)
-                var messages = await _textChannel!.GetMessagesAsync(10).FlattenAsync().ConfigureAwait(false);
+                IEnumerable<IMessage> messages = await _textChannel!.GetMessagesAsync(10).FlattenAsync().ConfigureAwait(false);
                 IMessage? lastPlayerMessage = messages.FirstOrDefault(m => m.Embeds.Any(e => e.Title == "Now Playing"));
                 if (lastPlayerMessage != null)
                 {
