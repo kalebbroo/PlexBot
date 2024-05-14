@@ -6,7 +6,6 @@ using Microsoft.Extensions.Options;
 using Discord;
 using Lavalink4NET.Tracks;
 using Lavalink4NET.Rest.Entities.Tracks;
-using Lavalink4NET.Rest;
 
 namespace PlexBot.Core.LavaLink
 {
@@ -120,6 +119,8 @@ namespace PlexBot.Core.LavaLink
                         trackUrl, TrackSearchMode.None);
                     if (lavalinkTrack != null)
                     {
+                        TimeSpan durationTimeSpan = TimeSpan.FromMilliseconds(int.TryParse(details["Duration"], out var duration) ? duration : 0);
+                        string formattedDuration = durationTimeSpan.TotalHours < 1 ? durationTimeSpan.ToString(@"mm\:ss") : durationTimeSpan.ToString(@"hh\:mm\:ss");
                         CustomTrackQueueItem customTrack = new()
                         {
                             Reference = new TrackReference(lavalinkTrack),
@@ -130,7 +131,7 @@ namespace PlexBot.Core.LavaLink
                             Artwork = details["Artwork"],
                             Url = trackUrl,
                             ArtistUrl = details["ArtistUrl"],
-                            Duration = details["Duration"],
+                            Duration = formattedDuration,
                             Studio = details["Studio"]
                         };
                         await PlayMedia(interaction, customTrack);
