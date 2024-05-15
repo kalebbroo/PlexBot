@@ -46,7 +46,7 @@ namespace PlexBot.Core.Players
             EmbedBuilder embed = new EmbedBuilder()
                 .WithTitle(title)
                 .WithDescription(description)
-                .WithImageUrl(imageUrl)
+                .WithThumbnailUrl(imageUrl)
                 .WithFooter(footer)
                 .WithColor(Color.Blue)
                 .WithTimestamp(DateTime.Now);
