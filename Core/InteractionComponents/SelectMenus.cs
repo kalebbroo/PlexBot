@@ -25,23 +25,72 @@ namespace PlexBot.Core.InteractionComponents
                 await ModifyOriginalResponseAsync(msg => msg.Content = "Invalid selection made.");
                 return;
             }
-            string? jsonResponse = await _plexApi.PerformRequestAsync(_plexApi.GetPlaybackUrl(selectedValue));
-            if (!string.IsNullOrEmpty(jsonResponse))
+            try
             {
-                Dictionary<string, string>? trackDetails = await _plexApi.GetTrackDetails(selectedValue);
-                if (trackDetails != null)
+                switch (customId)
                 {
-                    await _lavaLinkCommands.AddToQueue(Context.Interaction, [trackDetails]);
-                    await ModifyOriginalResponseAsync(msg => msg.Content = $"Track(s) from {customId} added to queue.");
-                }
-                else
-                {
-                    await ModifyOriginalResponseAsync(msg => msg.Content = $"Failed to retrieve track details for {customId}.");
+                    case "tracks":
+                        {
+                            Dictionary<string, string>? trackDetails = await _plexApi.GetTrackDetails(selectedValue);
+                            if (trackDetails != null)
+                            {
+                                await _lavaLinkCommands.AddToQueue(Context.Interaction, [trackDetails]);
+                                await ModifyOriginalResponseAsync(msg => msg.Content = "Track added to queue.");
+                            }
+                            else
+                            {
+                                await ModifyOriginalResponseAsync(msg => msg.Content = "Failed to retrieve track details.");
+                            }
+                            break;
+                        }
+                    case "albums":
+                        {
+                            List<Dictionary<string, string>> tracks = await _plexApi.GetTracks(selectedValue);
+                            if (tracks != null && tracks.Count > 0)
+                            {
+                                await _lavaLinkCommands.AddToQueue(Context.Interaction, tracks);
+                                await ModifyOriginalResponseAsync(msg => msg.Content = "Tracks from album added to queue.");
+                            }
+                            else
+                            {
+                                await ModifyOriginalResponseAsync(msg => msg.Content = "Failed to retrieve tracks for the album.");
+                            }
+                            break;
+                        }
+                    case "artists":
+                        {
+                            List<Dictionary<string, string>> albums = await _plexApi.GetAlbums(selectedValue);
+                            List<Dictionary<string, string>> allTracks = [];
+                            foreach (var album in albums)
+                            {
+                                List<Dictionary<string, string>> tracks = await _plexApi.GetTracks(album["TrackKey"]);
+                                if (tracks != null && tracks.Count > 0)
+                                {
+                                    allTracks.AddRange(tracks);
+                                }
+                            }
+                            if (allTracks.Count > 0)
+                            {
+                                await _lavaLinkCommands.AddToQueue(Context.Interaction, allTracks);
+                                await ModifyOriginalResponseAsync(msg => msg.Content = "Tracks from all albums by the artist added to queue.");
+                            }
+                            else
+                            {
+                                await ModifyOriginalResponseAsync(msg => msg.Content = "Failed to retrieve tracks for the artist.");
+                            }
+                            break;
+                        }
+                    default:
+                        {
+                            await ModifyOriginalResponseAsync(msg => msg.Content = "Invalid selection type.");
+                            break;
+                        }
                 }
             }
-            else
+            catch (Exception ex)
             {
-                await ModifyOriginalResponseAsync(msg => msg.Content = $"Failed to retrieve track information for {customId}.");
+                await ModifyOriginalResponseAsync(msg => msg.Content = $"An error occurred: {ex.Message}");
+                Console.WriteLine($"Error in DisplaySearchResults: {ex.Message}");
             }
         }
 
