@@ -39,6 +39,7 @@ namespace PlexBot.Core.PlexAPI
             }
             string responseContent = await response!.Content.ReadAsStringAsync();
             //Console.WriteLine($"Response content: {responseContent}"); // debug
+            Console.WriteLine($"Response content length: {responseContent.Length}"); // debug
             return responseContent;
         }
 
@@ -67,32 +68,21 @@ namespace PlexBot.Core.PlexAPI
         }
 
         // Public method to search the music library
-        public async Task<Dictionary<string, Dictionary<string, string>>> SearchLibraryAsync(string query, string type)
+        public async Task<Dictionary<string, List<Dictionary<string, string>>>> SearchLibraryAsync(string query)
         {
-            int typeId = GetTypeID(type);
             string encodedQuery = HttpUtility.UrlEncode(query);
-            string uri = $"{plexUrl}/library/sections/5/search?type={typeId}&query={encodedQuery}&limit=25";
+            string uri = $"{plexUrl}/hubs/search?query={encodedQuery}&sectionId=5&limit=100";
+            Console.WriteLine($"Performing request to URI: {uri}"); // Debugging
             string? response = await PerformRequestAsync(uri);
             if (string.IsNullOrEmpty(response))
             {
                 Console.WriteLine("No results found.");
                 throw new Exception("No results found.");
             }
-            Dictionary<string, Dictionary<string, string>> results = await ParseSearchResults(response, type);
-            Console.WriteLine($"Search results: {results}"); // Debugging
+            Console.WriteLine($"Response received: {response.Length} characters"); // Debugging
+            Dictionary<string, List<Dictionary<string, string>>> results = await ParseResults(response);
+            Console.WriteLine($"Search results: {JsonConvert.SerializeObject(results)}"); // Debugging
             return results;
-        }
-
-        private static int GetTypeID(string type)
-        {
-            return type.ToLower() switch
-            {
-                "track" => 10,
-                "album" => 9,
-                "artist" => 8,
-                "playlist" => 15,
-                _ => -1,
-            };
         }
 
         // Method to refresh the music library
@@ -106,6 +96,101 @@ namespace PlexBot.Core.PlexAPI
         {
             string uri = $"{plexUrl}/library/sections/{libraryId}/all?type=12&title={metadata}";
             return await PerformRequestAsync(uri);
+        }
+
+        public async Task<Dictionary<string, List<Dictionary<string, string>>>> ParseResults(string jsonResponse)
+        {
+            Dictionary<string, List<Dictionary<string, string>>> results = new()
+            {
+                { "Artists", new List<Dictionary<string, string>>() },
+                { "Albums", new List<Dictionary<string, string>>() },
+                { "Tracks", new List<Dictionary<string, string>>() }
+            };
+            JObject jObject = JObject.Parse(jsonResponse);
+            Console.WriteLine("Parsed JSON response"); // Debugging
+            JToken mediaContainer = jObject["MediaContainer"];
+            if (mediaContainer == null)
+            {
+                Console.WriteLine("MediaContainer is null in the JSON response");
+                return results;
+            }
+            JToken hubs = mediaContainer["Hub"];
+            if (hubs == null)
+            {
+                Console.WriteLine("Hubs are null in the MediaContainer");
+                return results;
+            }
+            foreach (JToken hub in hubs)
+            {
+                string hubType = hub["type"]?.ToString() ?? "unknown";
+                Console.WriteLine($"Processing hub of type: {hubType}"); // Debugging
+                JToken metadataItems = hub["Metadata"];
+                if (metadataItems == null)
+                {
+                    Console.WriteLine("Metadata items are null in the Hub");
+                    continue;
+                }
+                foreach (JToken item in metadataItems)
+                {
+                    Dictionary<string, string> details = [];
+                    string type = item["type"]?.ToString() ?? "unknown";
+                    details["Title"] = item["title"]?.ToString() ?? "Unknown Title";
+                    details["Type"] = type;
+                    details["Description"] = type switch
+                    {
+                        "track" => item["grandparentTitle"]?.ToString() ?? "Unknown Artist",
+                        "album" => $"Album by {(item["parentTitle"]?.ToString() ?? "Unknown Artist")}",
+                        "artist" => item["summary"]?.ToString() ?? "No description available.",
+                        _ => "No description available."
+                    };
+                    details["Url"] = item.SelectToken("Media[0].Part[0].key")?.ToString() ?? "Url Missing in ParseResults";
+                    details["TrackKey"] = item["key"]?.ToString() ?? "TrackKey Missing in ParseResults";
+                    Console.WriteLine($"Processed item: {details["Title"]}, Type: {details["Type"]}, Url: {details["Url"]}, TrackKey: {details["TrackKey"]}"); // Debugging
+                    switch (hubType)
+                    {
+                        case "artist":
+                            results["Artists"].Add(details);
+                            try
+                            {
+                                List<Dictionary<string, string>> albumDetails = await GetAlbums(details["TrackKey"]);
+                                details["AlbumCount"] = albumDetails.Count.ToString();
+                                int trackCount = 0;
+                                foreach (var album in albumDetails)
+                                {
+                                    List<Dictionary<string, string>> tracks = await GetTracks(album["TrackKey"]);
+                                    trackCount += tracks.Count;
+                                }
+                                details["TrackCount"] = trackCount.ToString();
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"Failed to retrieve album or track details: {ex.Message}");
+                                details["AlbumCount"] = "Error";
+                                details["TrackCount"] = "Error";
+                            }
+                            break;
+                        case "album":
+                            results["Albums"].Add(details);
+                            try
+                            {
+                                List<Dictionary<string, string>> tracks = await GetTracks(details["TrackKey"]);
+                                int trackCount = tracks.Count;
+                                details["TrackCount"] = trackCount.ToString();
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"Failed to retrieve tracks: {ex.Message}");
+                                details["TrackCount"] = "Error retrieving track count";
+                            }
+                            break;
+                        case "track":
+                            results["Tracks"].Add(details);
+                            break;
+                    }
+                }
+            }
+            Console.WriteLine($"Results came back with no errors in parse results"); // Debugging
+            return results;
         }
 
         public async Task<Dictionary<string, Dictionary<string, string>>> ParseSearchResults(string jsonResponse, string type)
@@ -229,10 +314,8 @@ namespace PlexBot.Core.PlexAPI
                 Console.WriteLine("No track metadata available.");
                 return null;
             }
-
             string partKey = item.SelectToken("Media[0].Part[0].key")?.ToString() ?? "Play URL Missing in GetTrackDetails";
             string playableUrl = GetPlaybackUrl(partKey);
-
             Dictionary<string, string> trackDetails = new()
             {
                 ["Title"] = item["title"]?.ToString() ?? "Unknown Title",
@@ -272,7 +355,7 @@ namespace PlexBot.Core.PlexAPI
             {
                 string partKey = item.SelectToken("Media[0].Part[0].key")?.ToString() ?? "Play URL Missing in GetTracks";
                 string playableUrl = GetPlaybackUrl(partKey);
-                Console.WriteLine($"\nEach Track:\n{item}\n"); // Debugging
+                //Console.WriteLine($"\nEach Track:\n{item}\n"); // Debugging
                 Dictionary<string, string> trackDetails = new()
                 {
                     ["Title"] = item["title"]?.ToString() ?? "Title Missing in GetTracks",
@@ -296,7 +379,7 @@ namespace PlexBot.Core.PlexAPI
             string uri = GetPlaybackUrl(artistKey);
             Console.WriteLine($"Fetching albums with URI: {uri}"); // Debugging
             string? response = await PerformRequestAsync(uri);
-            Console.WriteLine(response); // Debugging
+            //Console.WriteLine(response); // Debugging
             if (string.IsNullOrEmpty(response))
             {
                 Console.WriteLine("No albums found.");
@@ -323,7 +406,7 @@ namespace PlexBot.Core.PlexAPI
 
             }
             string json = JsonConvert.SerializeObject(albums, Formatting.Indented); // Debugging
-            Console.WriteLine($"Albums: {json}"); // Debugging
+            //Console.WriteLine($"Albums: {json}"); // Debugging
             return albums;
         }
     }

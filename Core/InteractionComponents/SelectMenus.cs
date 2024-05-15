@@ -25,180 +25,23 @@ namespace PlexBot.Core.InteractionComponents
                 await ModifyOriginalResponseAsync(msg => msg.Content = "Invalid selection made.");
                 return;
             }
-            switch (customId)
-            {
-                case "track":
-                    await HandleTrackSelection(selectedValue);
-                    break;
-                case "album":
-                    await HandleAlbumSelection(selectedValue);
-                    break;
-                case "artist":
-                    await HandleArtistSelection(selectedValue);
-                    break;
-            }
-        }
-
-        private async Task HandleTrackSelection(string selectedValue)
-        {
-            string? jsonResponse = await plexApi.PerformRequestAsync(plexApi.GetPlaybackUrl(selectedValue));
+            string? jsonResponse = await _plexApi.PerformRequestAsync(_plexApi.GetPlaybackUrl(selectedValue));
             if (!string.IsNullOrEmpty(jsonResponse))
             {
-                Console.WriteLine($"Calling GetTrackDetails with {selectedValue} From HandleTrackSelection"); // debug
-                Dictionary<string, string>? trackDetails = await plexApi.GetTrackDetails(selectedValue);
-                await lavaLink.AddToQueue(Context.Interaction, [trackDetails]);
-                await ModifyOriginalResponseAsync(msg => msg.Content = "Track(s) added to queue.");
-            }
-            else
-            {
-                await ModifyOriginalResponseAsync(msg => msg.Content = "Failed to retrieve track information.");
-            }
-        }
-
-        private async Task HandleAlbumSelection(string albumKey)
-        {
-            if (albumKey.StartsWith("play_all:"))
-            {
-                string[] parts = albumKey.Split(':');
-                albumKey = parts[1];
-            }
-            Console.WriteLine($"Calling GetTracks with {albumKey} From HandleAlbumSelection"); // debug
-            List<Dictionary<string, string>> tracks = await plexApi.GetTracks(albumKey);
-            tracks.Add(new Dictionary<string, string> { { "Title", "Play All Tracks" }, { "TrackKey", "play_all:" + albumKey } });
-            List<SelectMenuOptionBuilder> options = tracks.Select(track =>
-                new SelectMenuOptionBuilder()
-                    .WithLabel(track["Title"])
-                    .WithValue(track.TryGetValue("TrackKey", out string? trackKey) ? trackKey : "TrackKey Missing!!")
-                    .WithDescription("Select a track")).ToList();
-            SelectMenuBuilder menu = new SelectMenuBuilder()
-                .WithCustomId("handle_search:album")
-                .WithPlaceholder("Select a track or play all")
-                .WithOptions(options)
-                .WithMinValues(1)
-                .WithMaxValues(1);
-            ComponentBuilder components = new ComponentBuilder().WithSelectMenu(menu);
-            IComponentInteraction interaction = (IComponentInteraction)Context.Interaction;
-            await interaction.ModifyOriginalResponseAsync(msg =>
-            {
-                msg.Content = "Select a track or play all:";
-                msg.Components = components.Build();
-            });
-        }
-
-        private async Task HandleArtistSelection(string selectedValue)
-        {
-            Console.WriteLine($"Calling GetAlbums with {selectedValue} From HandleArtistSelection"); // debug
-            List<Dictionary<string, string>> albums = await plexApi.GetAlbums(selectedValue);
-            albums.Add(new Dictionary<string, string> { { "Title", "Play All Albums" }, { "TrackKey", "play_all:" + selectedValue } });
-            List<SelectMenuOptionBuilder> options = albums.Select(album =>
-                new SelectMenuOptionBuilder()
-                    .WithLabel(album["Title"])
-                    .WithValue(album.TryGetValue("TrackKey", out string? albumKey) ? albumKey : "Missing TrackKey in HandleArtistSelection")
-                    .WithDescription("Select an album")).ToList();
-            SelectMenuBuilder menu = new SelectMenuBuilder()
-                .WithCustomId("handle_search:artist")
-                .WithPlaceholder("Select an album or play all")
-                .WithOptions(options)
-                .WithMinValues(1)
-                .WithMaxValues(1);
-            ComponentBuilder components = new ComponentBuilder().WithSelectMenu(menu);
-            IComponentInteraction interaction = (IComponentInteraction)Context.Interaction;
-            await interaction.ModifyOriginalResponseAsync(msg =>
-            {
-                msg.Content = "Select an album or play all:";
-                msg.Components = components.Build();
-            });
-        }
-
-        [ComponentInteraction("handle_search:*", runMode: RunMode.Async)]
-        public async Task HandleSearchResults(string customId, string[] selections)
-        {
-            await DeferAsync(ephemeral: true);
-            string selectedValue = selections.FirstOrDefault() ?? string.Empty;
-            if (string.IsNullOrEmpty(selectedValue))
-            {
-                await ModifyOriginalResponseAsync(msg => msg.Content = "Invalid selection made.");
-                return;
-            }
-            switch (customId)
-            {
-                case "artist":
-                    await HandleArtistSearchResult(selectedValue);
-                    break;
-                case "album":
-                    await HandleAlbumSearchResult(selectedValue);
-                    break;
-                case "track":
-                    await HandleTrackSearchResult(selectedValue);
-                    break;
-            }
-        }
-
-        private async Task HandleArtistSearchResult(string selectedValue)
-        {
-            if (selectedValue.StartsWith("play_all:"))
-            {
-                string[] parts = selectedValue.Split(':');
-                string artistKey = parts[1];
-                Console.WriteLine($"Calling GetAlbums with {artistKey} From HandleArtistSearchResult"); // debug
-                List<Dictionary<string, string>> albums = await plexApi.GetAlbums(artistKey);
-                List<Dictionary<string, string>> tracks = [];
-                foreach (var album in albums)
-                {
-                    tracks.AddRange(await plexApi.GetTracks(album["TrackKey"]));
-                }
-                await lavaLink.AddToQueue(Context.Interaction, tracks);
-                await ModifyOriginalResponseAsync(msg => msg.Content = "Playing all albums for the selected artist.");
-            }
-            else
-            {
-                await HandleAlbumSelection(selectedValue);
-            }
-        }
-
-        private async Task HandleAlbumSearchResult(string selectedValue)
-        {
-            if (selectedValue.StartsWith("play_all:"))
-            {
-                string[] parts = selectedValue.Split(':');
-                string albumKey = parts[1];
-                Console.WriteLine($"Calling GetTracks with {albumKey} From HandleAlbumSearchResult"); // debug
-                List<Dictionary<string, string>> tracks = await plexApi.GetTracks(albumKey);
-                await lavaLink.AddToQueue(Context.Interaction, tracks);
-                await ModifyOriginalResponseAsync(msg => msg.Content = "Playing all tracks for the selected album.");
-            }
-            else
-            {
-                Console.WriteLine($"Calling GetTracks with {selectedValue} From HandleAlbumSearchResult"); // debug
-                List<Dictionary<string, string>> tracks = await plexApi.GetTracks(selectedValue);
-                await lavaLink.AddToQueue(Context.Interaction, tracks);
-                await ModifyOriginalResponseAsync(msg => msg.Content = "Track(s) added to queue.");
-            }
-        }
-
-        private async Task HandleTrackSearchResult(string selectedValue)
-        {
-            if (selectedValue.StartsWith("play_all:"))
-            {
-                Console.WriteLine($"Calling GetTracks with {selectedValue} From HandleTrackSearchResult"); // debug
-                List<Dictionary<string, string>> tracks = await plexApi.GetTracks(selectedValue);
-                await lavaLink.AddToQueue(Context.Interaction, tracks);
-                await ModifyOriginalResponseAsync(msg => msg.Content = "Playing all tracks.");
-            }
-            else
-            {
-                // Get the track details using the selectedValue as the track key
-                Console.WriteLine($"Calling GetTrackDetails with {selectedValue} From HandleTrackSearchResult"); // debug
-                Dictionary<string, string>? trackDetails = await plexApi.GetTrackDetails(selectedValue);
+                Dictionary<string, string>? trackDetails = await _plexApi.GetTrackDetails(selectedValue);
                 if (trackDetails != null)
                 {
-                    await lavaLink.AddToQueue(Context.Interaction, [trackDetails]);
-                    await ModifyOriginalResponseAsync(msg => msg.Content = $"Playing track: {trackDetails["Title"]}");
+                    await _lavaLinkCommands.AddToQueue(Context.Interaction, [trackDetails]);
+                    await ModifyOriginalResponseAsync(msg => msg.Content = $"Track(s) from {customId} added to queue.");
                 }
                 else
                 {
-                    await ModifyOriginalResponseAsync(msg => msg.Content = "Track details not found.");
+                    await ModifyOriginalResponseAsync(msg => msg.Content = $"Failed to retrieve track details for {customId}.");
                 }
+            }
+            else
+            {
+                await ModifyOriginalResponseAsync(msg => msg.Content = $"Failed to retrieve track information for {customId}.");
             }
         }
 
