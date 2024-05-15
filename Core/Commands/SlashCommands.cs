@@ -82,66 +82,64 @@ namespace PlexBot.Core.Commands
         }
 
         [SlashCommand("search", "Search Plex for media", runMode: RunMode.Async)]
-        public async Task SearchCommand(
-        [Choice("track", "track"),
-         Choice("artist", "artist"),
-         Choice("album", "album"),
-         Choice("search-all", "search")] string type,
-        [Summary("query", "The query to search for")] string query)
+        public async Task SearchCommand([Summary("query", "The query to search for")] string query)
         {
             await DeferAsync(ephemeral: true);
-            Console.WriteLine($"Searching for: {query} as a {type}...");
+            Console.WriteLine($"Searching for: {query}...");
 
             try
             {
-                Dictionary<string, Dictionary<string, string>> results = await _plexApi.SearchLibraryAsync(query, type);
-                Console.WriteLine($"after search library async"); // Debugging
+                Dictionary<string, List<Dictionary<string, string>>> results = await _plexApi.SearchLibraryAsync(query);
+                Console.WriteLine("After search library async"); // Debugging
                 if (results == null || results.Count == 0)
                 {
                     await FollowupAsync("No results found.", ephemeral: true);
                     return;
                 }
                 Console.WriteLine($"API Results: {JsonConvert.SerializeObject(results)}"); // Debugging
-                string url = "";
-                List<SelectMenuOptionBuilder> selectMenuOptions = results.Select(result =>
-                {
-                    string description = type switch
-                    {
-                        "artist" => result.Value["Summary"] ?? "No description available.",
-                        "album" => $"Album by {(result.Value.TryGetValue("Artist", out var artist) ? artist : "Unknown Artist")} " +
-                        $"{(result.Value.TryGetValue("TrackCount", out var trackCount) ? $"({trackCount} Tracks)" : "")}".Trim(),
-                        _ => result.Value["Artist"] ?? "Unknown Artist"
-                    };
-                    // Ensure description is truncated to 97 characters plus ellipsis.
-                    description = description.Length > 100 ? description[..97] + "..." : description;
-                    string trackcount = result.Value.TryGetValue("TrackCount", out var count) ? count : "Unknown";
-                    Console.WriteLine($"Number of Tracks: {trackcount}"); // Debugging
 
-                    // Safeguarding against null values in labels and values
-                    string label = result.Value.TryGetValue("Title", out var title) ? title : "Unknown Title";
-                    string value = result.Key ?? "Unknown";
-                    url = result.Value["Url"];
-                    string trackKey = result.Value["TrackKey"];
-                    Console.WriteLine($"SearchCommand: {trackKey}"); // Debugging
-                    Console.WriteLine($"Url for {result.Key}: {url}"); // Debugging
-                    return new SelectMenuOptionBuilder()
-                        .WithLabel(result.Value["Title"] ?? "Unknown Title")
-                        .WithValue(trackKey)
-                        .WithDescription(description);
-                        }).ToList();
-                SelectMenuBuilder selectMenu = new SelectMenuBuilder()
-                    .WithCustomId($"search_plex:{type}")
-                    .WithPlaceholder($"Select a/an {type}")
-                    .WithOptions(selectMenuOptions)
-                    .WithMinValues(1)
-                    .WithMaxValues(1);
-                await FollowupAsync("Select an item to play.", components: new ComponentBuilder().WithSelectMenu(selectMenu).Build(), ephemeral: true);
+                if (results.ContainsKey("Artists") && results["Artists"].Count > 0)
+                {
+                    await SendSelectMenu("Artists", results["Artists"], "Select an artist");
+                }
+
+                if (results.ContainsKey("Albums") && results["Albums"].Count > 0)
+                {
+                    await SendSelectMenu("Albums", results["Albums"], "Select an album");
+                }
+
+                if (results.ContainsKey("Tracks") && results["Tracks"].Count > 0)
+                {
+                    await SendSelectMenu("Tracks", results["Tracks"], "Select a track");
+                }
             }
             catch (Exception ex)
             {
                 await FollowupAsync("An error occurred: " + ex.Message, ephemeral: true);
-                Console.WriteLine($"Error: {ex.Message}");
+                Console.WriteLine($"Error in the Try block of the slash command: {ex.Message}");
             }
+        }
+
+        private async Task SendSelectMenu(string title, List<Dictionary<string, string>> items, string placeholder)
+        {
+            List<SelectMenuOptionBuilder> selectMenuOptions = items.Select(item =>
+            {
+                string description = item["Description"] ?? "No description available.";
+                description = description.Length > 100 ? description[..97] + "..." : description;
+                return new SelectMenuOptionBuilder()
+                    .WithLabel(item["Title"] ?? "Unknown Title")
+                    .WithValue(item["TrackKey"] ?? "N/A")
+                    .WithDescription(description);
+            }).ToList();
+
+            SelectMenuBuilder selectMenu = new SelectMenuBuilder()
+                .WithCustomId($"search_plex:{title.ToLower()}")
+                .WithPlaceholder(placeholder)
+                .WithOptions(selectMenuOptions)
+                .WithMinValues(1)
+                .WithMaxValues(1);
+
+            await FollowupAsync($"Select a {title.ToLower()} to play.", components: new ComponentBuilder().WithSelectMenu(selectMenu).Build(), ephemeral: true);
         }
 
         [SlashCommand("playlist", "Play a playlist", runMode: RunMode.Async)]
