@@ -18,14 +18,11 @@ services:
     image: ghcr.io/lavalink-devs/lavalink:0326284-alpine
     container_name: lavalink
     restart: unless-stopped
-    environment:
-      - _JAVA_OPTIONS=-Xmx6G
-      - SERVER_PORT=2333
-      - LAVALINK_ADDRESS=0.0.0.0
-      - LAVALINK_PASSWORD=youshallnotpass
-    volumes:
-      - ./application.yml:/opt/Lavalink/application.yml
-      - ./plugins/:/opt/Lavalink/plugins/
+    env_file: 
+      - ../.env
+    #volumes:
+      #- ./application.yml:/opt/Lavalink/application.yml
+      #- ./plugins/:/opt/Lavalink/plugins/
     networks:
       - lavalink
     expose:
