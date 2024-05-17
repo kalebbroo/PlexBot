@@ -82,7 +82,8 @@ namespace PlexBot.Core.Commands
         }
 
         [SlashCommand("search", "Search Plex for media", runMode: RunMode.Async)]
-        public async Task SearchCommand([Summary("query", "The query to search for")] string query)
+        public async Task SearchCommand(
+            [Summary("query", "The query to search for")] string query)
         {
             await DeferAsync(ephemeral: true);
             Console.WriteLine($"Searching for: {query}...");

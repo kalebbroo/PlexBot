@@ -123,11 +123,14 @@ namespace PlexBot
             services.AddLavalink();
             services.ConfigureLavalink(options =>
             {
-                options.Label = "plexBot";
-                options.Passphrase = Environment.GetEnvironmentVariable("LAVALINK_PASSWORD") ?? "youshallnotpass";
-                options.HttpClientName = Environment.GetEnvironmentVariable("LAVALINK_HOST") ?? "lavalink";
-                options.BufferSize = 1024 * 1024 * 2;
-                options.BaseAddress = new Uri($"http://{options.HttpClientName}:2333");
+                string password = Environment.GetEnvironmentVariable("LAVALINK_SERVER_PASSWORD") ?? "youshallnotpass";
+                string host = Environment.GetEnvironmentVariable("LAVALINK_HOST") ?? "lavalink";
+                string port = Environment.GetEnvironmentVariable("SERVER_PORT") ?? "2333";
+                options.Label = "PlexBot";
+                options.Passphrase = password;
+                options.HttpClientName = host;
+                options.BufferSize = 1024 * 1024 * 4;
+                options.BaseAddress = new Uri($"http://{host}:{port}");
                 options.ResumptionOptions = new LavalinkSessionResumptionOptions(TimeSpan.FromSeconds(60));
             });
             // Setup logging
