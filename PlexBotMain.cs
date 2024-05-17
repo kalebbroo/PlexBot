@@ -15,6 +15,7 @@ using PlexBot.Core.AutoComplete;
 using PlexBot.Core.EventHandlers;
 using PlexBot.Core.Commands;
 using PlexBot.Core.Players;
+using Newtonsoft.Json.Linq;
 
 namespace PlexBot
 {
@@ -30,53 +31,56 @@ namespace PlexBot
         {
             // Try to get the bot token from environment variables
             string token = Environment.GetEnvironmentVariable("DISCORD_TOKEN") ?? "";
+            string clientIdentifierKey = Environment.GetEnvironmentVariable("CLIENT_IDENTIFIER_KEY") ?? "";
             // If token is not found in environment variables, load from .env file
-            if (string.IsNullOrEmpty(token))
+            if (string.IsNullOrEmpty(token) || string.IsNullOrEmpty(clientIdentifierKey))
             {
                 string envFilePath = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "../../../.env"));
-                Console.WriteLine("Token not found, attempting to load from .env file in: " + envFilePath);
+                Console.WriteLine("Env not found, attempting to load from .env file in: " + envFilePath);
                 if (File.Exists(envFilePath))
                 {
-                    var envOptions = new DotEnvOptions(envFilePaths: [envFilePath]);
+                    DotEnvOptions envOptions = new(envFilePaths: [envFilePath]);
                     DotEnv.Load(envOptions);
                     token = Environment.GetEnvironmentVariable("DISCORD_TOKEN") ?? "";
+                    clientIdentifierKey = Environment.GetEnvironmentVariable("CLIENT_IDENTIFIER_KEY") ?? $"{Guid.NewGuid()}";
+                    List<string> lines = File.Exists(envFilePath) ? File.ReadAllLines(envFilePath).ToList() : [];
+                    int existingIndex = lines.FindIndex(line => line.StartsWith($"CLIENT_IDENTIFIER_KEY="));
+                    lines[existingIndex] = $"CLIENT_IDENTIFIER_KEY={clientIdentifierKey}";
+                    File.WriteAllLines(envFilePath, lines);
+                    Environment.SetEnvironmentVariable("CLIENT_IDENTIFIER_KEY", clientIdentifierKey);
+                }
+                else
+                {
+                    Console.WriteLine("ERROR: .env file not found. Please create a .env file in the root directory.");
+                    return;
                 }
             }
-
             _serviceProvider = ConfigureServices();
-
             // Start all IHostedService instances
-            foreach (var hostedService in _serviceProvider.GetServices<IHostedService>())
+            foreach (IHostedService hostedService in _serviceProvider.GetServices<IHostedService>())
             {
                 await hostedService.StartAsync(CancellationToken.None);
             }
-
             _client = _serviceProvider.GetRequiredService<DiscordSocketClient>();
             _interactions = _serviceProvider.GetRequiredService<InteractionService>();
-
             _client.InteractionCreated += async interaction =>
             {
                 SocketInteractionContext ctx = new(_client, interaction);
                 await _interactions.ExecuteCommandAsync(ctx, _serviceProvider);
             };
-
             _client.Log += Log;
             _interactions.Log += Log;
             _client.Ready += () => ReadyAsync();
-
             // Initialize and register event handlers
-            Core.EventHandlers.UserEvents eventHandlers = new(_client);
+            UserEvents eventHandlers = new(_client);
             eventHandlers.RegisterHandlers();
-
             if (string.IsNullOrEmpty(token))
             {
                 Console.WriteLine("ERROR: Bot token is null or empty. Check your .env file.");
                 return;
             }
-
             await _client.LoginAsync(TokenType.Bot, token);
             await _client.StartAsync();
-
             // Block this task until the program is closed.
             await Task.Delay(-1);
         }
@@ -94,7 +98,6 @@ namespace PlexBot
         public static IServiceProvider ConfigureServices()
         {
             ServiceCollection services = new();
-
             // Configure Discord client
             services.AddSingleton(new DiscordSocketClient(new DiscordSocketConfig
             {
@@ -112,13 +115,7 @@ namespace PlexBot
             services.AddSingleton<SelectMenus>();
             services.AddSingleton<Players>();
             services.AddSingleton<LavaLinkCommands>();
-            services.AddSingleton(serviceProvider =>
-            {
-                string baseAddress = Environment.GetEnvironmentVariable("PLEX_URL") ?? "";
-                string plexToken = Environment.GetEnvironmentVariable("PLEX_TOKEN") ?? "";
-                LavaLinkCommands lavaLinkCommands = serviceProvider.GetRequiredService<LavaLinkCommands>();
-                return new PlexApi(baseAddress, plexToken, lavaLinkCommands);
-            });
+            services.AddSingleton<PlexApi>();
             // Add Lavalink and configure it
             services.AddLavalink();
             services.ConfigureLavalink(options =>
@@ -154,7 +151,6 @@ namespace PlexBot
                     // Register command modules with the InteractionService.
                     // Scans the whole assembly for classes that define slash commands.
                     await _interactions!.AddModulesAsync(Assembly.GetEntryAssembly(), _serviceProvider);
-
                     foreach (var guild in _client.Guilds)
                     {
                         await _interactions.RegisterCommandsToGuildAsync(guild.Id, true);
@@ -164,15 +160,16 @@ namespace PlexBot
                 {
                     Console.WriteLine($"\nNo guilds found\n");
                 }
-
                 Console.WriteLine($"\nLogged in as {_client.CurrentUser.Username}\n" +
                     $"Registered {_interactions!.SlashCommands.Count} slash commands\n" +
                     $"Bot is a member of {_client.Guilds.Count} guilds\n");
                 await _client.SetGameAsync("/help", null, ActivityType.Listening);
+                // Run PlexAuth and update the environment file
+                PlexAuth auth = new();
+                await auth.GetAccessTokenAsync();
             }
             catch (Exception e)
             {
-                // Log the exception
                 Console.WriteLine($"Exception: {e}");
                 throw;
             }

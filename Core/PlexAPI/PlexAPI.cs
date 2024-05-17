@@ -8,11 +8,11 @@ using Newtonsoft.Json;
 
 namespace PlexBot.Core.PlexAPI
 {
-    public class PlexApi(string plexUrl, string plexToken, LavaLinkCommands lavaLinkCommands)
+    public class PlexApi(LavaLinkCommands lavaLinkCommands)
     {
-        private readonly string _plexURL = plexUrl;
-        private readonly string _plexToken = plexToken;
         private readonly LavaLinkCommands _lavaLinkCommands = lavaLinkCommands;
+        readonly string plexUrl = Environment.GetEnvironmentVariable("PLEX_URL") ?? "";
+        readonly string plexToken = Environment.GetEnvironmentVariable("PLEX_TOKEN") ?? "";
 
         // Private method to perform the HTTP request
         public async Task<string?> PerformRequestAsync(string uri)
