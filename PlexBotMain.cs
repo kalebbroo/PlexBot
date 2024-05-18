@@ -31,9 +31,8 @@ namespace PlexBot
         {
             // Try to get the bot token from environment variables
             string token = Environment.GetEnvironmentVariable("DISCORD_TOKEN") ?? "";
-            string clientIdentifierKey = Environment.GetEnvironmentVariable("CLIENT_IDENTIFIER_KEY") ?? "";
             // If token is not found in environment variables, load from .env file
-            if (string.IsNullOrEmpty(token) || string.IsNullOrEmpty(clientIdentifierKey))
+            if (string.IsNullOrEmpty(token))
             {
                 string envFilePath = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "../../../.env"));
                 Console.WriteLine("Env not found, attempting to load from .env file in: " + envFilePath);
@@ -42,12 +41,6 @@ namespace PlexBot
                     DotEnvOptions envOptions = new(envFilePaths: [envFilePath]);
                     DotEnv.Load(envOptions);
                     token = Environment.GetEnvironmentVariable("DISCORD_TOKEN") ?? "";
-                    clientIdentifierKey = Environment.GetEnvironmentVariable("CLIENT_IDENTIFIER_KEY") ?? $"{Guid.NewGuid()}";
-                    List<string> lines = File.Exists(envFilePath) ? File.ReadAllLines(envFilePath).ToList() : [];
-                    int existingIndex = lines.FindIndex(line => line.StartsWith($"CLIENT_IDENTIFIER_KEY="));
-                    lines[existingIndex] = $"CLIENT_IDENTIFIER_KEY={clientIdentifierKey}";
-                    File.WriteAllLines(envFilePath, lines);
-                    Environment.SetEnvironmentVariable("CLIENT_IDENTIFIER_KEY", clientIdentifierKey);
                 }
                 else
                 {
@@ -164,9 +157,6 @@ namespace PlexBot
                     $"Registered {_interactions!.SlashCommands.Count} slash commands\n" +
                     $"Bot is a member of {_client.Guilds.Count} guilds\n");
                 await _client.SetGameAsync("/help", null, ActivityType.Listening);
-                // Run PlexAuth and update the environment file
-                PlexAuth auth = new();
-                await auth.GetAccessTokenAsync();
             }
             catch (Exception e)
             {
