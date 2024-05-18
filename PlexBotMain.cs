@@ -15,7 +15,6 @@ using PlexBot.Core.AutoComplete;
 using PlexBot.Core.EventHandlers;
 using PlexBot.Core.Commands;
 using PlexBot.Core.Players;
-using Newtonsoft.Json.Linq;
 
 namespace PlexBot
 {
