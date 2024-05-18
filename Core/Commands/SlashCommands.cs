@@ -81,34 +81,55 @@ namespace PlexBot.Core.Commands
             await FollowupAsync($"Playing: {track.Title}").ConfigureAwait(false);
         }
 
-        [SlashCommand("search", "Search Plex for media", runMode: RunMode.Async)]
+        [SlashCommand("search", "Search media from various sources", runMode: RunMode.Async)]
         public async Task SearchCommand(
-            [Summary("query", "The query to search for")] string query)
+        [Summary("query", "The query to search for")] string query,
+        [Autocomplete(typeof(AutoComplete.AutoComplete))]
+        [Summary("source", "The source to search in (e.g., plex, youtube, soundcloud)")] string source = "plex")
         {
             await DeferAsync(ephemeral: true);
-            Console.WriteLine($"Searching for: {query}...");
-
+            Console.WriteLine($"Searching for: {query} in {source}...");
             try
             {
-                Dictionary<string, List<Dictionary<string, string>>> results = await _plexApi.SearchLibraryAsync(query);
-                Console.WriteLine("After search library async"); // Debugging
+                Dictionary<string, List<Dictionary<string, string>>>? results = null;
+
+                switch (source.ToLower())
+                {
+                    case "plex":
+                        results = await _plexApi.SearchLibraryAsync(query);
+                        break;
+                    case "youtube":
+                        // TODO: Add your YouTube search implementation here
+                        break;
+                    case "soundcloud":
+                        // TODO: Add your SoundCloud search implementation here
+                        break;
+                    case "twitch":
+                        // TODO: Add your Twitch search implementation here
+                        break;
+                    case "vimeo":
+                        // TODO: Add your Vimeo search implementation here
+                        break;
+                    case "bandcamp":
+                        // TODO: Add your Bandcamp search implementation here
+                        break;
+                    default:
+                        await FollowupAsync("Invalid source specified.", ephemeral: true);
+                        return;
+                }
                 if (results == null || results.Count == 0)
                 {
                     await FollowupAsync("No results found.", ephemeral: true);
                     return;
                 }
-                Console.WriteLine($"API Results: {JsonConvert.SerializeObject(results)}"); // Debugging
-
                 if (results.ContainsKey("Artists") && results["Artists"].Count > 0)
                 {
                     await SendSelectMenu("Artists", results["Artists"], "Select an artist");
                 }
-
                 if (results.ContainsKey("Albums") && results["Albums"].Count > 0)
                 {
                     await SendSelectMenu("Albums", results["Albums"], "Select an album");
                 }
-
                 if (results.ContainsKey("Tracks") && results["Tracks"].Count > 0)
                 {
                     await SendSelectMenu("Tracks", results["Tracks"], "Select a track");
@@ -132,14 +153,12 @@ namespace PlexBot.Core.Commands
                     .WithValue(item["TrackKey"] ?? "N/A")
                     .WithDescription(description);
             }).ToList();
-
             SelectMenuBuilder selectMenu = new SelectMenuBuilder()
                 .WithCustomId($"search_plex:{title.ToLower()}")
                 .WithPlaceholder(placeholder)
                 .WithOptions(selectMenuOptions)
                 .WithMinValues(1)
                 .WithMaxValues(1);
-
             await FollowupAsync($"Select a {title.ToLower()} to play.", components: new ComponentBuilder().WithSelectMenu(selectMenu).Build(), ephemeral: true);
         }
 

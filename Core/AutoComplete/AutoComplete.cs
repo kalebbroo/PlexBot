@@ -3,6 +3,7 @@ using Discord.Interactions;
 using Microsoft.Extensions.DependencyInjection;
 using PlexBot.Core.PlexAPI;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -18,8 +19,6 @@ namespace PlexBot.Core.AutoComplete
             {
                 PlexApi plexApi = services.GetRequiredService<PlexApi>();
                 Dictionary<string, Dictionary<string, string>> playlists = await plexApi.GetPlaylists();
-
-
                 if (playlists != null && playlists.Count != 0)
                 {
                     List<AutocompleteResult> results = playlists.Keys
@@ -32,9 +31,23 @@ namespace PlexBot.Core.AutoComplete
                         })
                         .Take(25)
                         .ToList();
-
                     return AutocompletionResult.FromSuccess(results);
                 }
+            }
+            if (parameter.Name.Equals("source", StringComparison.OrdinalIgnoreCase))
+            {
+                List<AutocompleteResult> results = [new("Plex", "plex")];
+                if (bool.TryParse(Environment.GetEnvironmentVariable("ENABLE_YOUTUBE"), out bool enableYouTube) && enableYouTube)
+                    results.Add(new AutocompleteResult("YouTube", "youtube"));
+                if (bool.TryParse(Environment.GetEnvironmentVariable("ENABLE_SOUNDCLOUD"), out bool enableSoundCloud) && enableSoundCloud)
+                    results.Add(new AutocompleteResult("SoundCloud", "soundcloud"));
+                if (bool.TryParse(Environment.GetEnvironmentVariable("ENABLE_TWITCH"), out bool enableTwitch) && enableTwitch)
+                    results.Add(new AutocompleteResult("Twitch", "twitch"));
+                if (bool.TryParse(Environment.GetEnvironmentVariable("ENABLE_VIMEO"), out bool enableVimeo) && enableVimeo)
+                    results.Add(new AutocompleteResult("Vimeo", "vimeo"));
+                if (bool.TryParse(Environment.GetEnvironmentVariable("ENABLE_BANDCAMP"), out bool enableBandcamp) && enableBandcamp)
+                    results.Add(new AutocompleteResult("Bandcamp", "bandcamp"));
+                return AutocompletionResult.FromSuccess(results);
             }
             return AutocompletionResult.FromSuccess([]);
         }
