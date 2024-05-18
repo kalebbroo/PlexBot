@@ -43,12 +43,15 @@ namespace PlexBot.Core.PlexAPI
             return (pinId, pinCode);
         }
 
-        public string ConstructAuthAppUrl(int pinId, string pinCode, string forwardUrl)
+        public string ConstructAuthAppUrl(string pinCode, string forwardUrl)
         {
-            return $"https://app.plex.tv/auth#?clientID={clientIdentifierKey}&code={pinCode}&context%5Bdevice%5D%5Bproduct%5D={Uri.EscapeDataString(plexAppName)}&forwardUrl={Uri.EscapeDataString(forwardUrl)}";
+            string authUrl = $"https://app.plex.tv/auth#?clientID={clientIdentifierKey}&code={pinCode}" +
+                $"&context%5Bdevice%5D%5Bproduct%5D={Uri.EscapeDataString(plexAppName)}&forwardUrl={Uri.EscapeDataString(forwardUrl)}";
+            Console.WriteLine($"Click the following URL to login to Plex generate your app token:\n{authUrl}");
+            return authUrl;
         }
 
-        public async Task<string> CheckPinAsync(int pinId, string pinCode)
+        public async Task<string> CheckPinAsync(int pinId)
         {
             string requestUrl = $"https://plex.tv/api/v2/pins/{pinId}";
             HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get, requestUrl);
@@ -72,14 +75,14 @@ namespace PlexBot.Core.PlexAPI
             {
                 // Generate new token if invalid or not available
                 (int pinId, string pinCode) = await GeneratePinAsync();
-                string authUrl = ConstructAuthAppUrl(pinId, pinCode, "http://localhost/");
+                string authUrl = ConstructAuthAppUrl(pinCode, "http://app.plex.tv");
                 Console.WriteLine("Please authenticate at the following URL:");
                 Console.WriteLine(authUrl);
                 string newAccessToken = null;
                 while (newAccessToken == null)
                 {
                     await Task.Delay(1000); // Poll every second
-                    newAccessToken = await CheckPinAsync(pinId, pinCode);
+                    newAccessToken = await CheckPinAsync(pinId);
                 }
                 Environment.SetEnvironmentVariable("PLEX_TOKEN", newAccessToken);
                 string envFilePath = Path.Combine(Directory.GetCurrentDirectory(), ".env");
