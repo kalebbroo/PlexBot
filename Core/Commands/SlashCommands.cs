@@ -179,7 +179,9 @@ namespace PlexBot.Core.Commands
                     Console.WriteLine("Playlist is empty or could not be loaded.");
                     return;
                 }
-                // Optionally shuffle the playlist
+                // Optionally shuffle the playlist before adding it to the queue
+                // This is intentionally seperate from shuffling the queue to allow
+                // an added playlist to be shuffled without affecting the current queue
                 if (shuffle)
                 {
                     Random rng = new();

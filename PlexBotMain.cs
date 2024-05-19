@@ -25,27 +25,20 @@ namespace PlexBot
         private IServiceProvider? _serviceProvider;
 
         /// <summary>Main entry point for the bot.</summary>
-        static void Main() => new PlexBotMain().MainAsync().GetAwaiter().GetResult();
+        static async Task Main()
+        {
+            await new PlexBotMain().MainAsync();
+        }
+
         public async Task MainAsync()
         {
             // Try to get the bot token from environment variables
-            string token = Environment.GetEnvironmentVariable("DISCORD_TOKEN") ?? "";
+            string token = LoadToken();
             // If token is not found in environment variables, load from .env file
             if (string.IsNullOrEmpty(token))
             {
-                string envFilePath = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "../../../.env"));
-                Console.WriteLine("Env not found, attempting to load from .env file in: " + envFilePath);
-                if (File.Exists(envFilePath))
-                {
-                    DotEnvOptions envOptions = new(envFilePaths: [envFilePath]);
-                    DotEnv.Load(envOptions);
-                    token = Environment.GetEnvironmentVariable("DISCORD_TOKEN") ?? "";
-                }
-                else
-                {
-                    Console.WriteLine("ERROR: .env file not found. Please create a .env file in the root directory.");
-                    return;
-                }
+                Console.WriteLine("ERROR: Bot token is null or empty. Check your .env file.");
+                return;
             }
             _serviceProvider = ConfigureServices();
             // Start all IHostedService instances
@@ -75,6 +68,24 @@ namespace PlexBot
             await _client.StartAsync();
             // Block this task until the program is closed.
             await Task.Delay(-1);
+        }
+
+        /// <summary>Retrieves the Discord bot token from environment variables or a .env file if not found.</summary>
+        /// <returns>The Discord bot token string. Returns an empty string if the token cannot be found.</returns>
+        /// <remarks>Ensures flexibility by supporting both environment-specific settings and local development configurations.</remarks>
+        private static string LoadToken()
+        {
+            string? token = Environment.GetEnvironmentVariable("DISCORD_TOKEN");
+            if (string.IsNullOrEmpty(token))
+            {
+                string envFilePath = Path.Combine(Directory.GetCurrentDirectory(), "../../../.env");
+                if (File.Exists(envFilePath))
+                {
+                    DotEnv.Load(new DotEnvOptions(envFilePaths: [envFilePath]));
+                    token = Environment.GetEnvironmentVariable("DISCORD_TOKEN");
+                }
+            }
+            return token!;
         }
 
         /// <summary>Configures and provides the services used by the bot. This includes setting up the Discord client
