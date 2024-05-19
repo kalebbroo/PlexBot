@@ -29,29 +29,17 @@ namespace PlexBot.Core.Commands
         [SlashCommand("help", "Learn how to use the bot")]
         public async Task HelpCommand()
         {
-            try
-            {
-#warning TODO: Update help message
-                EmbedBuilder embed = new EmbedBuilder()
-                    .WithTitle("Hartsy.AI Bot Help")
-                    .WithThumbnailUrl(Context.Guild.IconUrl)
-                    .WithDescription("Hartsy.AI is the premier Stable Diffusion platform for generating images with text directly in Discord. " +
-                    "\n\nOur custom Discord bot enables users to generate images with text using our fine-tuned templates, choose your favorite " +
-                    "images to send to #showcase for community voting, and potentially get featured weekly on the server. \n\nDiscover more and subscribe at: https://hartsy.ai")
-                    .AddField("Available Slash Commands", "Checked the pinned messages for a more detailed explanation of these commands.", false)
-                    .AddField("/generate", "Generate an image based on the text you provide, select a template, and optionally add extra prompt " +
-                    "information. Example: `/generate_logo text:\"Your Text\" template:\"Template Name\" additions:\"Extra Prompt\"`", false)
-                    .AddField("/user_info", "Check the status of your subscription and see how many tokens you have left for image generation. Example: `/user_info`", false)
-                    .AddField("/help", "Shows this help message. Example: `/help`", false)
-                    .WithColor(Color.Blue)
-                    .WithFooter(footer => footer.Text = "For more information, visit Hartsy.AI")
-                    .WithCurrentTimestamp();
-                await RespondAsync(embed: embed.Build());
-            }
-            catch (Exception ex)
-            {
-                await RespondAsync($"An error occurred: {ex.Message}", ephemeral: true);
-            }
+            EmbedBuilder embed = new EmbedBuilder()
+                .WithTitle("Plex Music Bot Help")
+                .WithThumbnailUrl(Context.Guild.IconUrl)
+                .WithDescription("This bot allows you to play music from your Plex library and other sources directly in Discord. " +
+                "Use the slash commands and buttons to control the playback.")
+                .AddField("/search", "Search media from various sources. Example: `/search query:\"Your Query\" source:\"plex\"`", false)
+                .AddField("/playlist", "Play songs from a specified Plex playlist. Example: `/playlist playlist:\"Your Playlist\"`", false)
+                .WithColor(Color.Blue)
+                .WithFooter(footer => footer.Text = "For more information, visit the support server.")
+                .WithCurrentTimestamp();
+            await RespondAsync(embed: embed.Build());
         }
 
         /// <summary>Main play command for plex</summary>
