@@ -36,12 +36,11 @@ namespace PlexBot.Core.Players
                 variables[kvp.Key] = kvp.Value;
                 Console.WriteLine($"Key = {kvp.Key}, Value = {kvp.Value}");
             }
-            // TODO: Convert milliseconds to minutes and seconds
             string title = "Now Playing";
             string description = $"{variables["Artist"]} - {variables["Title"]}\n{variables["Album"]} - {variables["Studio"]}\n\n" +
                 $"{variables.GetValueOrDefault("Progress", "0:00")}/{variables["Duration"]}";
             string imageUrl = variables["Artwork"];
-            string volume = Environment.GetEnvironmentVariable("VOLUME") ?? "100%";
+            string volume = Environment.GetEnvironmentVariable("VOLUME") ?? "100";
             string footer = $"Volume: {volume}%";
             // Create a new embed with the player information
             EmbedBuilder embed = new EmbedBuilder()
