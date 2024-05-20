@@ -43,8 +43,8 @@ namespace PlexBot.Core.Commands
         }
 
         /// <summary>Main play command for plex</summary>
-        [SlashCommand("play", "Plays music from YouTube", runMode: RunMode.Async)]
-        public async Task Play(string query)
+        [SlashCommand("youtube", "Plays a single track from YouTube", runMode: RunMode.Async)]
+        public async Task Play(string search)
         {
             await DeferAsync().ConfigureAwait(false);
             SocketInteraction interaction = Context.Interaction;
@@ -56,7 +56,7 @@ namespace PlexBot.Core.Commands
             }
             // Load the track from YouTube using the query provided
             var track = await audioService.Tracks
-                .LoadTrackAsync(query, TrackSearchMode.YouTubeMusic)
+                .LoadTrackAsync(search, TrackSearchMode.YouTubeMusic)
                 .ConfigureAwait(false);
             // If no track was found, we send an error message to the user.
             if (track is null)
@@ -150,7 +150,7 @@ namespace PlexBot.Core.Commands
             await FollowupAsync($"Select a {title.ToLower()} to play.", components: new ComponentBuilder().WithSelectMenu(selectMenu).Build(), ephemeral: true);
         }
 
-        [SlashCommand("playlist", "Play a playlist", runMode: RunMode.Async)]
+        [SlashCommand("playlist", "Play a playlist from Plex", runMode: RunMode.Async)]
         public async Task PlaylistCommand(
         [Summary("playlist", "Choose a playlist.")]
         [Autocomplete(typeof(AutoComplete.AutoComplete))] string playlistKey,
