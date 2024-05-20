@@ -61,6 +61,12 @@ namespace PlexBot.Core.LavaLink
                 Console.WriteLine("Player not found.");
                 return;
             }
+            string volumeEnv = Environment.GetEnvironmentVariable("VOLUME") ?? "100";
+            if (int.TryParse(volumeEnv, out int volume))
+            {
+                volume = Math.Clamp(volume, 0, 100);
+                await player.SetVolumeAsync(volume);
+            }
             TrackPlayProperties playProperties = new()
             {
                 NoReplace = true,
