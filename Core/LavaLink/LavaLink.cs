@@ -62,9 +62,10 @@ namespace PlexBot.Core.LavaLink
                 return;
             }
             string volumeEnv = Environment.GetEnvironmentVariable("VOLUME") ?? "100";
-            if (int.TryParse(volumeEnv, out int volume))
+            if (float.TryParse(volumeEnv, out float volumePercentage))
             {
-                volume = Math.Clamp(volume, 0, 100);
+                float volume = volumePercentage / 100f;
+                volume = Math.Clamp(volume, 0.0f, 10.0f);
                 await player.SetVolumeAsync(volume);
             }
             TrackPlayProperties playProperties = new()
