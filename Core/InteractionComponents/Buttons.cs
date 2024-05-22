@@ -2,16 +2,11 @@
 using Discord.Interactions;
 using Discord.WebSocket;
 using PlexBot.Core.LavaLink;
-using PlexBot.Core.Players;
 using PlexBot.Core.Commands;
 using Lavalink4NET.Players.Queued;
 using Lavalink4NET.Tracks;
 using Lavalink4NET.Players;
 using static System.Console;
-using Microsoft.VisualBasic;
-using static System.Runtime.InteropServices.JavaScript.JSType;
-using System.Reflection;
-using System;
 using Discord.Rest;
 
 namespace PlexBot.Core.InteractionComponents
@@ -21,7 +16,7 @@ namespace PlexBot.Core.InteractionComponents
         private readonly SlashCommands _commands = commands;
         private readonly LavaLinkCommands _lavaLink = lavaLink;
         private static readonly Dictionary<(ulong, string), DateTime> _lastInteracted = [];
-        private static readonly TimeSpan Cooldown = TimeSpan.FromSeconds(3); // 3 seconds cooldown
+        private static readonly TimeSpan Cooldown = TimeSpan.FromSeconds(3);
 
         /// <summary>Checks if a user is on cooldown for a specific command.</summary>
         /// <param name="user">The user to check for cooldown.</param>
@@ -217,7 +212,7 @@ namespace PlexBot.Core.InteractionComponents
                             currentPage = 1;
                         }
                     }
-                        break;
+                    break;
                 case "edit":
                     SelectMenuBuilder menu = new SelectMenuBuilder()
                         .WithCustomId("queue:edit")
@@ -239,7 +234,7 @@ namespace PlexBot.Core.InteractionComponents
                             return;
                         }
                         else
-                        { 
+                        {
                             await Context.Interaction.DeleteOriginalResponseAsync();
                         }
                     }
@@ -291,7 +286,7 @@ namespace PlexBot.Core.InteractionComponents
         private static async Task BuildDefaultComponents(RestInteractionMessage originalResponse)
         {
             ComponentBuilder components = new ComponentBuilder()
-                .WithButton("Pause", "pause_resume:pause", ButtonStyle.Secondary, row: 0) 
+                .WithButton("Pause", "pause_resume:pause", ButtonStyle.Secondary, row: 0)
                 .WithButton("Skip", "skip:skip", ButtonStyle.Primary, row: 0)
                 .WithButton("Queue Options", "queue_options:options:1", ButtonStyle.Success, row: 0)
                 .WithButton("Repeat", "repeat:select", ButtonStyle.Secondary, row: 0)
