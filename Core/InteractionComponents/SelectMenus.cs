@@ -107,9 +107,9 @@ namespace PlexBot.Core.InteractionComponents
                 return;
             }
             string[] args = customId.Split(':');
-            string action = args[0];
+            string action = args[1];
             int currentPage = args.Length > 2 ? int.Parse(args[2]) : 1;
-            switch (action)
+            switch (args[0])
             {
                 case "edit":
                     switch (selectedValues[0])
@@ -137,16 +137,10 @@ namespace PlexBot.Core.InteractionComponents
                 case "rearrange":
                     await HandleRearrange(player, selectedValues);
                     break;
-                case "next":
-                    await NavigateQueuePage(player, currentPage + 1, selectedValues[0]);
-                    break;
-                case "back":
-                    await NavigateQueuePage(player, currentPage - 1, selectedValues[0]);
-                    break;
             }
         }
 
-        private async Task ShowQueueEditMenu(CustomPlayer player, string customIdPrefix, string placeholder, string description, int currentPage, string selectedAction)
+        public async Task ShowQueueEditMenu(CustomPlayer player, string customIdPrefix, string placeholder, string description, int currentPage, string selectedAction)
         {
             int totalItems = player.Queue.Count;
             int itemsPerPage = 24; // Max number of items per select menu
@@ -279,9 +273,8 @@ namespace PlexBot.Core.InteractionComponents
 
         private static ComponentBuilder BuildPaginationComponents(ComponentBuilder builder, int currentPage, int totalPages, string action)
         {
-            // TODO: Move to Buttons.cs and fix logic
-            builder.WithButton("Back", $"queue:back:{action}:{currentPage}", ButtonStyle.Secondary, row: 1, disabled: currentPage == 1)
-                   .WithButton("Next", $"queue:next:{action}:{currentPage}", ButtonStyle.Secondary, row: 1, disabled: currentPage == totalPages);
+            builder.WithButton("Back", $"queue_edit:back:{action}:{currentPage}", ButtonStyle.Secondary, row: 1, disabled: currentPage == 1)
+                   .WithButton("Next", $"queue_edit:next:{action}:{currentPage}", ButtonStyle.Secondary, row: 1, disabled: currentPage == totalPages);
             return builder;
         }
 
@@ -298,6 +291,30 @@ namespace PlexBot.Core.InteractionComponents
                 .WithOptions(options)
                 .WithMinValues(1)
                 .WithMaxValues(1);
+        }
+
+        [ComponentInteraction("queue_edit:*", runMode: RunMode.Async)]
+        public async Task HandleQueuePagination(string customId)
+        {
+            string[] args = customId.Split(':');
+            string action = args[1];
+            string queueAction = args[2];
+            int currentPage = int.Parse(args[3]);
+            CustomPlayer? player = await lavaLink.GetPlayerAsync(Context.Interaction, true);
+            if (player == null)
+            {
+                await FollowupAsync("No active player found.", ephemeral: true);
+                return;
+            }
+            switch (action)
+            {
+                case "next":
+                    await NavigateQueuePage(player, currentPage + 1, queueAction);
+                    break;
+                case "back":
+                    await NavigateQueuePage(player, currentPage - 1, queueAction);
+                    break;
+            }
         }
     }
 }
