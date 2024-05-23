@@ -1,21 +1,19 @@
-# Use the .NET SDK image to build the project
-FROM mcr.microsoft.com/dotnet/sdk:latest AS build
+# Build using the .NET SDK on Alpine
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:8.0-alpine AS build
 WORKDIR /src
 
-# Copy csproj and restore as distinct layers
+# Copy and restore dependencies
 COPY ["PlexBot.csproj", "./"]
 RUN dotnet restore "PlexBot.csproj"
 
-# Copy everything else and build
+# Copy source files and build
 COPY . .
-RUN dotnet build "PlexBot.csproj" -c Release -o /app/build
-
-# Publish the project
-FROM build AS publish
 RUN dotnet publish "PlexBot.csproj" -c Release -o /app/publish
 
-# Build the runtime image
-FROM mcr.microsoft.com/dotnet/runtime:latest AS final
+# Create the runtime image using the .NET runtime on Alpine
+FROM mcr.microsoft.com/dotnet/aspnet:8.0-alpine3.18 AS final
 WORKDIR /app
-COPY --from=publish /app/publish .
+COPY --from=build /app/publish .
+
+# Set the entry point
 ENTRYPOINT ["dotnet", "PlexBot.dll"]

@@ -335,7 +335,7 @@ namespace PlexBot.Core.InteractionComponents
                 await FollowupAsync("Invalid track selection.", ephemeral: true);
                 return;
             }
-            CustomPlayer? player = await _lavaLinkCommands.GetPlayerAsync(Context.Interaction, true);
+            CustomPlayer? player = await lavaLink.GetPlayerAsync(Context.Interaction, true);
             if (player == null)
             {
                 await FollowupAsync("No active player found.", ephemeral: true);
