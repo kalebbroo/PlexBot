@@ -3,7 +3,6 @@ SETLOCAL
 
 :: Change directory to the script's location
 cd %~dp0
-
 :: Navigate to the root directory where .env is located
 cd ..
 
@@ -17,7 +16,6 @@ IF NOT EXIST "%ENV_FILE%" (
     pause
     exit /b 1
 )
-
 echo Found .env file
 
 :: Now change to the Docker directory where docker-compose.yml is located
@@ -30,7 +28,6 @@ IF NOT EXIST "docker-compose.yml" (
     pause
     exit /b 1
 )
-
 echo Found docker-compose.yml file
 
 :: Pull the latest images
@@ -39,15 +36,17 @@ docker-compose pull
 
 :: Build the project
 echo Building the Docker containers...
-docker-compose build
+docker-compose build --no-cache
 
 :: Stop and remove any old containers
 echo Stopping old containers...
 docker-compose down
+:: Remove dangling images to free up space
+echo Removing dangling images...
+docker image prune -f
 
 :: Start the new containers
 echo Starting new containers...
 docker-compose -p plexbot up -d
-
 echo PlexBot and Lavalink are now running.
 pause
