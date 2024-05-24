@@ -71,9 +71,9 @@ namespace PlexBot.Core.Commands
 
         [SlashCommand("search", "Search media from various sources", runMode: RunMode.Async)]
         public async Task SearchCommand(
-    [Summary("query", "The query to search for")] string query,
-    [Autocomplete(typeof(AutoComplete.AutoComplete))]
-    [Summary("source", "The source to search in (e.g., plex, youtube, soundcloud)")] string source = "plex")
+        [Summary("query", "The query to search for")] string query,
+        [Autocomplete(typeof(AutoComplete.AutoComplete))]
+        [Summary("source", "The source to search in (e.g., plex, youtube, soundcloud)")] string source = "plex")
         {
             await DeferAsync(ephemeral: true);
             Console.WriteLine($"Searching for: {query} in {source}...");
@@ -88,7 +88,7 @@ namespace PlexBot.Core.Commands
                         break;
                     case "youtube":
                         TrackLoadResult ytSearch = await audioService.Tracks.LoadTracksAsync(query, TrackSearchMode.YouTubeMusic);
-                        Console.WriteLine(JsonConvert.SerializeObject(ytSearch));
+                        //Console.WriteLine(JsonConvert.SerializeObject(ytSearch)); // debug
                         List<Dictionary<string, string>> ytResults = ytSearch.Tracks.Select(track => new Dictionary<string, string>
                         {
                             { "Title", track.Title },
@@ -132,7 +132,14 @@ namespace PlexBot.Core.Commands
                 }
                 if (results.TryGetValue("Tracks", out List<Dictionary<string, string>>? tracks) && tracks.Count > 0)
                 {
-                    await SendSelectMenu("Tracks", tracks, "Select a track");
+                    if (tracks.FirstOrDefault()?.TryGetValue("TrackKey", out var trackKey) == true)
+                    {
+                        await SendSelectMenu($"Tracks:{trackKey}", tracks, "Select a track");
+                    }
+                    else
+                    {
+                        await FollowupAsync("No valid TrackKey found.", ephemeral: true);
+                    }
                 }
             }
             catch (Exception ex)
@@ -142,7 +149,7 @@ namespace PlexBot.Core.Commands
             }
         }
 
-        private async Task SendSelectMenu(string title, List<Dictionary<string, string>> items, string placeholder)
+        private async Task SendSelectMenu(string customId, List<Dictionary<string, string>> items, string placeholder)
         {
             List<SelectMenuOptionBuilder> selectMenuOptions = items.Select(item =>
             {
@@ -153,8 +160,11 @@ namespace PlexBot.Core.Commands
                     .WithValue(item["TrackKey"] ?? "N/A")
                     .WithDescription(description);
             }).ToList();
+            string[] source = customId.Split(':');
+            string title = source[0];
+            string service = source[1];
             SelectMenuBuilder selectMenu = new SelectMenuBuilder()
-                .WithCustomId($"search_plex:{title.ToLower()}")
+                .WithCustomId($"search_plex:{customId.ToLower()}")
                 .WithPlaceholder(placeholder)
                 .WithOptions(selectMenuOptions)
                 .WithMinValues(1)

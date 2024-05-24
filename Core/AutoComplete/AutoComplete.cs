@@ -2,10 +2,6 @@
 using Discord.Interactions;
 using Microsoft.Extensions.DependencyInjection;
 using PlexBot.Core.PlexAPI;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 
 namespace PlexBot.Core.AutoComplete
 {
@@ -14,7 +10,6 @@ namespace PlexBot.Core.AutoComplete
         public override async Task<AutocompletionResult> GenerateSuggestionsAsync(IInteractionContext context, IAutocompleteInteraction autocompleteInteraction,
             IParameterInfo parameter, IServiceProvider services)
         {
-            // Ensure this autocomplete is for the correct parameter, for example, "playlist"
             if (parameter.Name.Equals("playlist", StringComparison.OrdinalIgnoreCase))
             {
                 PlexApi plexApi = services.GetRequiredService<PlexApi>();
@@ -37,7 +32,7 @@ namespace PlexBot.Core.AutoComplete
             if (parameter.Name.Equals("source", StringComparison.OrdinalIgnoreCase))
             {
                 List<AutocompleteResult> results = [new("Plex", "plex")];
-                if (bool.TryParse(Environment.GetEnvironmentVariable("ENABLE_YOUTUBE"), out bool enableYouTube) && enableYouTube)
+                if (bool.TryParse(Environment.GetEnvironmentVariable("LAVALINK_SERVER_SOURCES_YOUTUBE"), out bool enableYouTube) && enableYouTube)
                     results.Add(new AutocompleteResult("YouTube", "youtube"));
                 if (bool.TryParse(Environment.GetEnvironmentVariable("ENABLE_SOUNDCLOUD"), out bool enableSoundCloud) && enableSoundCloud)
                     results.Add(new AutocompleteResult("SoundCloud", "soundcloud"));
