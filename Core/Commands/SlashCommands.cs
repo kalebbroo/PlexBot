@@ -71,23 +71,35 @@ namespace PlexBot.Core.Commands
 
         [SlashCommand("search", "Search media from various sources", runMode: RunMode.Async)]
         public async Task SearchCommand(
-        [Summary("query", "The query to search for")] string query,
-        [Autocomplete(typeof(AutoComplete.AutoComplete))]
-        [Summary("source", "The source to search in (e.g., plex, youtube, soundcloud)")] string source = "plex")
+    [Summary("query", "The query to search for")] string query,
+    [Autocomplete(typeof(AutoComplete.AutoComplete))]
+    [Summary("source", "The source to search in (e.g., plex, youtube, soundcloud)")] string source = "plex")
         {
             await DeferAsync(ephemeral: true);
             Console.WriteLine($"Searching for: {query} in {source}...");
             try
             {
-                Dictionary<string, List<Dictionary<string, string>>>? results = null;
+                Dictionary<string, List<Dictionary<string, string>>> results = [];
 
                 switch (source.ToLower())
                 {
                     case "plex":
-                        results = await _plexApi.SearchLibraryAsync(query);
+                        results = await plexApi.SearchLibraryAsync(query);
                         break;
                     case "youtube":
-                        // TODO: Add your YouTube search implementation here
+                        TrackLoadResult ytSearch = await audioService.Tracks.LoadTracksAsync(query, TrackSearchMode.YouTubeMusic);
+                        Console.WriteLine(JsonConvert.SerializeObject(ytSearch));
+                        List<Dictionary<string, string>> ytResults = ytSearch.Tracks.Select(track => new Dictionary<string, string>
+                        {
+                            { "Title", track.Title },
+                            { "Description", track.ProbeInfo! },
+                            { "TrackKey", track.Identifier },
+                            { "Artist", track.Author },
+                            { "Duration", track.Duration.ToString() },
+                            { "Url", track.Uri!.ToString() }
+                        }).ToList();
+                        results.Add("Tracks", ytResults);
+                        Console.WriteLine(JsonConvert.SerializeObject(results));
                         break;
                     case "soundcloud":
                         // TODO: Add your SoundCloud search implementation here
@@ -110,17 +122,17 @@ namespace PlexBot.Core.Commands
                     await FollowupAsync("No results found.", ephemeral: true);
                     return;
                 }
-                if (results.ContainsKey("Artists") && results["Artists"].Count > 0)
+                if (results.TryGetValue("Artists", out List<Dictionary<string, string>>? artists) && artists.Count > 0)
                 {
-                    await SendSelectMenu("Artists", results["Artists"], "Select an artist");
+                    await SendSelectMenu("Artists", artists, "Select an artist");
                 }
-                if (results.ContainsKey("Albums") && results["Albums"].Count > 0)
+                if (results.TryGetValue("Albums", out List<Dictionary<string, string>>? albums) && albums.Count > 0)
                 {
-                    await SendSelectMenu("Albums", results["Albums"], "Select an album");
+                    await SendSelectMenu("Albums", albums, "Select an album");
                 }
-                if (results.ContainsKey("Tracks") && results["Tracks"].Count > 0)
+                if (results.TryGetValue("Tracks", out List<Dictionary<string, string>>? tracks) && tracks.Count > 0)
                 {
-                    await SendSelectMenu("Tracks", results["Tracks"], "Select a track");
+                    await SendSelectMenu("Tracks", tracks, "Select a track");
                 }
             }
             catch (Exception ex)
