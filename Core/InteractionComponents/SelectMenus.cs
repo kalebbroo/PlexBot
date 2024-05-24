@@ -2,11 +2,8 @@
 using Discord.WebSocket;
 using Discord.Interactions;
 using PlexBot.Core.PlexAPI;
-using PlexBot.Core.Players;
 using PlexBot.Core.LavaLink;
 using Lavalink4NET.Players;
-using System.Runtime.InteropServices;
-using System.Text;
 
 namespace PlexBot.Core.InteractionComponents
 {
@@ -335,7 +332,7 @@ namespace PlexBot.Core.InteractionComponents
                 await FollowupAsync("Invalid track selection.", ephemeral: true);
                 return;
             }
-            CustomPlayer? player = await lavaLink.GetPlayerAsync(Context.Interaction, true);
+            CustomPlayer? player = await _lavaLinkCommands.GetPlayerAsync(Context.Interaction, true);
             if (player == null)
             {
                 await FollowupAsync("No active player found.", ephemeral: true);
