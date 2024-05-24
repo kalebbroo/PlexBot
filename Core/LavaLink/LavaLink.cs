@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using Discord;
 using Lavalink4NET.Tracks;
 using Lavalink4NET.Rest.Entities.Tracks;
+using System.Net.Http.Headers;
 
 namespace PlexBot.Core.LavaLink
 {
@@ -117,7 +118,7 @@ namespace PlexBot.Core.LavaLink
                 Console.WriteLine("Player not found.");
                 return;
             }
-            foreach (var details in trackDetailsList)
+            foreach (Dictionary<string, string> details in trackDetailsList)
             {
                 string trackUrl = details["Url"];
                 if (!string.IsNullOrEmpty(trackUrl))
@@ -126,7 +127,7 @@ namespace PlexBot.Core.LavaLink
                         trackUrl, TrackSearchMode.None);
                     if (lavalinkTrack != null)
                     {
-                        TimeSpan durationTimeSpan = TimeSpan.FromMilliseconds(int.TryParse(details["Duration"], out var duration) ? duration : 0);
+                        TimeSpan durationTimeSpan = TimeSpan.FromMilliseconds(int.TryParse(details["Duration"], out int duration) ? duration : 0);
                         string formattedDuration = durationTimeSpan.TotalHours < 1 ? durationTimeSpan.ToString(@"mm\:ss") : durationTimeSpan.ToString(@"hh\:mm\:ss");
                         CustomTrackQueueItem customTrack = new()
                         {

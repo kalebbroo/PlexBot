@@ -4,6 +4,7 @@ using Discord.Interactions;
 using PlexBot.Core.PlexAPI;
 using PlexBot.Core.LavaLink;
 using Lavalink4NET.Players;
+using Lavalink4NET.Tracks;
 
 namespace PlexBot.Core.InteractionComponents
 {
@@ -18,6 +19,9 @@ namespace PlexBot.Core.InteractionComponents
         public async Task DisplaySearchResults(string customId, string[] selections)
         {
             await DeferAsync(ephemeral: true);
+            string[] custom = customId.Split(':');
+            string type = custom[0];
+            string service = custom[1];
             string? selectedValue = selections.FirstOrDefault();
             if (string.IsNullOrEmpty(selectedValue))
             {
@@ -26,10 +30,28 @@ namespace PlexBot.Core.InteractionComponents
             }
             try
             {
-                switch (customId)
+                switch (type)
                 {
                     case "tracks":
                         {
+                            if (service == "youtube")
+                            {
+                                string youtubeIdentifier = selectedValue;
+                                string youtubeUrl = $"https://www.youtube.com/watch?v={youtubeIdentifier}";
+                                Dictionary<string, string> ytTrackDetails = new()
+                                {
+                                    { "Title", "youtube song title" },
+                                    { "TrackKey", youtubeUrl },
+                                    { "Artist", "youtube artist" },
+                                    { "Duration", "youtube duration" },
+                                    { "Url", youtubeUrl }
+                                };
+                                CustomPlayer? player = await lavaLink.GetPlayerAsync(Context.Interaction, true);
+                                await player.PlayAsync(youtubeUrl);
+                                //await lavaLink.AddToQueue(Context.Interaction, [ytTrackDetails]);
+                                await ModifyOriginalResponseAsync(msg => msg.Content = "Track added to queue.");
+                                break;
+                            }
                             Dictionary<string, string>? trackDetails = await plexApi.GetTrackDetails(selectedValue);
                             if (trackDetails != null)
                             {
