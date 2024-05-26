@@ -129,6 +129,12 @@ namespace PlexBot.Core.LavaLink
                     {
                         TimeSpan durationTimeSpan = TimeSpan.FromMilliseconds(int.TryParse(details["Duration"], out int duration) ? duration : 0);
                         string formattedDuration = durationTimeSpan.TotalHours < 1 ? durationTimeSpan.ToString(@"mm\:ss") : durationTimeSpan.ToString(@"hh\:mm\:ss");
+                        string plexUrl = Environment.GetEnvironmentVariable("PLEX_URL") ?? "";
+                        string plexToken = Environment.GetEnvironmentVariable("PLEX_TOKEN") ?? "";
+                        if (!details["Artwork"].StartsWith("http"))
+                        {
+                            details["Artwork"] = $"{plexUrl}{details["Artwork"]}?X-Plex-Token={plexToken}";
+                        }
                         CustomTrackQueueItem customTrack = new()
                         {
                             Reference = new TrackReference(lavalinkTrack),

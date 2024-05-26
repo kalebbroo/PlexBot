@@ -5,12 +5,15 @@ using PlexBot.Core.PlexAPI;
 using PlexBot.Core.LavaLink;
 using Lavalink4NET.Players;
 using Lavalink4NET.Tracks;
+using Lavalink4NET.Rest.Entities.Tracks;
+using Lavalink4NET;
 
 namespace PlexBot.Core.InteractionComponents
 {
-    public class SelectMenus(DiscordSocketClient client, PlexApi plexApi, LavaLinkCommands lavaLink, Players.Players visualPlayers) : InteractionModuleBase<SocketInteractionContext>
+    public class SelectMenus(DiscordSocketClient client, IAudioService audioService, PlexApi plexApi, LavaLinkCommands lavaLink, Players.Players visualPlayers) : InteractionModuleBase<SocketInteractionContext>
     {
         private readonly DiscordSocketClient _client = client;
+        private readonly IAudioService _audioService = audioService;
         private readonly PlexApi _plexApi = plexApi;
         private readonly LavaLinkCommands _lavaLinkCommands = lavaLink;
         private readonly Players.Players _visualPlayers = visualPlayers;
@@ -21,7 +24,8 @@ namespace PlexBot.Core.InteractionComponents
             await DeferAsync(ephemeral: true);
             string[] custom = customId.Split(':');
             string type = custom[0];
-            string service = custom[1];
+            string trackKey = custom[1];
+            string service = custom[2];
             string? selectedValue = selections.FirstOrDefault();
             if (string.IsNullOrEmpty(selectedValue))
             {
@@ -37,18 +41,22 @@ namespace PlexBot.Core.InteractionComponents
                             if (service == "youtube")
                             {
                                 string youtubeIdentifier = selectedValue;
+                                LavalinkTrack? ytTrack = await audioService.Tracks.LoadTrackAsync(youtubeIdentifier, TrackSearchMode.None);
                                 string youtubeUrl = $"https://www.youtube.com/watch?v={youtubeIdentifier}";
                                 Dictionary<string, string> ytTrackDetails = new()
                                 {
-                                    { "Title", "youtube song title" },
-                                    { "TrackKey", youtubeUrl },
-                                    { "Artist", "youtube artist" },
-                                    { "Duration", "youtube duration" },
-                                    { "Url", youtubeUrl }
+                                    { "Title", $"{ytTrack!.Title}" },
+                                    { "Artist", ytTrack.Author },
+                                    { "Album", ytTrack.SourceName! },
+                                    { "ReleaseDate", "youtube release date" },
+                                    { "Artwork", ytTrack.ArtworkUri!.ToString() },
+                                    { "Url", youtubeUrl },
+                                    { "ArtistUrl", "youtube artist url" },
+                                    { "Duration", ytTrack.Duration.ToString() },    
+                                    { "Studio", "youtube studio" },
+                                    { "TrackKey", youtubeIdentifier },
                                 };
-                                CustomPlayer? player = await lavaLink.GetPlayerAsync(Context.Interaction, true);
-                                await player.PlayAsync(youtubeUrl);
-                                //await lavaLink.AddToQueue(Context.Interaction, [ytTrackDetails]);
+                                await lavaLink.AddToQueue(Context.Interaction, [ytTrackDetails]);
                                 await ModifyOriginalResponseAsync(msg => msg.Content = "Track added to queue.");
                                 break;
                             }
