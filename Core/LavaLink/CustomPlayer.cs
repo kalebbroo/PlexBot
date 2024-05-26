@@ -12,13 +12,10 @@ namespace PlexBot.Core.LavaLink
 
         protected override async ValueTask NotifyTrackStartedAsync(ITrackQueueItem track, CancellationToken cancellationToken = default)
         {
-            string plexUrl = Environment.GetEnvironmentVariable("PLEX_URL") ?? "";
-            string plexToken = Environment.GetEnvironmentVariable("PLEX_TOKEN") ?? "";
             try
             {
                 await base.NotifyTrackStartedAsync(track, cancellationToken).ConfigureAwait(false);
                 CustomTrackQueueItem customTrack = (CustomTrackQueueItem)track;
-                string thumbnailUrl = $"{plexUrl}{customTrack.Artwork}?X-Plex-Token={plexToken}";
                 Dictionary<string, string> customTracks = new()
                 {
                     ["Title"] = customTrack.Title ?? "Missing Title",
@@ -28,7 +25,7 @@ namespace PlexBot.Core.LavaLink
                     ["Url"] = customTrack.Url ?? "N/A",
                     ["ArtistUrl"] = customTrack.ArtistUrl ?? "N/A",
                     ["ReleaseDate"] = customTrack.ReleaseDate ?? "N/A",
-                    ["Artwork"] = thumbnailUrl ?? "https://via.placeholder.com/150",
+                    ["Artwork"] = customTrack.Artwork ?? "https://via.placeholder.com/150",
                     ["Studio"] = customTrack.Studio ?? "Missing Studio"
                 };
                 //Console.WriteLine($"Track: {customTracks["Title"]}, Artist: {customTracks["Artist"]}, Duration: {customTracks["Duration"]}"); // debug

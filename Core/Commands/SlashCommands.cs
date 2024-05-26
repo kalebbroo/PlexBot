@@ -80,7 +80,7 @@ namespace PlexBot.Core.Commands
             try
             {
                 Dictionary<string, List<Dictionary<string, string>>> results = [];
-
+                string service = "";
                 switch (source.ToLower())
                 {
                     case "plex":
@@ -96,10 +96,12 @@ namespace PlexBot.Core.Commands
                             { "TrackKey", track.Identifier },
                             { "Artist", track.Author },
                             { "Duration", track.Duration.ToString() },
-                            { "Url", track.Uri!.ToString() }
+                            { "Url", track.Uri!.ToString() },
+                            { "Artwork", track.ArtworkUri!.ToString() }
                         }).ToList();
                         results.Add("Tracks", ytResults);
-                        Console.WriteLine(JsonConvert.SerializeObject(results));
+                        service = "youtube";
+                        Console.WriteLine(JsonConvert.SerializeObject(results)); // debug
                         break;
                     case "soundcloud":
                         // TODO: Add your SoundCloud search implementation here
@@ -124,17 +126,31 @@ namespace PlexBot.Core.Commands
                 }
                 if (results.TryGetValue("Artists", out List<Dictionary<string, string>>? artists) && artists.Count > 0)
                 {
-                    await SendSelectMenu("Artists", artists, "Select an artist");
+                    if (artists.FirstOrDefault()?.TryGetValue("TrackKey", out var trackKey) == true)
+                    {
+                        await SendSelectMenu($"Tracks:{trackKey}:{service}", artists, "Select a track");
+                    }
+                    else
+                    {
+                        await FollowupAsync("No valid TrackKey found.", ephemeral: true);
+                    }
                 }
                 if (results.TryGetValue("Albums", out List<Dictionary<string, string>>? albums) && albums.Count > 0)
                 {
-                    await SendSelectMenu("Albums", albums, "Select an album");
+                    if (albums.FirstOrDefault()?.TryGetValue("TrackKey", out var trackKey) == true)
+                    {
+                        await SendSelectMenu($"Tracks:{trackKey}:{service}", albums, "Select a track");
+                    }
+                    else
+                    {
+                        await FollowupAsync("No valid TrackKey found.", ephemeral: true);
+                    }
                 }
                 if (results.TryGetValue("Tracks", out List<Dictionary<string, string>>? tracks) && tracks.Count > 0)
                 {
                     if (tracks.FirstOrDefault()?.TryGetValue("TrackKey", out var trackKey) == true)
                     {
-                        await SendSelectMenu($"Tracks:{trackKey}", tracks, "Select a track");
+                        await SendSelectMenu($"Tracks:{trackKey}:{service}", tracks, "Select a track");
                     }
                     else
                     {

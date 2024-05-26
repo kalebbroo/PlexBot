@@ -13,8 +13,8 @@ services:
       - lavalink
 
   lavalink:
-    image: ghcr.io/lavalink-devs/lavalink:d92b3e4-alpine
-    #image: ghcr.io/lavalink-devs/lavalink:0326284-alpine
+    #image: ghcr.io/lavalink-devs/lavalink:d92b3e4-alpine
+    image: ghcr.io/lavalink-devs/lavalink:0326284-alpine
     container_name: lavalink
     restart: unless-stopped
     env_file: 
