@@ -167,4 +167,4 @@ docker run -d --name plex_music_bot
 Feel free to submit issues, feature requests, or pull requests to contribute to this project.
 
 # Join the Discord for Support
-https://discord.gg/CmrFZgZVEE
+[https://discord.gg/CmrFZgZVEE](https://discord.com/invite/5m4Wyu52Ek)
