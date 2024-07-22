@@ -42,33 +42,6 @@ namespace PlexBot.Core.Commands
             await RespondAsync(embed: embed.Build());
         }
 
-        /// <summary>Main play command for plex</summary>
-        [SlashCommand("youtube", "Plays a single track from YouTube", runMode: RunMode.Async)]
-        public async Task Play(string search)
-        {
-            await DeferAsync().ConfigureAwait(false);
-            SocketInteraction interaction = Context.Interaction;
-            var player = await lavaLinkCommands.GetPlayerAsync(interaction, connectToVoiceChannel: true).ConfigureAwait(false);
-            if (player == null)
-            {
-                await FollowupAsync("You need to be in a voice channel.").ConfigureAwait(false);
-                return;
-            }
-            // Load the track from YouTube using the query provided
-            var track = await audioService.Tracks
-                .LoadTrackAsync(search, TrackSearchMode.YouTubeMusic)
-                .ConfigureAwait(false);
-            // If no track was found, we send an error message to the user.
-            if (track is null)
-            {
-                await FollowupAsync("😖 No results.").ConfigureAwait(false);
-                return;
-            }
-            // Play the track
-            await player.PlayAsync(track);
-            await FollowupAsync($"Playing: {track.Title}").ConfigureAwait(false);
-        }
-
         [SlashCommand("search", "Search media from various sources", runMode: RunMode.Async)]
         public async Task SearchCommand(
         [Summary("query", "The query to search for")] string query,
