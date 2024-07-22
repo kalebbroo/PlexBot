@@ -9,8 +9,6 @@ This Discord bot allows users to play audio from their Plex library in a voice c
 - Automatically disconnect after 2 minutes of inactivity when the queue is empty.
 - Interactive buttons and slash commands for enhanced user control.
 
-![Now Playing!](images/buttons.PNG)
-
 ## Commands
 
 <details>
@@ -87,4 +85,4 @@ Open the Install folder and double click on the Install.bat file to install the 
 Feel free to submit issues, feature requests, or pull requests to contribute to this project.
 
 ## Join the Discord for Support
-https://discord.gg/CmrFZgZVEE
+https://discord.com/invite/5m4Wyu52Ek

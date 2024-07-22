@@ -128,7 +128,7 @@ namespace PlexBot.Core.Commands
                 {
                     if (artists.FirstOrDefault()?.TryGetValue("TrackKey", out var trackKey) == true)
                     {
-                        await SendSelectMenu($"Tracks:{trackKey}:{service}", artists, "Select a track");
+                        await SendSelectMenu($"Artists:{trackKey}:{service}", artists, "Select an Artist");
                     }
                     else
                     {
@@ -139,7 +139,7 @@ namespace PlexBot.Core.Commands
                 {
                     if (albums.FirstOrDefault()?.TryGetValue("TrackKey", out var trackKey) == true)
                     {
-                        await SendSelectMenu($"Tracks:{trackKey}:{service}", albums, "Select a track");
+                        await SendSelectMenu($"Albums:{trackKey}:{service}", albums, "Select an album");
                     }
                     else
                     {
