@@ -17,7 +17,7 @@ namespace PlexBot.Core.PlexAPI
         public async Task<bool> VerifyStoredAccessTokenAsync(string accessToken)
         {
             string requestUrl = "https://plex.tv/api/v2/user";
-            HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get, requestUrl);
+            HttpRequestMessage request = new(HttpMethod.Get, requestUrl);
             request.Headers.Add("accept", "application/json");
             request.Headers.Add("X-Plex-Product", plexAppName);
             request.Headers.Add("X-Plex-Client-Identifier", clientIdentifierKey);
@@ -29,7 +29,7 @@ namespace PlexBot.Core.PlexAPI
         public async Task<(int pinId, string pinCode)> GeneratePinAsync()
         {
             string requestUrl = "https://plex.tv/api/v2/pins";
-            HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Post, requestUrl);
+            HttpRequestMessage request = new(HttpMethod.Post, requestUrl);
             request.Headers.Add("accept", "application/json");
             request.Headers.Add("X-Plex-Product", plexAppName);
             request.Headers.Add("X-Plex-Client-Identifier", clientIdentifierKey);
@@ -38,7 +38,7 @@ namespace PlexBot.Core.PlexAPI
             string responseString = await response.Content.ReadAsStringAsync();
             JsonDocument jsonDoc = JsonDocument.Parse(responseString);
             int pinId = jsonDoc.RootElement.GetProperty("id").GetInt32();
-            string pinCode = jsonDoc.RootElement.GetProperty("code").GetString();
+            string? pinCode = jsonDoc.RootElement.GetProperty("code").GetString();
             Console.WriteLine($"Pin ID: {pinId}, Pin Code: {pinCode}");
             return (pinId, pinCode);
         }
@@ -54,7 +54,7 @@ namespace PlexBot.Core.PlexAPI
         public async Task<string> CheckPinAsync(int pinId)
         {
             string requestUrl = $"https://plex.tv/api/v2/pins/{pinId}";
-            HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get, requestUrl);
+            HttpRequestMessage request = new(HttpMethod.Get, requestUrl);
             request.Headers.Add("accept", "application/json");
             request.Headers.Add("X-Plex-Client-Identifier", clientIdentifierKey);
             HttpResponseMessage response = await httpClient.SendAsync(request);
@@ -78,7 +78,7 @@ namespace PlexBot.Core.PlexAPI
                 string authUrl = ConstructAuthAppUrl(pinCode, "http://app.plex.tv");
                 Console.WriteLine("Please authenticate at the following URL:");
                 Console.WriteLine(authUrl);
-                string newAccessToken = null;
+                string? newAccessToken = null;
                 while (newAccessToken == null)
                 {
                     await Task.Delay(1000); // Poll every second
@@ -88,7 +88,7 @@ namespace PlexBot.Core.PlexAPI
                 string envFilePath = Path.Combine(Directory.GetCurrentDirectory(), ".env");
                 if (File.Exists(envFilePath))
                 {
-                    List<string> lines = File.ReadAllLines(envFilePath).ToList();
+                    List<string> lines = [.. File.ReadAllLines(envFilePath)];
                     int tokenIndex = lines.FindIndex(line => line.StartsWith("PLEX_TOKEN="));
                     if (tokenIndex >= 0)
                     {

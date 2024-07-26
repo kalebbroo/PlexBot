@@ -23,6 +23,7 @@ ENV LANG=en_US.UTF-8
 
 WORKDIR /app
 COPY --from=build /app/publish .
+COPY Moderniz.otf /app/Moderniz.otf
 
 # Set the entry point
 ENTRYPOINT ["dotnet", "PlexBot.dll"]

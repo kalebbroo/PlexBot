@@ -108,13 +108,13 @@ namespace PlexBot.Core.PlexAPI
             };
             JObject jObject = JObject.Parse(jsonResponse);
             Console.WriteLine("Parsed JSON response"); // Debugging
-            JToken mediaContainer = jObject["MediaContainer"];
+            JToken? mediaContainer = jObject["MediaContainer"];
             if (mediaContainer == null)
             {
                 Console.WriteLine("MediaContainer is null in the JSON response");
                 return results;
             }
-            JToken hubs = mediaContainer["Hub"];
+            JToken? hubs = mediaContainer["Hub"];
             if (hubs == null)
             {
                 Console.WriteLine("Hubs are null in the MediaContainer");
@@ -124,7 +124,7 @@ namespace PlexBot.Core.PlexAPI
             {
                 string hubType = hub["type"]?.ToString() ?? "unknown";
                 Console.WriteLine($"Processing hub of type: {hubType}"); // Debugging
-                JToken metadataItems = hub["Metadata"];
+                JToken? metadataItems = hub["Metadata"];
                 if (metadataItems == null)
                 {
                     Console.WriteLine("Metadata items are null in the Hub");
@@ -345,7 +345,7 @@ namespace PlexBot.Core.PlexAPI
             }
             List<Dictionary<string, string>> tracks = [];
             JObject jObject = JObject.Parse(response);
-            JToken items = jObject["MediaContainer"]["Metadata"];
+            JToken? items = jObject["MediaContainer"]!["Metadata"];
             if (items == null)
             {
                 Console.WriteLine("No track metadata available.");

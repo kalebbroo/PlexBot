@@ -1,5 +1,7 @@
 ﻿using Discord;
 using Lavalink4NET.Players.Queued;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.PixelFormats;
 
 namespace PlexBot.Core.Players
 {
@@ -22,13 +24,13 @@ namespace PlexBot.Core.Players
 
         // Logic needed for image editing and text overlaying
 
-        public static EmbedBuilder BuildAndSendPlayer(Dictionary<string, string> firstTrack)
+        public static EmbedBuilder BuildAndSendPlayer(Dictionary<string, string> firstTrack, string imageAttachmentUrl)
         {
-            EmbedBuilder player = CreatePlayer(firstTrack);
+            EmbedBuilder player = CreatePlayer(firstTrack, imageAttachmentUrl);
             return player;
         }
 
-        private static EmbedBuilder CreatePlayer(Dictionary<string, string> firstTrack)
+        private static EmbedBuilder CreatePlayer(Dictionary<string, string> firstTrack, string imageAttachmentUrl)
         {
             Dictionary<string, string> variables = [];
             foreach (KeyValuePair<string, string> kvp in firstTrack)
@@ -39,23 +41,14 @@ namespace PlexBot.Core.Players
             string title = "Now Playing";
             string description = $"{variables["Artist"]} - {variables["Title"]}\n{variables["Album"]} - {variables["Studio"]}\n\n" +
                 $"{variables.GetValueOrDefault("Progress", "0:00")}/{variables["Duration"]}";
-            string imageUrl = variables["Artwork"];
-            string volume = Environment.GetEnvironmentVariable("VOLUME") ?? "100";
-            string footer = $"Volume: {volume}%";
-            // Create a new embed with the player information
             EmbedBuilder embed = new EmbedBuilder()
                 .WithTitle(title)
                 .WithDescription(description)
-                .WithThumbnailUrl(imageUrl)
-                .WithFooter(footer)
-                .WithColor(Color.Blue)
+                .WithImageUrl(imageAttachmentUrl)
+                .WithFooter($"Volume: {Environment.GetEnvironmentVariable("VOLUME") ?? "100"}%")
+                .WithColor(Discord.Color.Blue)
                 .WithTimestamp(DateTime.Now);
             return embed;
-        }
-
-        public async Task BuildImage()
-        {
-            // Build the image for the player embed
         }
     }
 }

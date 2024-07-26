@@ -2,6 +2,9 @@
 using Discord;
 using Lavalink4NET.Protocol.Payloads.Events;
 using Lavalink4NET.Players;
+using PlexBot.Core.Players;
+using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.ImageSharp;
 
 namespace PlexBot.Core.LavaLink
 {
@@ -30,7 +33,13 @@ namespace PlexBot.Core.LavaLink
                 };
                 //Console.WriteLine($"Track: {customTracks["Title"]}, Artist: {customTracks["Artist"]}, Duration: {customTracks["Duration"]}"); // debug
                 // Build the new player embed using the custom track information
-                EmbedBuilder player = Players.Players.BuildAndSendPlayer(customTracks);
+                using MemoryStream memoryStream = new();
+                Image<Rgba64> image = await BuildImage.BuildPlayerImage(customTracks);
+                image.SaveAsPng(memoryStream);
+                memoryStream.Position = 0;
+                FileAttachment fileAttachment = new(memoryStream, "playerImage.png");
+                string fileName = "playerImage.png";
+                EmbedBuilder player = Players.Players.BuildAndSendPlayer(customTracks, $"attachment://{fileName}");
                 // Create a ComponentBuilder for the buttons
                 ComponentBuilder components = new ComponentBuilder()
                     .WithButton("Pause", "pause_resume:pause", ButtonStyle.Secondary)
@@ -38,17 +47,25 @@ namespace PlexBot.Core.LavaLink
                     .WithButton("Queue Options", "queue_options:options:1", ButtonStyle.Success)
                     .WithButton("Repeat", "repeat:select", ButtonStyle.Secondary)
                     .WithButton("Kill", "kill:kill", ButtonStyle.Danger);
-
                 // Find and delete the last player message (if it exists)
-                IEnumerable<IMessage> messages = await _textChannel!.GetMessagesAsync(10).FlattenAsync().ConfigureAwait(false);
+                IEnumerable<IMessage> messages = await _textChannel!.GetMessagesAsync(5).FlattenAsync().ConfigureAwait(false);
                 IMessage? lastPlayerMessage = messages.FirstOrDefault(m => m.Embeds.Any(e => e.Title == "Now Playing"));
                 if (lastPlayerMessage != null)
                 {
                     await lastPlayerMessage.DeleteAsync().ConfigureAwait(false);
-                    Console.WriteLine("Deleted last player message.");
+                    Console.WriteLine("Deleted last player message."); // debug
                 }
-                // Send the new player embed to the text channel
-                await _textChannel.SendMessageAsync(components: components.Build(), embed: player.Build()).ConfigureAwait(false);
+                string tempFilePath = Path.Combine(Path.GetTempPath(), fileName);
+                using (FileStream fileStream = new(tempFilePath, FileMode.Create, FileAccess.Write))
+                {
+                    memoryStream.CopyTo(fileStream);
+                }
+                await _textChannel.SendFileAsync(
+                    filePath: tempFilePath,
+                    embed: player.Build(),
+                    components: components.Build()
+                ).ConfigureAwait(false);
+                //await _textChannel.SendMessageAsync(components: components.Build(), embed: player.Build()).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -63,7 +80,7 @@ namespace PlexBot.Core.LavaLink
             ArgumentNullException.ThrowIfNull(queueItem);
             await base.NotifyTrackEndedAsync(queueItem, endReason, cancellationToken).ConfigureAwait(false);
             string trackTitle = queueItem.Track?.Title ?? "Default Title";
-            //Console.WriteLine($"Track ended: {trackTitle}");
+            //Console.WriteLine($"Track ended: {trackTitle}"); // debug
         }
 
         public ValueTask NotifyPlayerActiveAsync(CancellationToken cancellationToken = default)

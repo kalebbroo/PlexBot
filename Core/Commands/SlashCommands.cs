@@ -215,7 +215,7 @@ namespace PlexBot.Core.Commands
         string? playlistID = null)
         {
             await DeferAsync();
-            string uri = "";
+            string uri;
             switch (type)
             {
                 case "playlists":
