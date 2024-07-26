@@ -10,11 +10,11 @@ using Lavalink4NET;
 
 namespace PlexBot.Core.InteractionComponents
 {
-    public class SelectMenus(DiscordSocketClient client, IAudioService audioService, PlexApi plexApi, LavaLinkCommands lavaLink, Players.Players visualPlayers) : InteractionModuleBase<SocketInteractionContext>
+    public class SelectMenus(DiscordSocketClient client, IAudioService audioService, PlexMusic plexApi, LavaLinkCommands lavaLink, Players.Players visualPlayers) : InteractionModuleBase<SocketInteractionContext>
     {
         private readonly DiscordSocketClient _client = client;
         private readonly IAudioService _audioService = audioService;
-        private readonly PlexApi _plexApi = plexApi;
+        private readonly PlexMusic _plexApi = plexApi;
         private readonly LavaLinkCommands _lavaLinkCommands = lavaLink;
         private readonly Players.Players _visualPlayers = visualPlayers;
 

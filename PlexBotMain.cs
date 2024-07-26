@@ -114,11 +114,11 @@ namespace PlexBot
             services.AddSingleton<SlashCommands>();
             services.AddSingleton<AutoComplete>();
             services.AddSingleton<UserEvents>();
-            services.AddSingleton<PlexApi>();
+            services.AddSingleton<PlexCore>();
             services.AddSingleton<SelectMenus>();
             services.AddSingleton<Players>();
             services.AddSingleton<LavaLinkCommands>();
-            services.AddSingleton<PlexApi>();
+            services.AddSingleton<PlexMusic>();
             // Add Lavalink and configure it
             services.AddLavalink();
             services.ConfigureLavalink(options =>

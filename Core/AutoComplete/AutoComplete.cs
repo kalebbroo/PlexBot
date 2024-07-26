@@ -12,7 +12,7 @@ namespace PlexBot.Core.AutoComplete
         {
             if (parameter.Name.Equals("playlist", StringComparison.OrdinalIgnoreCase))
             {
-                PlexApi plexApi = services.GetRequiredService<PlexApi>();
+                PlexMusic plexApi = services.GetRequiredService<PlexMusic>();
                 Dictionary<string, Dictionary<string, string>> playlists = await plexApi.GetPlaylists();
                 if (playlists != null && playlists.Count != 0)
                 {

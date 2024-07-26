@@ -15,13 +15,13 @@ using Microsoft.Extensions.Caching.Memory;
 
 namespace PlexBot.Core.Commands
 {
-    public class SlashCommands(IAudioService audioService, LavaLinkCommands lavaLinkCommands, PlexApi plexApi, Players.Players visualPlayer, IMemoryCache memoryCache,
+    public class SlashCommands(IAudioService audioService, LavaLinkCommands lavaLinkCommands, PlexMusic plexApi, Players.Players visualPlayer, IMemoryCache memoryCache,
         SelectMenus selectMenus) : InteractionModuleBase<SocketInteractionContext>
     {
         private readonly IAudioService _audioService = audioService;
         private readonly IMemoryCache _memoryCache = memoryCache;
         private readonly LavaLinkCommands _lavaLinkCommands = lavaLinkCommands;
-        private readonly PlexApi _plexApi = plexApi;
+        private readonly PlexMusic _plexApi = plexApi;
         private readonly SelectMenus _selectMenus = selectMenus;
         private readonly Players.Players _players = visualPlayer;
 

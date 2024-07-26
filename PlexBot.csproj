@@ -9,7 +9,6 @@
 
   <ItemGroup>
     <Folder Include="Install\" />
-    <Folder Include="Plugins\" />
   </ItemGroup>
 
   <ItemGroup>
