@@ -101,7 +101,6 @@ namespace PlexBot.Core.Players
             // Move to the top-left corner
             pathBuilder.AddLine(new(rect.Left, rect.Bottom - cornerRadius), new(rect.Left, rect.Top + cornerRadius));
             pathBuilder.CloseFigure();
-
             return pathBuilder.Build();
         }
     }
