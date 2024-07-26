@@ -24,8 +24,8 @@ namespace PlexBot.Core.Players
                     Console.WriteLine($"Font file '{fontPath}' does not exist.");
                     throw new FileNotFoundException($"Font file '{fontPath}' not found.");
                 }
-                FontCollection fontCollection = new FontCollection();
-                using FileStream fontStream = new FileStream(fontPath, FileMode.Open, FileAccess.Read);
+                FontCollection fontCollection = new();
+                using FileStream fontStream = new(fontPath, FileMode.Open, FileAccess.Read);
                 FontFamily fontFamily = fontCollection.Add(fontStream);
                 font = fontFamily.CreateFont(36);
             }
