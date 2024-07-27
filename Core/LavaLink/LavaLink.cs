@@ -35,7 +35,7 @@ namespace PlexBot.Core.LavaLink
             IOptions<CustomPlayerOptions> optionsWrapper = Options.Create(options);
             ValueTask<CustomPlayer> factory(IPlayerProperties<CustomPlayer, CustomPlayerOptions> properties, CancellationToken options = default)
             {
-                return new ValueTask<CustomPlayer>(new CustomPlayer(properties, this));
+                return new ValueTask<CustomPlayer>(new CustomPlayer(properties));
             }
             PlayerResult<CustomPlayer> result = await _audioService.Players
                 .RetrieveAsync<CustomPlayer, CustomPlayerOptions>(guildId, voiceChannelId, factory, optionsWrapper, retrieveOptions)

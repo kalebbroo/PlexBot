@@ -2,28 +2,26 @@
 using Discord.Interactions;
 using Discord.WebSocket;
 using Lavalink4NET;
-using Lavalink4NET.Players;
 using Lavalink4NET.Rest.Entities.Tracks;
-using Lavalink4NET.Players.Queued;
 using PlexBot.Core.LavaLink;
 using PlexBot.Core.PlexAPI;
-using PlexBot.Core.InteractionComponents;
-using PlexBot.Core.Players;
 using System.Net;
 using Newtonsoft.Json;
-using Microsoft.Extensions.Caching.Memory;
 
 namespace PlexBot.Core.Commands
 {
-    public class SlashCommands(IAudioService audioService, LavaLinkCommands lavaLinkCommands, PlexMusic plexApi, Players.Players visualPlayer, IMemoryCache memoryCache,
-        SelectMenus selectMenus) : InteractionModuleBase<SocketInteractionContext>
+    public class SlashCommands : InteractionModuleBase<SocketInteractionContext>
     {
-        private readonly IAudioService _audioService = audioService;
-        private readonly IMemoryCache _memoryCache = memoryCache;
-        private readonly LavaLinkCommands _lavaLinkCommands = lavaLinkCommands;
-        private readonly PlexMusic _plexApi = plexApi;
-        private readonly SelectMenus _selectMenus = selectMenus;
-        private readonly Players.Players _players = visualPlayer;
+        private readonly IAudioService _audioService;
+        private readonly LavaLinkCommands _lavaLinkCommands;
+        private readonly PlexCore _plexCore;
+
+        public SlashCommands(IAudioService audioService, LavaLinkCommands lavaLinkCommands, PlexCore plexCore)
+        {
+            _audioService = audioService;
+            _lavaLinkCommands = lavaLinkCommands;
+            _plexCore = plexCore;
+        }
 
         /// <summary>Responds with help information about how to use the bot, including available commands.</summary>
         [SlashCommand("help", "Learn how to use the bot")]
@@ -57,10 +55,12 @@ namespace PlexBot.Core.Commands
                 switch (source.ToLower())
                 {
                     case "plex":
-                        results = await plexApi.SearchLibraryAsync(query);
+                        PlexMusic plexMusic = new();
+                        // Rework this search lib method to either be SearchMusicLib or 1 method to search all libs
+                        results = await plexMusic.SearchLibraryAsync(query);
                         break;
                     case "youtube":
-                        TrackLoadResult ytSearch = await audioService.Tracks.LoadTracksAsync(query, TrackSearchMode.YouTubeMusic);
+                        TrackLoadResult ytSearch = await _audioService.Tracks.LoadTracksAsync(query, TrackSearchMode.YouTubeMusic);
                         //Console.WriteLine(JsonConvert.SerializeObject(ytSearch)); // debug
                         List<Dictionary<string, string>> ytResults = ytSearch.Tracks.Select(track => new Dictionary<string, string>
                         {
@@ -171,7 +171,8 @@ namespace PlexBot.Core.Commands
             try
             {
                 // Retrieve track details from the playlist
-                List<Dictionary<string, string>> trackDetails = await plexApi.GetTracks(playlistKey);
+                PlexMusic plexMusic = new();
+                List<Dictionary<string, string>> trackDetails = await plexMusic.GetTracks(playlistKey);
                 if (trackDetails.Count == 0)
                 {
                     await FollowupAsync("The playlist is empty or could not be loaded.");
@@ -187,7 +188,7 @@ namespace PlexBot.Core.Commands
                     trackDetails = [.. trackDetails.OrderBy(x => rng.Next())];
                 }
                 SocketInteraction interaction = Context.Interaction;
-                await lavaLinkCommands.AddToQueue(interaction, trackDetails);
+                await _lavaLinkCommands.AddToQueue(interaction, trackDetails);
             }
             catch (Exception ex)
             {
@@ -251,8 +252,8 @@ namespace PlexBot.Core.Commands
                     await FollowupAsync("Invalid type.");
                     return;
             }
-            uri = plexApi.GetSearchUrl(uri);
-            string? response = await plexApi.PerformRequestAsync(uri);
+            uri = _plexCore.GetSearchUrl(uri);
+            string? response = await _plexCore.PerformRequestAsync(uri);
             Console.WriteLine(response);
             await FollowupAsync("Check the console for the response.");
         }
