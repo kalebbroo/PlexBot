@@ -1,11 +1,10 @@
 ﻿using Newtonsoft.Json.Linq;
 using System.Web;
-using PlexBot.Core.LavaLink;
 using Newtonsoft.Json;
 
 namespace PlexBot.Core.PlexAPI
 {
-    public class PlexMusic(LavaLinkCommands lavaLinkCommands) : PlexCore(lavaLinkCommands)
+    public class PlexMusic : PlexCore
     {
         // Public method to search the music library
         public async Task<Dictionary<string, List<Dictionary<string, string>>>> SearchLibraryAsync(string query)

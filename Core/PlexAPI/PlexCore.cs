@@ -1,10 +1,9 @@
-﻿using PlexBot.Core.LavaLink;
+﻿
 
 namespace PlexBot.Core.PlexAPI
 {
-    public class PlexCore(LavaLinkCommands lavaLinkCommands)
+    public class PlexCore
     {
-        private readonly LavaLinkCommands _lavaLinkCommands = lavaLinkCommands;
         public readonly string plexUrl = Environment.GetEnvironmentVariable("PLEX_URL") ?? "";
         readonly string plexToken = Environment.GetEnvironmentVariable("PLEX_TOKEN") ?? "";
 

@@ -1,8 +1,8 @@
-﻿using PlexBot.Core.LavaLink;
+﻿
 
 namespace PlexBot.Core.PlexAPI
 {
-    internal class PlexLibrary(LavaLinkCommands lavaLinkCommands) : PlexCore(lavaLinkCommands)
+    internal class PlexLibrary : PlexCore
     {
         // TODO: Add basic backend for other media in the library
     }
