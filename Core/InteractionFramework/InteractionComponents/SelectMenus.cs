@@ -8,15 +8,21 @@ using Lavalink4NET.Tracks;
 using Lavalink4NET.Rest.Entities.Tracks;
 using Lavalink4NET;
 
-namespace PlexBot.Core.InteractionComponents
+namespace PlexBot.Core.InteractionFramework.InteractionComponents
 {
-    public class SelectMenus(DiscordSocketClient client, IAudioService audioService, PlexMusic plexApi, LavaLinkCommands lavaLink, Players.Players visualPlayers) : InteractionModuleBase<SocketInteractionContext>
+    public class SelectMenus : InteractionModuleBase<SocketInteractionContext>
     {
-        private readonly DiscordSocketClient _client = client;
-        private readonly IAudioService _audioService = audioService;
-        private readonly PlexMusic _plexApi = plexApi;
-        private readonly LavaLinkCommands _lavaLinkCommands = lavaLink;
-        private readonly Players.Players _visualPlayers = visualPlayers;
+        private readonly IAudioService _audioService;
+        private readonly PlexMusic _plexApi;
+        private readonly LavaLinkCommands _lavaLinkCommands;
+
+        // Traditional constructor
+        public SelectMenus(IAudioService audioService, PlexMusic plexApi, LavaLinkCommands lavaLink)
+        {
+            _audioService = audioService;
+            _plexApi = plexApi;
+            _lavaLinkCommands = lavaLink;
+        }
 
         [ComponentInteraction("search_plex:*", runMode: RunMode.Async)]
         public async Task DisplaySearchResults(string customId, string[] selections)
@@ -41,7 +47,7 @@ namespace PlexBot.Core.InteractionComponents
                             if (service == "youtube")
                             {
                                 string youtubeIdentifier = selectedValue;
-                                LavalinkTrack? ytTrack = await audioService.Tracks.LoadTrackAsync(youtubeIdentifier, TrackSearchMode.None);
+                                LavalinkTrack? ytTrack = await _audioService.Tracks.LoadTrackAsync(youtubeIdentifier, TrackSearchMode.None);
                                 string youtubeUrl = $"https://www.youtube.com/watch?v={youtubeIdentifier}";
                                 Dictionary<string, string> ytTrackDetails = new()
                                 {
@@ -52,18 +58,18 @@ namespace PlexBot.Core.InteractionComponents
                                     { "Artwork", ytTrack.ArtworkUri!.ToString() },
                                     { "Url", youtubeUrl },
                                     { "ArtistUrl", "youtube artist url" },
-                                    { "Duration", ytTrack.Duration.ToString() },    
+                                    { "Duration", ytTrack.Duration.ToString() },
                                     { "Studio", "youtube studio" },
                                     { "TrackKey", youtubeIdentifier },
                                 };
-                                await lavaLink.AddToQueue(Context.Interaction, [ytTrackDetails]);
+                                await _lavaLinkCommands.AddToQueue(Context.Interaction, [ytTrackDetails]);
                                 await ModifyOriginalResponseAsync(msg => msg.Content = "Track added to queue.");
                                 break;
                             }
-                            Dictionary<string, string>? trackDetails = await plexApi.GetTrackDetails(selectedValue);
+                            Dictionary<string, string>? trackDetails = await _plexApi.GetTrackDetails(selectedValue);
                             if (trackDetails != null)
                             {
-                                await lavaLink.AddToQueue(Context.Interaction, [trackDetails]);
+                                await _lavaLinkCommands.AddToQueue(Context.Interaction, [trackDetails]);
                                 await ModifyOriginalResponseAsync(msg => msg.Content = "Track added to queue.");
                             }
                             else
@@ -74,10 +80,10 @@ namespace PlexBot.Core.InteractionComponents
                         }
                     case "albums":
                         {
-                            List<Dictionary<string, string>> tracks = await plexApi.GetTracks(selectedValue);
+                            List<Dictionary<string, string>> tracks = await _plexApi.GetTracks(selectedValue);
                             if (tracks != null && tracks.Count > 0)
                             {
-                                await lavaLink.AddToQueue(Context.Interaction, tracks);
+                                await _lavaLinkCommands.AddToQueue(Context.Interaction, tracks);
                                 await ModifyOriginalResponseAsync(msg => msg.Content = "Tracks from album added to queue.");
                             }
                             else
@@ -88,11 +94,11 @@ namespace PlexBot.Core.InteractionComponents
                         }
                     case "artists":
                         {
-                            List<Dictionary<string, string>> albums = await plexApi.GetAlbums(selectedValue);
+                            List<Dictionary<string, string>> albums = await _plexApi.GetAlbums(selectedValue);
                             List<Dictionary<string, string>> allTracks = [];
                             foreach (var album in albums)
                             {
-                                List<Dictionary<string, string>> tracks = await plexApi.GetTracks(album["TrackKey"]);
+                                List<Dictionary<string, string>> tracks = await _plexApi.GetTracks(album["TrackKey"]);
                                 if (tracks != null && tracks.Count > 0)
                                 {
                                     allTracks.AddRange(tracks);
@@ -100,7 +106,7 @@ namespace PlexBot.Core.InteractionComponents
                             }
                             if (allTracks.Count > 0)
                             {
-                                await lavaLink.AddToQueue(Context.Interaction, allTracks);
+                                await _lavaLinkCommands.AddToQueue(Context.Interaction, allTracks);
                                 await ModifyOriginalResponseAsync(msg => msg.Content = "Tracks from all albums by the artist added to queue.");
                             }
                             else
@@ -287,7 +293,7 @@ namespace PlexBot.Core.InteractionComponents
             return builder;
         }
 
-        private SelectMenuBuilder BuildSelectMenu(string customId, List<ITrackQueueItem> queueItems, int startIndex, string placeholder, string description)
+        private static SelectMenuBuilder BuildSelectMenu(string customId, List<ITrackQueueItem> queueItems, int startIndex, string placeholder, string description)
         {
             List<SelectMenuOptionBuilder> options = queueItems.Select((track, index) => new SelectMenuOptionBuilder()
                 .WithLabel($"{startIndex + index + 1}: {(track as CustomTrackQueueItem)?.Title}")
@@ -330,9 +336,9 @@ namespace PlexBot.Core.InteractionComponents
 
         private async Task NavigateQueuePage(CustomPlayer player, int newPage, string selectedAction)
         {
-            int totalItems = player.Queue.Count;
-            int itemsPerPage = 24; // Max number of items per select menu
-            int totalPages = (int)Math.Ceiling(totalItems / (double)itemsPerPage);
+            //int totalItems = player.Queue.Count;
+            //int itemsPerPage = 24; // Max number of items per select menu
+            //int totalPages = (int)Math.Ceiling(totalItems / (double)itemsPerPage);
             switch (selectedAction)
             {
                 case "playNext":
@@ -348,7 +354,7 @@ namespace PlexBot.Core.InteractionComponents
         }
 
         [ComponentInteraction("rearrange:*")]
-        public async Task HandleFinalRearrange(string customId, string[] selectedValues)
+        public async Task HandleFinalRearrange(string[] selectedValues)
         {
             await DeferAsync(ephemeral: true);
             if (selectedValues.Length == 0)
