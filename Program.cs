@@ -79,11 +79,6 @@ discordClient.Ready += DiscordHelpers.ClientReady(host.Services);
 // Initialize and register event handlers
 UserEvents eventHandlers = new(discordClient);
 eventHandlers.RegisterHandlers();
-if (string.IsNullOrEmpty(discordToken))
-{
-    Console.WriteLine("ERROR: Bot token is null or empty. Check your .env file.");
-    return;
-}
 
 await discordClient.LoginAsync(TokenType.Bot, discordToken);
 await discordClient.StartAsync();
