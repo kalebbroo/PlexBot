@@ -352,7 +352,7 @@ namespace PlexBot.Core.InteractionFramework.InteractionComponents
         }
 
         [ComponentInteraction("rearrange:*")]
-        public async Task HandleFinalRearrange(string[] selectedValues)
+        public async Task HandleFinalRearrange(string customId, string[] selectedValues)
         {
             await DeferAsync(ephemeral: true);
             if (selectedValues.Length == 0)

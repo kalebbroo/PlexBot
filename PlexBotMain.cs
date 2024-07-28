@@ -166,7 +166,8 @@ namespace PlexBot
                 }
                 Console.WriteLine($"\nLogged in as {_client.CurrentUser.Username}\n" +
                     $"Registered {_interactions!.SlashCommands.Count} slash commands\n" +
-                    $"Bot is a member of {_client.Guilds.Count} guilds\n");
+                    $"Bot is a member of {_client.Guilds.Count} guilds\n" +
+                    $"PlexBot C# Rewrite Version 0.5 By Kalebbroo\n");
                 await _client.SetGameAsync("/help", null, ActivityType.Listening);
             }
             catch (Exception e)
