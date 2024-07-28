@@ -6,15 +6,12 @@ using Microsoft.Extensions.Options;
 using Discord;
 using Lavalink4NET.Tracks;
 using Lavalink4NET.Rest.Entities.Tracks;
-using System.Net.Http.Headers;
 
 namespace PlexBot.Core.LavaLink
 {
-    public class LavaLinkCommands(IAudioService audioService, DiscordSocketClient discordClient, Players.Players visualPlayer)
+    public class LavaLinkCommands(IAudioService audioService)
     {
         private readonly IAudioService _audioService = audioService;
-        private readonly DiscordSocketClient _discordClient = discordClient;
-        private readonly Players.Players _players = visualPlayer;
 
         public async Task<CustomPlayer?> GetPlayerAsync(SocketInteraction interaction, bool connectToVoiceChannel = true)
         {
@@ -33,7 +30,7 @@ namespace PlexBot.Core.LavaLink
                 TextChannel = interaction.Channel as ITextChannel
             };
             IOptions<CustomPlayerOptions> optionsWrapper = Options.Create(options);
-            ValueTask<CustomPlayer> factory(IPlayerProperties<CustomPlayer, CustomPlayerOptions> properties, CancellationToken options = default)
+            static ValueTask<CustomPlayer> factory(IPlayerProperties<CustomPlayer, CustomPlayerOptions> properties, CancellationToken options = default)
             {
                 return new ValueTask<CustomPlayer>(new CustomPlayer(properties));
             }

@@ -94,7 +94,7 @@ namespace PlexBot.Core.InteractionFramework.InteractionComponents
         }
 
         [ComponentInteraction("set_repeat")]
-        public async Task SetRepeat(string[] selections)
+        public async Task SetRepeat(string customId, string[] selections)
         {
             CustomPlayer? player = await _lavaLink.GetPlayerAsync(Context.Interaction, true);
             if (player == null)
