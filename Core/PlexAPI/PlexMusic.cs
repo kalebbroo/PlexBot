@@ -124,7 +124,7 @@ namespace PlexBot.Core.PlexAPI
             Dictionary<string, Dictionary<string, string>> results = [];
             JObject jObject = JObject.Parse(jsonResponse);
             int id = 0;
-            foreach (JToken item in jObject["MediaContainer"]["Metadata"])
+            foreach (JToken item in jObject["MediaContainer"]?["Metadata"] ?? Enumerable.Empty<JToken>())
             {
                 Dictionary<string, string> details = [];
                 switch (type.ToLower())
@@ -215,7 +215,7 @@ namespace PlexBot.Core.PlexAPI
                 string uri = $"{plexUrl}/playlists?playlistType=audio";
                 string? response = await PerformRequestAsync(uri);
                 //Console.WriteLine(response); // Debugging
-                return await ParseSearchResults(response, "playlist");
+                return await ParseSearchResults(response!, "playlist") ?? throw new Exception("No playlists found.");
             }
             catch (Exception ex)
             {
@@ -224,7 +224,7 @@ namespace PlexBot.Core.PlexAPI
             }
         }
 
-        public async Task<Dictionary<string, string>> GetTrackDetails(string trackKey)
+        public async Task<Dictionary<string, string>?> GetTrackDetails(string trackKey)
         {
             string uri = GetPlaybackUrl(trackKey);
             string? response = await PerformRequestAsync(uri);
@@ -234,12 +234,8 @@ namespace PlexBot.Core.PlexAPI
                 return null; // Handle no data found
             }
             JObject jObject = JObject.Parse(response);
-            JToken? item = jObject["MediaContainer"]["Metadata"].FirstOrDefault();
-            if (item == null)
-            {
-                Console.WriteLine("No track metadata available.");
-                return null;
-            }
+            JToken? item = (jObject["MediaContainer"]?["Metadata"] ?? Enumerable.Empty<JToken>()).FirstOrDefault() 
+                ?? throw new InvalidOperationException("Metadata item not found.");
             string partKey = item.SelectToken("Media[0].Part[0].key")?.ToString() ?? "Play URL Missing in GetTrackDetails";
             string playableUrl = GetPlaybackUrl(partKey);
             Dictionary<string, string> trackDetails = new()
@@ -328,10 +324,9 @@ namespace PlexBot.Core.PlexAPI
                     ["TrackKey"] = item["key"]?.ToString() ?? "TrackKey Missing in GetAlbums"
                 };
                 albums.Add(albumDetails);
-                Console.WriteLine($"Album Title: {albumDetails["Title"]}, Album URL: {albumDetails["Url"]}"); // Debugging
-
+                //Console.WriteLine($"Album Title: {albumDetails["Title"]}, Album URL: {albumDetails["Url"]}"); // Debugging
             }
-            string json = JsonConvert.SerializeObject(albums, Formatting.Indented); // Debugging
+            //string json = JsonConvert.SerializeObject(albums, Formatting.Indented); // Debugging
             //Console.WriteLine($"Albums: {json}"); // Debugging
             return albums;
         }

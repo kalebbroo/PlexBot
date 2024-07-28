@@ -1,12 +1,9 @@
-﻿using Discord.WebSocket;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using Discord;
+using Discord.WebSocket;
 
 namespace PlexBot.Core.EventHandlers
 {
+    // TODO: Actually do something with this class or remove it
     internal class UserEvents(DiscordSocketClient client)
     {
         private readonly DiscordSocketClient _client = client;
@@ -22,8 +19,9 @@ namespace PlexBot.Core.EventHandlers
         /// <returns>A task that represents the asynchronous operation.</returns>
         private async Task OnUserJoinedAsync(SocketGuildUser user)
         {
-            string[] channelNames = ["welcome", "rules", "generate", "info"];
-            Dictionary<string, SocketTextChannel> channels = [];
+            //string[] channelNames = ["welcome", "rules", "generate", "info"];
+            //Dictionary<string, SocketTextChannel> channels = [];
+            await user.SendMessageAsync("Welcome to the server!");
         }
     }
 

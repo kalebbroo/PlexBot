@@ -10,11 +10,11 @@ using Lavalink4NET.Extensions;
 using PlexBot.Core.LavaLink;
 using Microsoft.Extensions.Hosting;
 using PlexBot.Core.PlexAPI;
-using PlexBot.Core.InteractionComponents;
 using PlexBot.Core.AutoComplete;
 using PlexBot.Core.EventHandlers;
-using PlexBot.Core.Commands;
 using PlexBot.Core.Players;
+using PlexBot.Core.InteractionFramework.InteractionComponents;
+using PlexBot.Core.InteractionFramework.Commands;
 
 namespace PlexBot
 {

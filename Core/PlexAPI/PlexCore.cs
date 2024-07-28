@@ -58,8 +58,10 @@ namespace PlexBot.Core.PlexAPI
             return $"{plexUrl}{partKey}";
         }
 
+        // TODO: Make these dynamic and actually use them
+
         // Method to refresh the music library
-        public async Task<string> RefreshLibraryAsync(int libraryId)
+        /*public async Task<string> RefreshLibraryAsync(int libraryId)
         {
             string uri = $"{plexUrl}/library/sections/{libraryId}/refresh";
             return await PerformRequestAsync(uri);
@@ -69,6 +71,6 @@ namespace PlexBot.Core.PlexAPI
         {
             string uri = $"{plexUrl}/library/sections/{libraryId}/all?type=12&title={metadata}";
             return await PerformRequestAsync(uri);
-        }
+        }*/
     }
 }

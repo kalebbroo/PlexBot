@@ -38,7 +38,7 @@ namespace PlexBot.Core.PlexAPI
             string responseString = await response.Content.ReadAsStringAsync();
             JsonDocument jsonDoc = JsonDocument.Parse(responseString);
             int pinId = jsonDoc.RootElement.GetProperty("id").GetInt32();
-            string? pinCode = jsonDoc.RootElement.GetProperty("code").GetString();
+            string? pinCode = jsonDoc.RootElement.GetProperty("code").GetString() ?? throw new InvalidOperationException("Pin code was not returned by the server.");
             Console.WriteLine($"Pin ID: {pinId}, Pin Code: {pinCode}");
             return (pinId, pinCode);
         }
@@ -51,7 +51,7 @@ namespace PlexBot.Core.PlexAPI
             return authUrl;
         }
 
-        public async Task<string> CheckPinAsync(int pinId)
+        public async Task<string?> CheckPinAsync(int pinId)
         {
             string requestUrl = $"https://plex.tv/api/v2/pins/{pinId}";
             HttpRequestMessage request = new(HttpMethod.Get, requestUrl);
@@ -60,7 +60,6 @@ namespace PlexBot.Core.PlexAPI
             HttpResponseMessage response = await httpClient.SendAsync(request);
             string responseString = await response.Content.ReadAsStringAsync();
             JsonDocument jsonDoc = JsonDocument.Parse(responseString);
-
             if (jsonDoc.RootElement.TryGetProperty("authToken", out JsonElement authTokenProperty))
             {
                 return authTokenProperty.GetString();
