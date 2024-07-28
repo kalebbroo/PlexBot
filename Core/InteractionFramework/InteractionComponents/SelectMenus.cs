@@ -1,5 +1,4 @@
 ﻿using Discord;
-using Discord.WebSocket;
 using Discord.Interactions;
 using PlexBot.Core.PlexAPI;
 using PlexBot.Core.LavaLink;
@@ -16,7 +15,6 @@ namespace PlexBot.Core.InteractionFramework.InteractionComponents
         private readonly PlexMusic _plexApi;
         private readonly LavaLinkCommands _lavaLinkCommands;
 
-        // Traditional constructor
         public SelectMenus(IAudioService audioService, PlexMusic plexApi, LavaLinkCommands lavaLink)
         {
             _audioService = audioService;
