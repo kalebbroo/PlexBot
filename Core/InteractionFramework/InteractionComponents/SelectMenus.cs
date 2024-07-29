@@ -1,117 +1,131 @@
-﻿namespace PlexBot.Core.InteractionComponents;
+﻿using Discord;
+using Discord.Interactions;
+using PlexBot.Core.PlexAPI;
+using PlexBot.Core.LavaLink;
+using Lavalink4NET.Players;
+using Lavalink4NET.Tracks;
+using Lavalink4NET.Rest.Entities.Tracks;
+using Lavalink4NET;
 
-public class SelectMenus(DiscordSocketClient client, IAudioService audioService, PlexMusic plexApi, LavaLinkCommands lavaLink, Players.Players visualPlayers) : InteractionModuleBase<SocketInteractionContext>
+namespace PlexBot.Core.InteractionFramework.InteractionComponents
 {
-    private readonly DiscordSocketClient _client = client;
-    private readonly IAudioService _audioService = audioService;
-    private readonly PlexMusic _plexApi = plexApi;
-    private readonly LavaLinkCommands _lavaLinkCommands = lavaLink;
-    private readonly Players.Players _visualPlayers = visualPlayers;
-
-    [ComponentInteraction("search_plex:*", runMode: RunMode.Async)]
-    public async Task DisplaySearchResults(string customId, string[] selections)
+    public class SelectMenus : InteractionModuleBase<SocketInteractionContext>
     {
-        await DeferAsync(ephemeral: true);
-        string[] custom = customId.Split(':');
-        string type = custom[0];
-        string trackKey = custom[1];
-        string service = custom[2];
-        string? selectedValue = selections.FirstOrDefault();
-        if (string.IsNullOrEmpty(selectedValue))
+        private readonly IAudioService _audioService;
+        private readonly PlexMusic _plexApi;
+        private readonly LavaLinkCommands _lavaLinkCommands;
+
+        public SelectMenus(IAudioService audioService, PlexMusic plexApi, LavaLinkCommands lavaLink)
         {
-            await ModifyOriginalResponseAsync(msg => msg.Content = "Invalid selection made.");
-            return;
+            _audioService = audioService;
+            _plexApi = plexApi;
+            _lavaLinkCommands = lavaLink;
         }
-        try
+
+        [ComponentInteraction("search_plex:*", runMode: RunMode.Async)]
+        public async Task DisplaySearchResults(string customId, string[] selections)
         {
-            switch (type)
+            await DeferAsync(ephemeral: true);
+            string[] custom = customId.Split(':');
+            string type = custom[0];
+            string trackKey = custom[1];
+            string service = custom[2];
+            string? selectedValue = selections.FirstOrDefault();
+            if (string.IsNullOrEmpty(selectedValue))
             {
-                case "tracks":
-                    {
-                        if (service == "youtube")
+                await ModifyOriginalResponseAsync(msg => msg.Content = "Invalid selection made.");
+                return;
+            }
+            try
+            {
+                switch (type)
+                {
+                    case "tracks":
                         {
-                            string youtubeIdentifier = selectedValue;
-                            LavalinkTrack? ytTrack = await audioService.Tracks.LoadTrackAsync(youtubeIdentifier, TrackSearchMode.None);
-                            string youtubeUrl = $"https://www.youtube.com/watch?v={youtubeIdentifier}";
-                            Dictionary<string, string> ytTrackDetails = new()
+                            if (service == "youtube")
                             {
-                                { "Title", $"{ytTrack!.Title}" },
-                                { "Artist", ytTrack.Author },
-                                { "Album", ytTrack.SourceName! },
-                                { "ReleaseDate", "youtube release date" },
-                                { "Artwork", ytTrack.ArtworkUri!.ToString() },
-                                { "Url", youtubeUrl },
-                                { "ArtistUrl", "youtube artist url" },
-                                { "Duration", ytTrack.Duration.ToString() },    
-                                { "Studio", "youtube studio" },
-                                { "TrackKey", youtubeIdentifier },
-                            };
-                            await lavaLink.AddToQueue(Context.Interaction, [ytTrackDetails]);
-                            await ModifyOriginalResponseAsync(msg => msg.Content = "Track added to queue.");
+                                string youtubeIdentifier = selectedValue;
+                                LavalinkTrack? ytTrack = await _audioService.Tracks.LoadTrackAsync(youtubeIdentifier, TrackSearchMode.None);
+                                string youtubeUrl = $"https://www.youtube.com/watch?v={youtubeIdentifier}";
+                                Dictionary<string, string> ytTrackDetails = new()
+                                {
+                                    { "Title", $"{ytTrack!.Title}" },
+                                    { "Artist", ytTrack.Author },
+                                    { "Album", ytTrack.SourceName! },
+                                    { "ReleaseDate", "youtube release date" },
+                                    { "Artwork", ytTrack.ArtworkUri!.ToString() },
+                                    { "Url", youtubeUrl },
+                                    { "ArtistUrl", "youtube artist url" },
+                                    { "Duration", ytTrack.Duration.ToString() },
+                                    { "Studio", "youtube studio" },
+                                    { "TrackKey", youtubeIdentifier },
+                                };
+                                await _lavaLinkCommands.AddToQueue(Context.Interaction, [ytTrackDetails]);
+                                await ModifyOriginalResponseAsync(msg => msg.Content = "Track added to queue.");
+                                break;
+                            }
+                            Dictionary<string, string>? trackDetails = await _plexApi.GetTrackDetails(selectedValue);
+                            if (trackDetails != null)
+                            {
+                                await _lavaLinkCommands.AddToQueue(Context.Interaction, [trackDetails]);
+                                await ModifyOriginalResponseAsync(msg => msg.Content = "Track added to queue.");
+                            }
+                            else
+                            {
+                                await ModifyOriginalResponseAsync(msg => msg.Content = "Failed to retrieve track details.");
+                            }
                             break;
                         }
-                        Dictionary<string, string>? trackDetails = await plexApi.GetTrackDetails(selectedValue);
-                        if (trackDetails != null)
+                    case "albums":
                         {
-                            await lavaLink.AddToQueue(Context.Interaction, [trackDetails]);
-                            await ModifyOriginalResponseAsync(msg => msg.Content = "Track added to queue.");
-                        }
-                        else
-                        {
-                            await ModifyOriginalResponseAsync(msg => msg.Content = "Failed to retrieve track details.");
-                        }
-                        break;
-                    }
-                case "albums":
-                    {
-                        List<Dictionary<string, string>> tracks = await plexApi.GetTracks(selectedValue);
-                        if (tracks != null && tracks.Count > 0)
-                        {
-                            await lavaLink.AddToQueue(Context.Interaction, tracks);
-                            await ModifyOriginalResponseAsync(msg => msg.Content = "Tracks from album added to queue.");
-                        }
-                        else
-                        {
-                            await ModifyOriginalResponseAsync(msg => msg.Content = "Failed to retrieve tracks for the album.");
-                        }
-                        break;
-                    }
-                case "artists":
-                    {
-                        List<Dictionary<string, string>> albums = await plexApi.GetAlbums(selectedValue);
-                        List<Dictionary<string, string>> allTracks = [];
-                        foreach (var album in albums)
-                        {
-                            List<Dictionary<string, string>> tracks = await plexApi.GetTracks(album["TrackKey"]);
+                            List<Dictionary<string, string>> tracks = await _plexApi.GetTracks(selectedValue);
                             if (tracks != null && tracks.Count > 0)
                             {
-                                allTracks.AddRange(tracks);
+                                await _lavaLinkCommands.AddToQueue(Context.Interaction, tracks);
+                                await ModifyOriginalResponseAsync(msg => msg.Content = "Tracks from album added to queue.");
                             }
+                            else
+                            {
+                                await ModifyOriginalResponseAsync(msg => msg.Content = "Failed to retrieve tracks for the album.");
+                            }
+                            break;
                         }
-                        if (allTracks.Count > 0)
+                    case "artists":
                         {
-                            await lavaLink.AddToQueue(Context.Interaction, allTracks);
-                            await ModifyOriginalResponseAsync(msg => msg.Content = "Tracks from all albums by the artist added to queue.");
+                            List<Dictionary<string, string>> albums = await _plexApi.GetAlbums(selectedValue);
+                            List<Dictionary<string, string>> allTracks = [];
+                            foreach (var album in albums)
+                            {
+                                List<Dictionary<string, string>> tracks = await _plexApi.GetTracks(album["TrackKey"]);
+                                if (tracks != null && tracks.Count > 0)
+                                {
+                                    allTracks.AddRange(tracks);
+                                }
+                            }
+                            if (allTracks.Count > 0)
+                            {
+                                await _lavaLinkCommands.AddToQueue(Context.Interaction, allTracks);
+                                await ModifyOriginalResponseAsync(msg => msg.Content = "Tracks from all albums by the artist added to queue.");
+                            }
+                            else
+                            {
+                                await ModifyOriginalResponseAsync(msg => msg.Content = "Failed to retrieve tracks for the artist.");
+                            }
+                            break;
                         }
-                        else
+                    default:
                         {
-                            await ModifyOriginalResponseAsync(msg => msg.Content = "Failed to retrieve tracks for the artist.");
+                            await ModifyOriginalResponseAsync(msg => msg.Content = "Invalid selection type.");
+                            break;
                         }
-                        break;
-                    }
-                default:
-                    {
-                        await ModifyOriginalResponseAsync(msg => msg.Content = "Invalid selection type.");
-                        break;
-                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                await ModifyOriginalResponseAsync(msg => msg.Content = $"An error occurred: {ex.Message}");
+                Console.WriteLine($"Error in DisplaySearchResults: {ex.Message}");
             }
         }
-        catch (Exception ex)
-        {
-            await ModifyOriginalResponseAsync(msg => msg.Content = $"An error occurred: {ex.Message}");
-            Console.WriteLine($"Error in DisplaySearchResults: {ex.Message}");
-        }
-    }
 
     [ComponentInteraction("queue:*")]
     public async Task HandleQueueOptions(string customId, string[] selectedValues)
@@ -277,21 +291,21 @@ public class SelectMenus(DiscordSocketClient client, IAudioService audioService,
         return builder;
     }
 
-    private SelectMenuBuilder BuildSelectMenu(string customId, List<ITrackQueueItem> queueItems, int startIndex, string placeholder, string description)
-    {
-        List<SelectMenuOptionBuilder> options = queueItems.Select((track, index) => new SelectMenuOptionBuilder()
-            .WithLabel($"{startIndex + index + 1}: {(track as CustomTrackQueueItem)?.Title}")
-            .WithValue($"{startIndex + index}")
-            .WithDescription(description))
-            .Take(25) // Ensure we only take 25 items
-            .ToList();
-        return new SelectMenuBuilder()
-            .WithCustomId(customId)
-            .WithPlaceholder(placeholder)
-            .WithOptions(options)
-            .WithMinValues(1)
-            .WithMaxValues(1);
-    }
+        private static SelectMenuBuilder BuildSelectMenu(string customId, List<ITrackQueueItem> queueItems, int startIndex, string placeholder, string description)
+        {
+            List<SelectMenuOptionBuilder> options = queueItems.Select((track, index) => new SelectMenuOptionBuilder()
+                .WithLabel($"{startIndex + index + 1}: {(track as CustomTrackQueueItem)?.Title}")
+                .WithValue($"{startIndex + index}")
+                .WithDescription(description))
+                .Take(25) // Ensure we only take 25 items
+                .ToList();
+            return new SelectMenuBuilder()
+                .WithCustomId(customId)
+                .WithPlaceholder(placeholder)
+                .WithOptions(options)
+                .WithMinValues(1)
+                .WithMaxValues(1);
+        }
 
     [ComponentInteraction("edit_buttons:*", runMode: RunMode.Async)]
     public async Task HandleQueuePagination(string customId)
@@ -318,24 +332,24 @@ public class SelectMenus(DiscordSocketClient client, IAudioService audioService,
         }
     }
 
-    private async Task NavigateQueuePage(CustomPlayer player, int newPage, string selectedAction)
-    {
-        int totalItems = player.Queue.Count;
-        int itemsPerPage = 24; // Max number of items per select menu
-        int totalPages = (int)Math.Ceiling(totalItems / (double)itemsPerPage);
-        switch (selectedAction)
+        private async Task NavigateQueuePage(CustomPlayer player, int newPage, string selectedAction)
         {
-            case "playNext":
-                await ShowQueueEditMenu(player, "playnext", newPage);
-                break;
-            case "remove":
-                await ShowQueueEditMenu(player, "remove", newPage);
-                break;
-            case "rearrangePosition":
-                await ShowRearrangePositionMenu(player, 1, newPage);
-                break;
+            //int totalItems = player.Queue.Count;
+            //int itemsPerPage = 24; // Max number of items per select menu
+            //int totalPages = (int)Math.Ceiling(totalItems / (double)itemsPerPage);
+            switch (selectedAction)
+            {
+                case "playNext":
+                    await ShowQueueEditMenu(player, "playnext", newPage);
+                    break;
+                case "remove":
+                    await ShowQueueEditMenu(player, "remove", newPage);
+                    break;
+                case "rearrangePosition":
+                    await ShowRearrangePositionMenu(player, 1, newPage);
+                    break;
+            }
         }
-    }
 
     [ComponentInteraction("rearrange:*")]
     public async Task HandleFinalRearrange(string customId, string[] selectedValues)

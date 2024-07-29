@@ -1,48 +1,55 @@
-﻿namespace PlexBot.Core.LavaLink;
+﻿using Lavalink4NET;
+using Discord.WebSocket;
+using Lavalink4NET.Players.Queued;
+using Lavalink4NET.Players;
+using Microsoft.Extensions.Options;
+using Discord;
+using Lavalink4NET.Tracks;
+using Lavalink4NET.Rest.Entities.Tracks;
 
-public class LavaLinkCommands(IAudioService audioService, DiscordSocketClient discordClient, Players.Players visualPlayer)
+namespace PlexBot.Core.LavaLink
 {
-    private readonly IAudioService _audioService = audioService;
-    private readonly DiscordSocketClient _discordClient = discordClient;
-    private readonly Players.Players _players = visualPlayer;
-
-    public async Task<CustomPlayer?> GetPlayerAsync(SocketInteraction interaction, bool connectToVoiceChannel = true)
+    public class LavaLinkCommands(IAudioService audioService)
     {
-        if (interaction.User is not SocketGuildUser user || user.VoiceChannel == null)
+        private readonly IAudioService _audioService = audioService;
+
+        public async Task<CustomPlayer?> GetPlayerAsync(SocketInteraction interaction, bool connectToVoiceChannel = true)
         {
-            await interaction.FollowupAsync("You must be in a voice channel to play music.").ConfigureAwait(false);
-            return null;
-        }
-        ulong guildId = user.Guild.Id;
-        ulong voiceChannelId = user.VoiceChannel.Id;
-        PlayerChannelBehavior channelBehavior = connectToVoiceChannel ? PlayerChannelBehavior.Join : PlayerChannelBehavior.None;
-        PlayerRetrieveOptions retrieveOptions = new(channelBehavior);
-        CustomPlayerOptions options = new()
-        {
-            DisconnectOnStop = false,
-            TextChannel = interaction.Channel as ITextChannel
-        };
-        IOptions<CustomPlayerOptions> optionsWrapper = Options.Create(options);
-        ValueTask<CustomPlayer> factory(IPlayerProperties<CustomPlayer, CustomPlayerOptions> properties, CancellationToken options = default)
-        {
-            return new ValueTask<CustomPlayer>(new CustomPlayer(properties, this));
-        }
-        PlayerResult<CustomPlayer> result = await _audioService.Players
-            .RetrieveAsync<CustomPlayer, CustomPlayerOptions>(guildId, voiceChannelId, factory, optionsWrapper, retrieveOptions)
-            .ConfigureAwait(false);
-        if (!result.IsSuccess)
-        {
-            string errorMessage = result.Status switch
+            if (interaction.User is not SocketGuildUser user || user.VoiceChannel == null)
             {
-                PlayerRetrieveStatus.UserNotInVoiceChannel => "You are not connected to a voice channel.",
-                PlayerRetrieveStatus.BotNotConnected => "The bot is currently not connected.",
-                _ => "Unknown error.",
+                await interaction.FollowupAsync("You must be in a voice channel to play music.").ConfigureAwait(false);
+                return null;
+            }
+            ulong guildId = user.Guild.Id;
+            ulong voiceChannelId = user.VoiceChannel.Id;
+            PlayerChannelBehavior channelBehavior = connectToVoiceChannel ? PlayerChannelBehavior.Join : PlayerChannelBehavior.None;
+            PlayerRetrieveOptions retrieveOptions = new(channelBehavior);
+            CustomPlayerOptions options = new()
+            {
+                DisconnectOnStop = false,
+                TextChannel = interaction.Channel as ITextChannel
             };
-            await interaction.FollowupAsync(errorMessage).ConfigureAwait(false);
-            return null;
+            IOptions<CustomPlayerOptions> optionsWrapper = Options.Create(options);
+            static ValueTask<CustomPlayer> factory(IPlayerProperties<CustomPlayer, CustomPlayerOptions> properties, CancellationToken options = default)
+            {
+                return new ValueTask<CustomPlayer>(new CustomPlayer(properties));
+            }
+            PlayerResult<CustomPlayer> result = await _audioService.Players
+                .RetrieveAsync<CustomPlayer, CustomPlayerOptions>(guildId, voiceChannelId, factory, optionsWrapper, retrieveOptions)
+                .ConfigureAwait(false);
+            if (!result.IsSuccess)
+            {
+                string errorMessage = result.Status switch
+                {
+                    PlayerRetrieveStatus.UserNotInVoiceChannel => "You are not connected to a voice channel.",
+                    PlayerRetrieveStatus.BotNotConnected => "The bot is currently not connected.",
+                    _ => "Unknown error.",
+                };
+                await interaction.FollowupAsync(errorMessage).ConfigureAwait(false);
+                return null;
+            }
+            return result.Player;
         }
-        return result.Player;
-    }
 
     public async Task PlayMedia(SocketInteraction interaction, CustomTrackQueueItem track)
     {

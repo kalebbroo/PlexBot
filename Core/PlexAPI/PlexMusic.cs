@@ -1,24 +1,28 @@
-﻿namespace PlexBot.Core.PlexAPI;
+﻿using Newtonsoft.Json.Linq;
+using System.Web;
+using Newtonsoft.Json;
 
-public class PlexMusic(LavaLinkCommands lavaLinkCommands) : PlexCore(lavaLinkCommands)
+namespace PlexBot.Core.PlexAPI
 {
-    // Public method to search the music library
-    public async Task<Dictionary<string, List<Dictionary<string, string>>>> SearchLibraryAsync(string query)
+    public class PlexMusic : PlexCore
     {
-        string encodedQuery = HttpUtility.UrlEncode(query);
-        string uri = $"{plexUrl}/hubs/search?query={encodedQuery}&sectionId=5&limit=100";
-        Console.WriteLine($"Performing request to URI: {uri}"); // Debugging
-        string? response = await PerformRequestAsync(uri);
-        if (string.IsNullOrEmpty(response))
+        // Public method to search the music library
+        public async Task<Dictionary<string, List<Dictionary<string, string>>>> SearchLibraryAsync(string query)
         {
-            Console.WriteLine("No results found.");
-            throw new Exception("No results found.");
+            string encodedQuery = HttpUtility.UrlEncode(query);
+            string uri = $"{plexUrl}/hubs/search?query={encodedQuery}&sectionId=5&limit=100";
+            Console.WriteLine($"Performing request to URI: {uri}"); // Debugging
+            string? response = await PerformRequestAsync(uri);
+            if (string.IsNullOrEmpty(response))
+            {
+                Console.WriteLine("No results found.");
+                throw new Exception("No results found.");
+            }
+            Console.WriteLine($"Response received: {response.Length} characters"); // Debugging
+            Dictionary<string, List<Dictionary<string, string>>> results = await ParseResults(response);
+            Console.WriteLine($"Search results: {JsonConvert.SerializeObject(results)}"); // Debugging
+            return results;
         }
-        Console.WriteLine($"Response received: {response.Length} characters"); // Debugging
-        Dictionary<string, List<Dictionary<string, string>>> results = await ParseResults(response);
-        Console.WriteLine($"Search results: {JsonConvert.SerializeObject(results)}"); // Debugging
-        return results;
-    }
 
     public async Task<Dictionary<string, List<Dictionary<string, string>>>> ParseResults(string jsonResponse)
     {
@@ -115,146 +119,142 @@ public class PlexMusic(LavaLinkCommands lavaLinkCommands) : PlexCore(lavaLinkCom
         return results;
     }
 
-    public async Task<Dictionary<string, Dictionary<string, string>>> ParseSearchResults(string jsonResponse, string type)
-    {
-        Dictionary<string, Dictionary<string, string>> results = [];
-        JObject jObject = JObject.Parse(jsonResponse);
-        int id = 0;
-        foreach (JToken item in jObject["MediaContainer"]["Metadata"])
+        public async Task<Dictionary<string, Dictionary<string, string>>> ParseSearchResults(string jsonResponse, string type)
         {
-            Dictionary<string, string> details = [];
-            switch (type.ToLower())
+            Dictionary<string, Dictionary<string, string>> results = [];
+            JObject jObject = JObject.Parse(jsonResponse);
+            int id = 0;
+            foreach (JToken item in jObject["MediaContainer"]?["Metadata"] ?? Enumerable.Empty<JToken>())
             {
-                case "track":
-                    details["Title"] = item["title"]?.ToString() ?? "Unknown Title";
-                    details["Artist"] = item["grandparentTitle"]?.ToString() ?? "Unknown Artist";
-                    details["Album"] = item["parentTitle"]?.ToString() ?? "Unknown Album";
-                    details["ReleaseDate"] = item["originallyAvailableAt"]?.ToString() ?? "N/A";
-                    details["Artwork"] = item["thumb"]?.ToString() ?? "N/A";
-                    details["Url"] = item.SelectToken("Media[0].Part[0].key")?.ToString() ?? "N/A";
-                    details["ArtistUrl"] = item["grandparentKey"]?.ToString() ?? "N/A";
-                    details["Duration"] = item["duration"]?.ToString() ?? "N/A";
-                    details["Studio"] = item["studio"]?.ToString() ?? "N/A";
-                    details["TrackKey"] = item["key"]?.ToString() ?? "N/A";
-                    List<Dictionary<string, string>> queue = [details];
-                    break;
-                case "artist":
-                    details["Title"] = item["title"]?.ToString() ?? "Unknown Artist";
-                    details["Summary"] = item["summary"]?.ToString() ?? "No description available.";
-                    details["Artwork"] = item["thumb"]?.ToString() ?? "N/A";
-                    details["Url"] = item["key"]?.ToString() ?? "N/A";
-                    details["TrackKey"] = item["key"]?.ToString() ?? "N/A";
-                    try
-                    {
-                        List<Dictionary<string, string>> albumDetails = await GetAlbums(details["Url"]);
-                        details["AlbumCount"] = albumDetails.Count.ToString();
-                        int trackCount = 0;
-                        foreach (var album in albumDetails)
+                Dictionary<string, string> details = [];
+                switch (type.ToLower())
+                {
+                    case "track":
+                        details["Title"] = item["title"]?.ToString() ?? "Unknown Title";
+                        details["Artist"] = item["grandparentTitle"]?.ToString() ?? "Unknown Artist";
+                        details["Album"] = item["parentTitle"]?.ToString() ?? "Unknown Album";
+                        details["ReleaseDate"] = item["originallyAvailableAt"]?.ToString() ?? "N/A";
+                        details["Artwork"] = item["thumb"]?.ToString() ?? "N/A";
+                        details["Url"] = item.SelectToken("Media[0].Part[0].key")?.ToString() ?? "N/A";
+                        details["ArtistUrl"] = item["grandparentKey"]?.ToString() ?? "N/A";
+                        details["Duration"] = item["duration"]?.ToString() ?? "N/A";
+                        details["Studio"] = item["studio"]?.ToString() ?? "N/A";
+                        details["TrackKey"] = item["key"]?.ToString() ?? "N/A";
+                        List<Dictionary<string, string>> queue = [details];
+                        break;
+                    case "artist":
+                        details["Title"] = item["title"]?.ToString() ?? "Unknown Artist";
+                        details["Summary"] = item["summary"]?.ToString() ?? "No description available.";
+                        details["Artwork"] = item["thumb"]?.ToString() ?? "N/A";
+                        details["Url"] = item["key"]?.ToString() ?? "N/A";
+                        details["TrackKey"] = item["key"]?.ToString() ?? "N/A";
+                        try
                         {
-                            List<Dictionary<string, string>> tracks = await GetTracks(album["Url"]);
-                            trackCount += tracks.Count;
+                            List<Dictionary<string, string>> albumDetails = await GetAlbums(details["Url"]);
+                            details["AlbumCount"] = albumDetails.Count.ToString();
+                            int trackCount = 0;
+                            foreach (var album in albumDetails)
+                            {
+                                List<Dictionary<string, string>> tracks = await GetTracks(album["Url"]);
+                                trackCount += tracks.Count;
+                            }
+                            details["TrackCount"] = trackCount.ToString();
                         }
-                        details["TrackCount"] = trackCount.ToString();
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"Failed to retrieve album or track details: {ex.Message}");
-                        details["AlbumCount"] = "Error";
-                        details["TrackCount"] = "Error";
-                    }
-                    break;
-                case "album":
-                    details["Title"] = item["title"]?.ToString() ?? "Unknown Album";
-                    details["Artist"] = item["parentTitle"]?.ToString() ?? "Unknown Artist";
-                    details["ReleaseDate"] = item["originallyAvailableAt"]?.ToString() ?? "N/A";
-                    details["Artwork"] = item["thumb"]?.ToString() ?? "N/A";
-                    details["Url"] = item["key"]?.ToString() ?? "N/A";
-                    details["ArtistUrl"] = item["parentKey"]?.ToString() ?? "N/A";
-                    details["Studio"] = item["studio"]?.ToString() ?? "N/A";
-                    details["Genre"] = item["Genre"]?.ToString() ?? "N/A";
-                    details["Summary"] = item["summary"]?.ToString() ?? "No description available.";
-                    details["TrackKey"] = item["key"]?.ToString() ?? "N/A";
-                    // TODO: Limit the summary to 100 characters. This should be done in select menu not here
-                    if (details["Summary"].Length > 100)
-                    {
-                        details["Summary"] = details["Summary"][..97] + "...";
-                    }
-                    // Get track count
-                    try
-                    {
-                        List<Dictionary<string, string>> tracks = await GetTracks(details["Url"]);
-                        int trackCount = tracks.Count;
-                        details["TrackCount"] = trackCount.ToString();
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"Failed to retrieve tracks: {ex.Message}");
-                        details["TrackCount"] = "Error retrieving track count";
-                    }
-                    break;
-                case "playlist":
-                    details["Title"] = item["title"]?.ToString() ?? "Unknown Playlist";
-                    details["Artwork"] = item["thumb"]?.ToString() ?? "N/A";
-                    details["Url"] = item["key"]?.ToString() ?? "N/A";
-                    details["TrackCount"] = item["leafCount"]?.ToString() ?? "0";
-                    break;
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"Failed to retrieve album or track details: {ex.Message}");
+                            details["AlbumCount"] = "Error";
+                            details["TrackCount"] = "Error";
+                        }
+                        break;
+                    case "album":
+                        details["Title"] = item["title"]?.ToString() ?? "Unknown Album";
+                        details["Artist"] = item["parentTitle"]?.ToString() ?? "Unknown Artist";
+                        details["ReleaseDate"] = item["originallyAvailableAt"]?.ToString() ?? "N/A";
+                        details["Artwork"] = item["thumb"]?.ToString() ?? "N/A";
+                        details["Url"] = item["key"]?.ToString() ?? "N/A";
+                        details["ArtistUrl"] = item["parentKey"]?.ToString() ?? "N/A";
+                        details["Studio"] = item["studio"]?.ToString() ?? "N/A";
+                        details["Genre"] = item["Genre"]?.ToString() ?? "N/A";
+                        details["Summary"] = item["summary"]?.ToString() ?? "No description available.";
+                        details["TrackKey"] = item["key"]?.ToString() ?? "N/A";
+                        // TODO: Limit the summary to 100 characters. This should be done in select menu not here
+                        if (details["Summary"].Length > 100)
+                        {
+                            details["Summary"] = details["Summary"][..97] + "...";
+                        }
+                        // Get track count
+                        try
+                        {
+                            List<Dictionary<string, string>> tracks = await GetTracks(details["Url"]);
+                            int trackCount = tracks.Count;
+                            details["TrackCount"] = trackCount.ToString();
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"Failed to retrieve tracks: {ex.Message}");
+                            details["TrackCount"] = "Error retrieving track count";
+                        }
+                        break;
+                    case "playlist":
+                        details["Title"] = item["title"]?.ToString() ?? "Unknown Playlist";
+                        details["Artwork"] = item["thumb"]?.ToString() ?? "N/A";
+                        details["Url"] = item["key"]?.ToString() ?? "N/A";
+                        details["TrackCount"] = item["leafCount"]?.ToString() ?? "0";
+                        break;
+                }
+                results.Add($"Item{id++}", details);
             }
-            results.Add($"Item{id++}", details);
+            return results;
         }
-        return results;
-    }
 
-    public async Task<Dictionary<string, Dictionary<string, string>>> GetPlaylists()
-    {
-        try
+        public async Task<Dictionary<string, Dictionary<string, string>>> GetPlaylists()
         {
-            string uri = $"{plexUrl}/playlists?playlistType=audio";
+            try
+            {
+                string uri = $"{plexUrl}/playlists?playlistType=audio";
+                string? response = await PerformRequestAsync(uri);
+                //Console.WriteLine(response); // Debugging
+                return await ParseSearchResults(response!, "playlist") ?? throw new Exception("No playlists found.");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Failed to fetch playlists: {ex.Message}");
+                return [];
+            }
+        }
+
+        public async Task<Dictionary<string, string>?> GetTrackDetails(string trackKey)
+        {
+            string uri = GetPlaybackUrl(trackKey);
             string? response = await PerformRequestAsync(uri);
-            //Console.WriteLine(response); // Debugging
-            return await ParseSearchResults(response, "playlist");
+            if (string.IsNullOrEmpty(response))
+            {
+                Console.WriteLine("No track details found.");
+                return null; // Handle no data found
+            }
+            JObject jObject = JObject.Parse(response);
+            JToken? item = (jObject["MediaContainer"]?["Metadata"] ?? Enumerable.Empty<JToken>()).FirstOrDefault() 
+                ?? throw new InvalidOperationException("Metadata item not found.");
+            string partKey = item.SelectToken("Media[0].Part[0].key")?.ToString() ?? "Play URL Missing in GetTrackDetails";
+            string playableUrl = GetPlaybackUrl(partKey);
+            Dictionary<string, string> trackDetails = new()
+            {
+                ["Title"] = item["title"]?.ToString() ?? "Unknown Title",
+                ["Artist"] = item["grandparentTitle"]?.ToString() ?? "Unknown Artist",
+                ["Album"] = item["parentTitle"]?.ToString() ?? "Unknown Album",
+                ["ReleaseDate"] = item["originallyAvailableAt"]?.ToString() ?? "N/A",
+                ["Artwork"] = item["thumb"]?.ToString() ?? "N/A",
+                ["Url"] = playableUrl,
+                ["ArtistUrl"] = item["grandparentKey"]?.ToString() ?? "N/A",
+                ["Duration"] = item["duration"]?.ToString() ?? "N/A", // Duration in milliseconds
+                ["Studio"] = item["studio"]?.ToString() ?? "N/A"
+            };
+            Console.WriteLine($"Track details:\nTitle: {trackDetails["Title"]}, Artist: {trackDetails["Artist"]}, Album: {trackDetails["Album"]}, " +
+                $"Release Date: {trackDetails["ReleaseDate"]}, Artwork: {trackDetails["Artwork"]}, URL: {trackDetails["Url"]}, " +
+                $"Artist URL: {trackDetails["ArtistUrl"]}, Duration: {trackDetails["Duration"]}, Studio: {trackDetails["Studio"]}"); // Debugging
+            return trackDetails;
         }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Failed to fetch playlists: {ex.Message}");
-            return [];
-        }
-    }
-
-    public async Task<Dictionary<string, string>> GetTrackDetails(string trackKey)
-    {
-        string uri = GetPlaybackUrl(trackKey);
-        string? response = await PerformRequestAsync(uri);
-        if (string.IsNullOrEmpty(response))
-        {
-            Console.WriteLine("No track details found.");
-            return null; // Handle no data found
-        }
-        JObject jObject = JObject.Parse(response);
-        JToken? item = jObject["MediaContainer"]["Metadata"].FirstOrDefault();
-        if (item == null)
-        {
-            Console.WriteLine("No track metadata available.");
-            return null;
-        }
-        string partKey = item.SelectToken("Media[0].Part[0].key")?.ToString() ?? "Play URL Missing in GetTrackDetails";
-        string playableUrl = GetPlaybackUrl(partKey);
-        Dictionary<string, string> trackDetails = new()
-        {
-            ["Title"] = item["title"]?.ToString() ?? "Unknown Title",
-            ["Artist"] = item["grandparentTitle"]?.ToString() ?? "Unknown Artist",
-            ["Album"] = item["parentTitle"]?.ToString() ?? "Unknown Album",
-            ["ReleaseDate"] = item["originallyAvailableAt"]?.ToString() ?? "N/A",
-            ["Artwork"] = item["thumb"]?.ToString() ?? "N/A",
-            ["Url"] = playableUrl,
-            ["ArtistUrl"] = item["grandparentKey"]?.ToString() ?? "N/A",
-            ["Duration"] = item["duration"]?.ToString() ?? "N/A", // Duration in milliseconds
-            ["Studio"] = item["studio"]?.ToString() ?? "N/A"
-        };
-        Console.WriteLine($"Track details:\nTitle: {trackDetails["Title"]}, Artist: {trackDetails["Artist"]}, Album: {trackDetails["Album"]}, " +
-            $"Release Date: {trackDetails["ReleaseDate"]}, Artwork: {trackDetails["Artwork"]}, URL: {trackDetails["Url"]}, " +
-            $"Artist URL: {trackDetails["ArtistUrl"]}, Duration: {trackDetails["Duration"]}, Studio: {trackDetails["Studio"]}"); // Debugging
-        return trackDetails;
-    }
 
     public async Task<List<Dictionary<string, string>>> GetTracks(string Key)
     {
@@ -296,40 +296,40 @@ public class PlexMusic(LavaLinkCommands lavaLinkCommands) : PlexCore(lavaLinkCom
         return tracks;
     }
 
-    public async Task<List<Dictionary<string, string>>> GetAlbums(string artistKey)
-    {
-        string uri = GetPlaybackUrl(artistKey);
-        Console.WriteLine($"Fetching albums with URI: {uri}"); // Debugging
-        string? response = await PerformRequestAsync(uri);
-        //Console.WriteLine(response); // Debugging
-        if (string.IsNullOrEmpty(response))
+        public async Task<List<Dictionary<string, string>>> GetAlbums(string artistKey)
         {
-            Console.WriteLine("No albums found.");
-            return [];
-        }
-        List<Dictionary<string, string>> albums = [];
-        JObject? jObject = JObject.Parse(response);
-        JToken? items = jObject?["MediaContainer"]?["Metadata"];
-        if (items == null)
-        {
-            Console.WriteLine("No album metadata available.");
+            string uri = GetPlaybackUrl(artistKey);
+            Console.WriteLine($"Fetching albums with URI: {uri}"); // Debugging
+            string? response = await PerformRequestAsync(uri);
+            //Console.WriteLine(response); // Debugging
+            if (string.IsNullOrEmpty(response))
+            {
+                Console.WriteLine("No albums found.");
+                return [];
+            }
+            List<Dictionary<string, string>> albums = [];
+            JObject? jObject = JObject.Parse(response);
+            JToken? items = jObject?["MediaContainer"]?["Metadata"];
+            if (items == null)
+            {
+                Console.WriteLine("No album metadata available.");
+                return albums;
+            }
+            foreach (JToken item in items)
+            {
+                Dictionary<string, string> albumDetails = new()
+                {
+                    ["Title"] = item["title"]?.ToString() ?? "Title Missing in GetAlbums",
+                    ["Url"] = item["key"]?.ToString() ?? "Url Missing in GetAlbums",
+                    ["TrackKey"] = item["key"]?.ToString() ?? "TrackKey Missing in GetAlbums"
+                };
+                albums.Add(albumDetails);
+                //Console.WriteLine($"Album Title: {albumDetails["Title"]}, Album URL: {albumDetails["Url"]}"); // Debugging
+            }
+            //string json = JsonConvert.SerializeObject(albums, Formatting.Indented); // Debugging
+            //Console.WriteLine($"Albums: {json}"); // Debugging
             return albums;
         }
-        foreach (JToken item in items)
-        {
-            Dictionary<string, string> albumDetails = new()
-            {
-                ["Title"] = item["title"]?.ToString() ?? "Title Missing in GetAlbums",
-                ["Url"] = item["key"]?.ToString() ?? "Url Missing in GetAlbums",
-                ["TrackKey"] = item["key"]?.ToString() ?? "TrackKey Missing in GetAlbums"
-            };
-            albums.Add(albumDetails);
-            Console.WriteLine($"Album Title: {albumDetails["Title"]}, Album URL: {albumDetails["Url"]}"); // Debugging
-
-        }
-        string json = JsonConvert.SerializeObject(albums, Formatting.Indented); // Debugging
-        //Console.WriteLine($"Albums: {json}"); // Debugging
-        return albums;
     }
 }
 
