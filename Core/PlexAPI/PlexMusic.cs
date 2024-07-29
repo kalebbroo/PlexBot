@@ -6,7 +6,7 @@ public class PlexMusic(ILogger<PlexMusic> logger) : PlexCore(logger)
     public async Task<Dictionary<string, List<Dictionary<string, string>>>> SearchLibraryAsync(string query)
     {
         string encodedQuery = HttpUtility.UrlEncode(query);
-        string uri = $"{plexUrl}/hubs/search?query={encodedQuery}&sectionId=5&limit=100";
+        string uri = $"{plexUrl}/hubs/search?query={encodedQuery}&limit=100";
         logger.LogDebug("Performing request to URI: {uri}", uri);
         string? response = await PerformRequestAsync(uri);
         if (string.IsNullOrEmpty(response))
