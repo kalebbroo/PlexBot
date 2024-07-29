@@ -159,3 +159,5 @@ ScaffoldingReadMe.txt
 .env
 # sub folders inside of the images folder
 images/**/*
+# Ignore.cs files in the Plugins folder
+Plugins/**/*.cs
