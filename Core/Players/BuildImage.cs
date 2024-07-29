@@ -5,6 +5,9 @@ namespace PlexBot.Core.Players;
 
 public class BuildImage
 {
+    //TODO: Come back to this later and make it work for ILogger in the Microsoft.Extensions.Logging namespace
+    private static readonly Serilog.ILogger _logger = Serilog.Log.ForContext("SourceContext", nameof(BuildImage));
+
     public static async Task<Image<Rgba64>> BuildPlayerImage(Dictionary<string, string> track)
     {
         string albumArtURL = track["Artwork"];
@@ -15,7 +18,7 @@ public class BuildImage
             string fontPath = "/app/Moderniz.otf";
             if (!File.Exists(fontPath))
             {
-                Console.WriteLine($"Font file '{fontPath}' does not exist.");
+                _logger.Error("Font file '{FontPath}' does not exist.", fontPath);
                 throw new FileNotFoundException($"Font file '{fontPath}' not found.");
             }
             FontCollection fontCollection = new();
@@ -25,7 +28,7 @@ public class BuildImage
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Font loading error: {ex.Message}");
+            _logger.Error(ex, "Font loading error: {Message}", ex.Message);
             throw;
         }
         Image<Rgba64> image;
@@ -55,7 +58,7 @@ public class BuildImage
                         AlphaCompositionMode = PixelAlphaCompositionMode.SrcOver
                     }
                 },
-                SixLabors.ImageSharp.Color.FromRgba(0, 0, 0, 150) // Semi-transparent black
+                Color.FromRgba(0, 0, 0, 150) // Semi-transparent black
             );
             ctx.DrawText(track.GetValueOrDefault("Artist", "Unknown Artist"), font, Color.White, new PointF(20, 20));
             ctx.DrawText(track.GetValueOrDefault("Title", "Unknown Title"), font, Color.White, new PointF(20, 70));

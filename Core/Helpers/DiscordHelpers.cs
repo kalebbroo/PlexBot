@@ -30,10 +30,13 @@ public static class DiscordHelpers
     /// <returns>A Task representing the asynchronous operation.</returns>
     internal static async Task ReadyAsync(IServiceProvider serviceProvider)
     {
+        ILogger<Program> logger = serviceProvider.GetRequiredService<ILogger<Program>>();
+
         try
         {
             DiscordSocketClient client = serviceProvider.GetRequiredService<DiscordSocketClient>();
             InteractionService interactions = serviceProvider.GetRequiredService<InteractionService>();
+
             await interactions!.RegisterCommandsGloballyAsync(true); // Clear all global commands DEBUG
                                                                      // Things to be run when the bot is ready
             if (client!.Guilds.Count != 0)
@@ -48,16 +51,20 @@ public static class DiscordHelpers
             }
             else
             {
-                Console.WriteLine($"\nNo guilds found\n");
+                logger?.LogWarning("No guilds found");
             }
-            Console.WriteLine($"\nLogged in as {client.CurrentUser.Username}\n" +
-                $"Registered {interactions!.SlashCommands.Count} slash commands\n" +
-                $"Bot is a member of {client.Guilds.Count} guilds\n");
+
+            StringBuilder sb = new StringBuilder()
+                .AppendLine("Logged in as " + client.CurrentUser.Username)
+                .AppendLine("Registered " + interactions!.SlashCommands.Count + " slash commands")
+                .AppendLine("Bot is a member of " + client.Guilds.Count + " guilds");
+            logger?.LogInformation("{ReadyMessage}", sb.ToString());
+
             await client.SetGameAsync("/help", null, ActivityType.Listening);
         }
-        catch (Exception e)
+        catch (Exception ex)
         {
-            Console.WriteLine($"Exception: {e}");
+            logger.LogError("{Exception}" , ex.Message);
             throw;
         }
     }

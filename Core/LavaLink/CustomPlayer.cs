@@ -1,10 +1,11 @@
 ﻿namespace PlexBot.Core.LavaLink;
 
-namespace PlexBot.Core.LavaLink
+public sealed class CustomPlayer(IPlayerProperties<CustomPlayer, CustomPlayerOptions> properties) : QueuedLavalinkPlayer(properties)
 {
-    public sealed class CustomPlayer(IPlayerProperties<CustomPlayer, CustomPlayerOptions> properties) : QueuedLavalinkPlayer(properties)
-    {
-        private readonly ITextChannel? _textChannel = properties.Options.Value.TextChannel;
+    private readonly ITextChannel? _textChannel = properties.Options.Value.TextChannel;
+
+    //TODO: Come back to this later and make it work for ILogger in the Microsoft.Extensions.Logging namespace
+    private static readonly Serilog.ILogger _logger = Serilog.Log.ForContext("SourceContext", nameof(Players));
 
     protected override async ValueTask NotifyTrackStartedAsync(ITrackQueueItem track, CancellationToken cancellationToken = default)
     {
@@ -24,7 +25,8 @@ namespace PlexBot.Core.LavaLink
                 ["Artwork"] = customTrack.Artwork ?? "https://via.placeholder.com/150",
                 ["Studio"] = customTrack.Studio ?? "Missing Studio"
             };
-            //Console.WriteLine($"Track: {customTracks["Title"]}, Artist: {customTracks["Artist"]}, Duration: {customTracks["Duration"]}"); // debug
+            _logger.Debug("Track: {Title}, Artist: {Artist}, Duration: {Duration}", customTracks["Title"], customTracks["Artist"], customTracks["Duration"]);
+
             // Build the new player embed using the custom track information
             using MemoryStream memoryStream = new();
             Image<Rgba64> image = await BuildImage.BuildPlayerImage(customTracks);
@@ -33,6 +35,7 @@ namespace PlexBot.Core.LavaLink
             FileAttachment fileAttachment = new(memoryStream, "playerImage.png");
             string fileName = "playerImage.png";
             EmbedBuilder player = Players.Players.BuildAndSendPlayer(customTracks, $"attachment://{fileName}");
+
             // Create a ComponentBuilder for the buttons
             ComponentBuilder components = new ComponentBuilder()
                 .WithButton("Pause", "pause_resume:pause", ButtonStyle.Secondary)
@@ -40,13 +43,14 @@ namespace PlexBot.Core.LavaLink
                 .WithButton("Queue Options", "queue_options:options:1", ButtonStyle.Success)
                 .WithButton("Repeat", "repeat:select", ButtonStyle.Secondary)
                 .WithButton("Kill", "kill:kill", ButtonStyle.Danger);
+
             // Find and delete the last player message (if it exists)
             IEnumerable<IMessage> messages = await _textChannel!.GetMessagesAsync(5).FlattenAsync().ConfigureAwait(false);
             IMessage? lastPlayerMessage = messages.FirstOrDefault(m => m.Embeds.Any(e => e.Title == "Now Playing"));
             if (lastPlayerMessage != null)
             {
                 await lastPlayerMessage.DeleteAsync().ConfigureAwait(false);
-                Console.WriteLine("Deleted last player message."); // debug
+                _logger.Information("Deleted last player message.");
             }
             string tempFilePath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), fileName);
             using (FileStream fileStream = new(tempFilePath, FileMode.Create, FileAccess.Write))
@@ -62,7 +66,7 @@ namespace PlexBot.Core.LavaLink
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"An error occurred while notifying track started: {ex.Message}");
+            _logger.Error(ex, "An error occurred while notifying track started: {Message}", ex.Message);
             await _textChannel!.SendMessageAsync("An error occurred while starting the track.").ConfigureAwait(false);
         }
     }
@@ -73,7 +77,7 @@ namespace PlexBot.Core.LavaLink
         ArgumentNullException.ThrowIfNull(queueItem);
         await base.NotifyTrackEndedAsync(queueItem, endReason, cancellationToken).ConfigureAwait(false);
         string trackTitle = queueItem.Track?.Title ?? "Default Title";
-        //Console.WriteLine($"Track ended: {trackTitle}"); // debug
+        _logger.Debug("Track ended: {TrackTitle}", trackTitle);
     }
 
     public ValueTask NotifyPlayerActiveAsync(CancellationToken cancellationToken = default)

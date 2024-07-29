@@ -2,6 +2,9 @@
 
 public class Players
 {
+    //TODO: Come back to this later and make it work for ILogger in the Microsoft.Extensions.Logging namespace
+    private static readonly Serilog.ILogger _logger = Serilog.Log.ForContext("SourceContext", nameof(Players));
+
     public Players()
     {
         // Initialize the Players class
@@ -31,7 +34,7 @@ public class Players
         foreach (KeyValuePair<string, string> kvp in firstTrack)
         {
             variables[kvp.Key] = kvp.Value;
-            Console.WriteLine($"Key = {kvp.Key}, Value = {kvp.Value}");
+            _logger.Information($"Key = {kvp.Key}, Value = {kvp.Value}");
         }
         string title = "Now Playing";
         string description = $"{variables["Artist"]} - {variables["Title"]}\n{variables["Album"]} - {variables["Studio"]}\n\n" +

@@ -1,62 +1,54 @@
-﻿using Lavalink4NET;
-using Discord.WebSocket;
-using Lavalink4NET.Players.Queued;
-using Lavalink4NET.Players;
-using Microsoft.Extensions.Options;
-using Discord;
-using Lavalink4NET.Tracks;
-using Lavalink4NET.Rest.Entities.Tracks;
+﻿namespace PlexBot.Core.LavaLink;
 
-namespace PlexBot.Core.LavaLink
+public class LavaLinkCommands(ILogger<LavaLinkCommands> logger, IAudioService audioService)
 {
-    public class LavaLinkCommands(IAudioService audioService)
-    {
-        private readonly IAudioService _audioService = audioService;
+    private readonly ILogger<LavaLinkCommands> _logger = logger;
+    private readonly IAudioService _audioService = audioService;
 
-        public async Task<CustomPlayer?> GetPlayerAsync(SocketInteraction interaction, bool connectToVoiceChannel = true)
+    public async Task<CustomPlayer?> GetPlayerAsync(SocketInteraction interaction, bool connectToVoiceChannel = true)
+    {
+        if (interaction.User is not SocketGuildUser user || user.VoiceChannel == null)
         {
-            if (interaction.User is not SocketGuildUser user || user.VoiceChannel == null)
-            {
-                await interaction.FollowupAsync("You must be in a voice channel to play music.").ConfigureAwait(false);
-                return null;
-            }
-            ulong guildId = user.Guild.Id;
-            ulong voiceChannelId = user.VoiceChannel.Id;
-            PlayerChannelBehavior channelBehavior = connectToVoiceChannel ? PlayerChannelBehavior.Join : PlayerChannelBehavior.None;
-            PlayerRetrieveOptions retrieveOptions = new(channelBehavior);
-            CustomPlayerOptions options = new()
-            {
-                DisconnectOnStop = false,
-                TextChannel = interaction.Channel as ITextChannel
-            };
-            IOptions<CustomPlayerOptions> optionsWrapper = Options.Create(options);
-            static ValueTask<CustomPlayer> factory(IPlayerProperties<CustomPlayer, CustomPlayerOptions> properties, CancellationToken options = default)
-            {
-                return new ValueTask<CustomPlayer>(new CustomPlayer(properties));
-            }
-            PlayerResult<CustomPlayer> result = await _audioService.Players
-                .RetrieveAsync<CustomPlayer, CustomPlayerOptions>(guildId, voiceChannelId, factory, optionsWrapper, retrieveOptions)
-                .ConfigureAwait(false);
-            if (!result.IsSuccess)
-            {
-                string errorMessage = result.Status switch
-                {
-                    PlayerRetrieveStatus.UserNotInVoiceChannel => "You are not connected to a voice channel.",
-                    PlayerRetrieveStatus.BotNotConnected => "The bot is currently not connected.",
-                    _ => "Unknown error.",
-                };
-                await interaction.FollowupAsync(errorMessage).ConfigureAwait(false);
-                return null;
-            }
-            return result.Player;
+            await interaction.FollowupAsync("You must be in a voice channel to play music.").ConfigureAwait(false);
+            return null;
         }
+        ulong guildId = user.Guild.Id;
+        ulong voiceChannelId = user.VoiceChannel.Id;
+        PlayerChannelBehavior channelBehavior = connectToVoiceChannel ? PlayerChannelBehavior.Join : PlayerChannelBehavior.None;
+        PlayerRetrieveOptions retrieveOptions = new(channelBehavior);
+        CustomPlayerOptions options = new()
+        {
+            DisconnectOnStop = false,
+            TextChannel = interaction.Channel as ITextChannel
+        };
+        IOptions<CustomPlayerOptions> optionsWrapper = Options.Create(options);
+        static ValueTask<CustomPlayer> factory(IPlayerProperties<CustomPlayer, CustomPlayerOptions> properties, CancellationToken options = default)
+        {
+            return new ValueTask<CustomPlayer>(new CustomPlayer(properties));
+        }
+        PlayerResult<CustomPlayer> result = await _audioService.Players
+            .RetrieveAsync<CustomPlayer, CustomPlayerOptions>(guildId, voiceChannelId, factory, optionsWrapper, retrieveOptions)
+            .ConfigureAwait(false);
+        if (!result.IsSuccess)
+        {
+            string errorMessage = result.Status switch
+            {
+                PlayerRetrieveStatus.UserNotInVoiceChannel => "You are not connected to a voice channel.",
+                PlayerRetrieveStatus.BotNotConnected => "The bot is currently not connected.",
+                _ => "Unknown error.",
+            };
+            await interaction.FollowupAsync(errorMessage).ConfigureAwait(false);
+            return null;
+        }
+        return result.Player;
+    }
 
     public async Task PlayMedia(SocketInteraction interaction, CustomTrackQueueItem track)
     {
         QueuedLavalinkPlayer? player = await GetPlayerAsync(interaction, true);
         if (player == null)
         {
-            Console.WriteLine("Player not found.");
+            _logger.LogWarning("Player not found.");
             return;
         }
         string volumeEnv = Environment.GetEnvironmentVariable("VOLUME") ?? "100";
@@ -72,19 +64,19 @@ namespace PlexBot.Core.LavaLink
         };
         if (!string.IsNullOrEmpty(track.Url))
         {
-            Console.WriteLine($"From PlayMedia - Title: {track.Title}, URL: {track.Url}"); // Debugging
+            _logger.LogInformation("From PlayMedia - Title: {Title}, URL: {Url}", track.Title, track.Url); // Debugging
             try
             {
                 await player.PlayAsync(track, playProperties).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Failed to play track: {ex.Message}");
+                _logger.LogError(ex, "Failed to play track: {Message}", ex.Message);
             }
         }
         else
         {
-            Console.WriteLine("Invalid track URL.");
+            _logger.LogWarning("Invalid track URL.");
         }
     }
 
@@ -112,7 +104,7 @@ namespace PlexBot.Core.LavaLink
         QueuedLavalinkPlayer? player = await GetPlayerAsync(interaction, true);
         if (player == null)
         {
-            Console.WriteLine("Player not found.");
+            _logger.LogWarning("Player not found.");
             return;
         }
         foreach (Dictionary<string, string> details in trackDetailsList)
@@ -149,7 +141,7 @@ namespace PlexBot.Core.LavaLink
                 }
                 else
                 {
-                    Console.WriteLine($"Could not load track from URL: {trackUrl}");
+                    _logger.LogWarning("Could not load track from URL: {TrackUrl}", trackUrl);
                 }
             }
         }
