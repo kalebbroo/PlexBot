@@ -1,9 +1,10 @@
 ﻿namespace PlexBot.Core.LavaLink;
 
-public sealed class CustomPlayer(IPlayerProperties<CustomPlayer, CustomPlayerOptions> properties, LavaLinkCommands lavaLink) : QueuedLavalinkPlayer(properties)
+namespace PlexBot.Core.LavaLink
 {
-    private readonly ITextChannel? _textChannel = properties.Options.Value.TextChannel;
-    private readonly LavaLinkCommands _lavaLinkCommands = lavaLink;
+    public sealed class CustomPlayer(IPlayerProperties<CustomPlayer, CustomPlayerOptions> properties) : QueuedLavalinkPlayer(properties)
+    {
+        private readonly ITextChannel? _textChannel = properties.Options.Value.TextChannel;
 
     protected override async ValueTask NotifyTrackStartedAsync(ITrackQueueItem track, CancellationToken cancellationToken = default)
     {

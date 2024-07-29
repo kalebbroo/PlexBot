@@ -1,10 +1,11 @@
-﻿namespace PlexBot.Core.PlexAPI;
+﻿
 
-public class PlexCore(LavaLinkCommands lavaLinkCommands)
+namespace PlexBot.Core.PlexAPI
 {
-    private readonly LavaLinkCommands _lavaLinkCommands = lavaLinkCommands;
-    public readonly string plexUrl = Environment.GetEnvironmentVariable("PLEX_URL") ?? "";
-    readonly string plexToken = Environment.GetEnvironmentVariable("PLEX_TOKEN") ?? "";
+    public class PlexCore
+    {
+        public readonly string plexUrl = Environment.GetEnvironmentVariable("PLEX_URL") ?? "";
+        readonly string plexToken = Environment.GetEnvironmentVariable("PLEX_TOKEN") ?? "";
 
     public async Task<string?> PerformRequestAsync(string uri)
     {
@@ -57,16 +58,19 @@ public class PlexCore(LavaLinkCommands lavaLinkCommands)
         return $"{plexUrl}{partKey}";
     }
 
-    // Method to refresh the music library
-    public async Task<string> RefreshLibraryAsync(int libraryId)
-    {
-        string uri = $"{plexUrl}/library/sections/{libraryId}/refresh";
-        return await PerformRequestAsync(uri);
-    }
-    // Method to add a new item to the music library
-    public async Task<string> AddToLibraryAsync(int libraryId, string metadata)
-    {
-        string uri = $"{plexUrl}/library/sections/{libraryId}/all?type=12&title={metadata}";
-        return await PerformRequestAsync(uri);
+        // TODO: Make these dynamic and actually use them
+
+        // Method to refresh the music library
+        /*public async Task<string> RefreshLibraryAsync(int libraryId)
+        {
+            string uri = $"{plexUrl}/library/sections/{libraryId}/refresh";
+            return await PerformRequestAsync(uri);
+        }
+        // Method to add a new item to the music library
+        public async Task<string> AddToLibraryAsync(int libraryId, string metadata)
+        {
+            string uri = $"{plexUrl}/library/sections/{libraryId}/all?type=12&title={metadata}";
+            return await PerformRequestAsync(uri);
+        }*/
     }
 }
