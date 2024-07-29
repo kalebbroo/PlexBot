@@ -1,37 +1,38 @@
 ﻿
 
-namespace PlexBot.Core.PlexAPI
+namespace PlexBot.Core.PlexAPI;
+
+public class PlexCore (ILogger<PlexCore> logger)
 {
-    public class PlexCore
-    {
-        public readonly string plexUrl = Environment.GetEnvironmentVariable("PLEX_URL") ?? "";
-        readonly string plexToken = Environment.GetEnvironmentVariable("PLEX_TOKEN") ?? "";
+    public readonly string plexUrl = Environment.GetEnvironmentVariable("PLEX_URL") ?? "";
+    readonly string plexToken = Environment.GetEnvironmentVariable("PLEX_TOKEN") ?? "";
 
     public async Task<string?> PerformRequestAsync(string uri)
     {
-        Console.WriteLine($"PerformRequestAsync used this URI: {uri}"); // debug
+        logger.LogDebug("PerformRequestAsync used this URI: {uri}", uri);
         HttpClient client = new();
         HttpRequestMessage request = new(HttpMethod.Get, uri);
         request.Headers.Add("Accept", "application/json");
         request.Headers.Add("X-Plex-Token", $"{plexToken}");
         HttpResponseMessage response = await client.SendAsync(request);
         response.EnsureSuccessStatusCode();
-        Console.WriteLine($"Response status code: {response.StatusCode}"); // debug
+        logger.LogDebug("Response status code: {StatusCode}", response.StatusCode);
+
         // if call is not successful, throw an exception
         if (!response.IsSuccessStatusCode)
         {
-            Console.WriteLine($"Failed to fetch data from Plex: {response.StatusCode}");
+            logger.LogError("Failed to fetch data from Plex: {StatusCode}", response.StatusCode);
             throw new Exception($"Failed to fetch data from Plex: {response.StatusCode}");
         }
         string? contentType = response?.Content?.Headers?.ContentType?.MediaType;
         if (contentType != "application/json")
         {
-            Console.WriteLine($"Unexpected content type: {contentType}");
+            logger.LogWarning("Unexpected content type: {ContentType}", contentType);
             return null;
         }
         string responseContent = await response!.Content.ReadAsStringAsync();
-        //Console.WriteLine($"Response content: {responseContent}"); // debug
-        Console.WriteLine($"Response content length: {responseContent.Length}"); // debug
+        logger.LogDebug("Response content: {ResponseContent}", responseContent);
+        logger.LogDebug("Response content length: {ContentLength}", responseContent.Length);
         return responseContent;
     }
 
@@ -58,19 +59,18 @@ namespace PlexBot.Core.PlexAPI
         return $"{plexUrl}{partKey}";
     }
 
-        // TODO: Make these dynamic and actually use them
+    // TODO: Make these dynamic and actually use them
 
-        // Method to refresh the music library
-        /*public async Task<string> RefreshLibraryAsync(int libraryId)
-        {
-            string uri = $"{plexUrl}/library/sections/{libraryId}/refresh";
-            return await PerformRequestAsync(uri);
-        }
-        // Method to add a new item to the music library
-        public async Task<string> AddToLibraryAsync(int libraryId, string metadata)
-        {
-            string uri = $"{plexUrl}/library/sections/{libraryId}/all?type=12&title={metadata}";
-            return await PerformRequestAsync(uri);
-        }*/
+    // Method to refresh the music library
+    /*public async Task<string> RefreshLibraryAsync(int libraryId)
+    {
+        string uri = $"{plexUrl}/library/sections/{libraryId}/refresh";
+        return await PerformRequestAsync(uri);
     }
+    // Method to add a new item to the music library
+    public async Task<string> AddToLibraryAsync(int libraryId, string metadata)
+    {
+        string uri = $"{plexUrl}/library/sections/{libraryId}/all?type=12&title={metadata}";
+        return await PerformRequestAsync(uri);
+    }*/
 }

@@ -6,6 +6,9 @@ public class PlexAuth
     readonly string plexAppName = Environment.GetEnvironmentVariable("PLEX_APP_NAME") ?? "";
     readonly HttpClient httpClient = new();
 
+    //TODO: Come back to this later and make it work for ILogger in the Microsoft.Extensions.Logging namespace
+    private static readonly Serilog.ILogger _logger = Serilog.Log.ForContext("SourceContext", nameof(Players));
+
     public async Task<bool> VerifyStoredAccessTokenAsync(string accessToken)
     {
         string requestUrl = "https://plex.tv/api/v2/user";
@@ -18,46 +21,46 @@ public class PlexAuth
         return response.StatusCode == System.Net.HttpStatusCode.OK;
     }
 
-        public async Task<(int pinId, string pinCode)> GeneratePinAsync()
-        {
-            string requestUrl = "https://plex.tv/api/v2/pins";
-            HttpRequestMessage request = new(HttpMethod.Post, requestUrl);
-            request.Headers.Add("accept", "application/json");
-            request.Headers.Add("X-Plex-Product", plexAppName);
-            request.Headers.Add("X-Plex-Client-Identifier", clientIdentifierKey);
-            request.Content = new StringContent("strong=true", Encoding.UTF8, "application/x-www-form-urlencoded");
-            HttpResponseMessage response = await httpClient.SendAsync(request);
-            string responseString = await response.Content.ReadAsStringAsync();
-            JsonDocument jsonDoc = JsonDocument.Parse(responseString);
-            int pinId = jsonDoc.RootElement.GetProperty("id").GetInt32();
-            string? pinCode = jsonDoc.RootElement.GetProperty("code").GetString() ?? throw new InvalidOperationException("Pin code was not returned by the server.");
-            Console.WriteLine($"Pin ID: {pinId}, Pin Code: {pinCode}");
-            return (pinId, pinCode);
-        }
+    public async Task<(int pinId, string pinCode)> GeneratePinAsync()
+    {
+        string requestUrl = "https://plex.tv/api/v2/pins";
+        HttpRequestMessage request = new(HttpMethod.Post, requestUrl);
+        request.Headers.Add("accept", "application/json");
+        request.Headers.Add("X-Plex-Product", plexAppName);
+        request.Headers.Add("X-Plex-Client-Identifier", clientIdentifierKey);
+        request.Content = new StringContent("strong=true", Encoding.UTF8, "application/x-www-form-urlencoded");
+        HttpResponseMessage response = await httpClient.SendAsync(request);
+        string responseString = await response.Content.ReadAsStringAsync();
+        JsonDocument jsonDoc = JsonDocument.Parse(responseString);
+        int pinId = jsonDoc.RootElement.GetProperty("id").GetInt32();
+        string? pinCode = jsonDoc.RootElement.GetProperty("code").GetString() ?? throw new InvalidOperationException("Pin code was not returned by the server.");
+        _logger.Information("Pin ID: {PinId}, Pin Code: {PinCode}", pinId, pinCode);
+        return (pinId, pinCode);
+    }
 
     public string ConstructAuthAppUrl(string pinCode, string forwardUrl)
     {
         string authUrl = $"https://app.plex.tv/auth#?clientID={clientIdentifierKey}&code={pinCode}" +
             $"&context%5Bdevice%5D%5Bproduct%5D={Uri.EscapeDataString(plexAppName)}&forwardUrl={Uri.EscapeDataString(forwardUrl)}";
-        Console.WriteLine($"Click the following URL to login to Plex generate your app token:\n{authUrl}");
+        _logger.Information("Click the following URL to login to Plex generate your app token:\n{AuthUrl}", authUrl);
         return authUrl;
     }
 
-        public async Task<string?> CheckPinAsync(int pinId)
+    public async Task<string?> CheckPinAsync(int pinId)
+    {
+        string requestUrl = $"https://plex.tv/api/v2/pins/{pinId}";
+        HttpRequestMessage request = new(HttpMethod.Get, requestUrl);
+        request.Headers.Add("accept", "application/json");
+        request.Headers.Add("X-Plex-Client-Identifier", clientIdentifierKey);
+        HttpResponseMessage response = await httpClient.SendAsync(request);
+        string responseString = await response.Content.ReadAsStringAsync();
+        JsonDocument jsonDoc = JsonDocument.Parse(responseString);
+        if (jsonDoc.RootElement.TryGetProperty("authToken", out JsonElement authTokenProperty))
         {
-            string requestUrl = $"https://plex.tv/api/v2/pins/{pinId}";
-            HttpRequestMessage request = new(HttpMethod.Get, requestUrl);
-            request.Headers.Add("accept", "application/json");
-            request.Headers.Add("X-Plex-Client-Identifier", clientIdentifierKey);
-            HttpResponseMessage response = await httpClient.SendAsync(request);
-            string responseString = await response.Content.ReadAsStringAsync();
-            JsonDocument jsonDoc = JsonDocument.Parse(responseString);
-            if (jsonDoc.RootElement.TryGetProperty("authToken", out JsonElement authTokenProperty))
-            {
-                return authTokenProperty.GetString();
-            }
-            return null;
+            return authTokenProperty.GetString();
         }
+        return null;
+    }
 
     public async Task<string> GetAccessTokenAsync()
     {
@@ -67,8 +70,7 @@ public class PlexAuth
             // Generate new token if invalid or not available
             (int pinId, string pinCode) = await GeneratePinAsync();
             string authUrl = ConstructAuthAppUrl(pinCode, "http://app.plex.tv");
-            Console.WriteLine("Please authenticate at the following URL:");
-            Console.WriteLine(authUrl);
+            _logger.Information("Please authenticate at the following URL: \n{AuthUrl}", authUrl);
             string? newAccessToken = null;
             while (newAccessToken == null)
             {
