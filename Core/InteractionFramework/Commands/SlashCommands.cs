@@ -5,14 +5,17 @@ public class SlashCommands : InteractionsCore
     private readonly ILogger<SlashCommands> _logger;
     private readonly IAudioService _audioService;
     private readonly PlexCore _plexCore;
+    private readonly PlexMusic _plexMusic;
 
-    public SlashCommands(ILogger<SlashCommands> logger, IAudioService audioService, PlexCore plexCore, LavaLinkCommands lavaLink)
+    //TODO: Since plexMusic inherits from PlexCore, we can remove the PlexCore dependency most likely. Needs testing.
+    public SlashCommands(ILogger<SlashCommands> logger, IAudioService audioService, PlexCore plexCore, PlexMusic plexMusic, LavaLinkCommands lavaLink)
     : base(lavaLink)
     {
         _logger = logger;
         _audioService = audioService;
         _lavaLink = lavaLink;
         _plexCore = plexCore;
+        _plexMusic = plexMusic;
     }
 
     /// <summary>Responds with help information about how to use the bot, including available commands.</summary>
@@ -47,9 +50,8 @@ public class SlashCommands : InteractionsCore
             switch (source.ToLower())
             {
                 case "plex":
-                    PlexMusic plexMusic = new();
                     // Rework this search lib method to either be SearchMusicLib or 1 method to search all libs
-                    results = await plexMusic.SearchLibraryAsync(query);
+                    results = await _plexMusic.SearchLibraryAsync(query);
                     break;
                 case "youtube":
                     TrackLoadResult ytSearch = await _audioService.Tracks.LoadTracksAsync(query, TrackSearchMode.YouTubeMusic);
@@ -163,8 +165,7 @@ public class SlashCommands : InteractionsCore
         try
         {
             // Retrieve track details from the playlist
-            PlexMusic plexMusic = new();
-            List<Dictionary<string, string>> trackDetails = await plexMusic.GetTracks(playlistKey);
+            List<Dictionary<string, string>> trackDetails = await _plexMusic.GetTracks(playlistKey);
             if (trackDetails.Count == 0)
             {
                 await FollowupAsync("The playlist is empty or could not be loaded.");

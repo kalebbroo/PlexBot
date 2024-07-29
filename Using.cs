@@ -10,7 +10,6 @@ global using Lavalink4NET.Players.Queued;
 global using Lavalink4NET.Protocol.Payloads.Events;
 global using Lavalink4NET.Rest.Entities.Tracks;
 global using Lavalink4NET.Tracks;
-global using Microsoft.Extensions.Caching.Memory;
 global using Microsoft.Extensions.Configuration;
 global using Microsoft.Extensions.DependencyInjection;
 global using Microsoft.Extensions.Hosting;

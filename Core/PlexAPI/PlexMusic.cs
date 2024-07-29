@@ -1,6 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
-
-namespace PlexBot.Core.PlexAPI;
+﻿namespace PlexBot.Core.PlexAPI;
 
 public class PlexMusic(ILogger<PlexMusic> logger) : PlexCore(logger)
 {
