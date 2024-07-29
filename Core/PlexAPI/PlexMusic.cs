@@ -10,7 +10,7 @@ namespace PlexBot.Core.PlexAPI
         public async Task<Dictionary<string, List<Dictionary<string, string>>>> SearchLibraryAsync(string query)
         {
             string encodedQuery = HttpUtility.UrlEncode(query);
-            string uri = $"{plexUrl}/hubs/search?query={encodedQuery}&sectionId=5&limit=100";
+            string uri = $"{plexUrl}/hubs/search?query={encodedQuery}&limit=100";
             Console.WriteLine($"Performing request to URI: {uri}"); // Debugging
             string? response = await PerformRequestAsync(uri);
             if (string.IsNullOrEmpty(response))
