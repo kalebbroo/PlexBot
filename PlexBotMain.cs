@@ -74,7 +74,7 @@ discordClient.InteractionCreated += async interaction =>
 // Attach the LogMessage method to both discordClient.Log and interactionService.Log
 discordClient.Log += DiscordHelpers.LogMessageAsync;
 interactionService.Log += DiscordHelpers.LogMessageAsync;
-discordClient.Ready += DiscordHelpers.ClientReady(host.Services);
+discordClient.Ready += async () => await DiscordHelpers.ClientReady(host.Services);
 
 // Initialize and register event handlers
 UserEvents eventHandlers = new(discordClient);
@@ -83,6 +83,5 @@ eventHandlers.RegisterHandlers();
 await discordClient.LoginAsync(TokenType.Bot, discordToken);
 await discordClient.StartAsync();
 
-//TODO: Is this really needed?
-// Block this task until the program is closed.
-await Task.Delay(-1);
+// Run
+host.Run();
