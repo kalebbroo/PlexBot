@@ -4,17 +4,14 @@ public class SlashCommands : InteractionsCore
 {
     private readonly ILogger<SlashCommands> _logger;
     private readonly IAudioService _audioService;
-    private readonly PlexCore _plexCore;
     private readonly PlexMusic _plexMusic;
 
-    //TODO: Since plexMusic inherits from PlexCore, we can remove the PlexCore dependency most likely. Needs testing.
-    public SlashCommands(ILogger<SlashCommands> logger, IAudioService audioService, PlexCore plexCore, PlexMusic plexMusic, LavaLinkCommands lavaLink)
+    public SlashCommands(ILogger<SlashCommands> logger, IAudioService audioService, PlexMusic plexMusic, LavaLinkCommands lavaLink)
     : base(lavaLink)
     {
         _logger = logger;
         _audioService = audioService;
         _lavaLink = lavaLink;
-        _plexCore = plexCore;
         _plexMusic = plexMusic;
     }
 
@@ -93,7 +90,7 @@ public class SlashCommands : InteractionsCore
             }
             if (results.TryGetValue("Artists", out List<Dictionary<string, string>>? artists) && artists.Count > 0)
             {
-                if (artists.FirstOrDefault()?.TryGetValue("TrackKey", out var trackKey) == true)
+                if (artists.FirstOrDefault()?.TryGetValue("TrackKey", out string? trackKey) == true)
                 {
                     await SendSelectMenu($"Artists:{trackKey}:{service}", artists, "Select an Artist");
                 }
@@ -104,7 +101,7 @@ public class SlashCommands : InteractionsCore
             }
             if (results.TryGetValue("Albums", out List<Dictionary<string, string>>? albums) && albums.Count > 0)
             {
-                if (albums.FirstOrDefault()?.TryGetValue("TrackKey", out var trackKey) == true)
+                if (albums.FirstOrDefault()?.TryGetValue("TrackKey", out string? trackKey) == true)
                 {
                     await SendSelectMenu($"Albums:{trackKey}:{service}", albums, "Select an album");
                 }
@@ -115,7 +112,7 @@ public class SlashCommands : InteractionsCore
             }
             if (results.TryGetValue("Tracks", out List<Dictionary<string, string>>? tracks) && tracks.Count > 0)
             {
-                if (tracks.FirstOrDefault()?.TryGetValue("TrackKey", out var trackKey) == true)
+                if (tracks.FirstOrDefault()?.TryGetValue("TrackKey", out string? trackKey) == true)
                 {
                     await SendSelectMenu($"Tracks:{trackKey}:{service}", tracks, "Select a track");
                 }
@@ -245,9 +242,9 @@ public class SlashCommands : InteractionsCore
                 await FollowupAsync("Invalid type.");
                 return;
         }
-        uri = _plexCore.GetSearchUrl(uri);
-        string? response = await _plexCore.PerformRequestAsync(uri);
-        _logger.LogInformation("response");
+        uri = _plexMusic.GetSearchUrl(uri);
+        string? response = await _plexMusic.PerformRequestAsync(uri);
+        _logger.LogInformation("{Response}", response);
         await FollowupAsync("Check the console for the response.");
     }
 }

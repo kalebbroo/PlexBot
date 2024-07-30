@@ -79,7 +79,7 @@ public class SelectMenus(ILogger<SelectMenus> logger, IAudioService audioService
                     {
                         List<Dictionary<string, string>> albums = await _plexApi.GetAlbums(selectedValue);
                         List<Dictionary<string, string>> allTracks = [];
-                        foreach (var album in albums)
+                        foreach (Dictionary<string, string> album in albums)
                         {
                             List<Dictionary<string, string>> tracks = await _plexApi.GetTracks(album["TrackKey"]);
                             if (tracks != null && tracks.Count > 0)

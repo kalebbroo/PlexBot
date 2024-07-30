@@ -12,7 +12,7 @@ public class InteractionsCore(LavaLinkCommands lavaLink) : InteractionModuleBase
     /// <returns>True if the user is on cooldown; otherwise, false.</returns>
     protected static bool IsOnCooldown(SocketUser user, string command)
     {
-        var key = (user.Id, command);
+        (ulong Id, string command) key = (user.Id, command);
         if (_lastInteracted.TryGetValue(key, out DateTime lastInteraction))
         {
             if (DateTime.UtcNow - lastInteraction < Cooldown)

@@ -1,4 +1,6 @@
-﻿namespace PlexBot.Core.PlexAPI;
+﻿using System;
+
+namespace PlexBot.Core.PlexAPI;
 
 public class PlexMusic(ILogger<PlexMusic> logger) : PlexCore(logger)
 {
@@ -77,7 +79,7 @@ public class PlexMusic(ILogger<PlexMusic> logger) : PlexCore(logger)
                             List<Dictionary<string, string>> albumDetails = await GetAlbums(details["TrackKey"]);
                             details["AlbumCount"] = albumDetails.Count.ToString();
                             int trackCount = 0;
-                            foreach (var album in albumDetails)
+                            foreach (Dictionary<string, string> album in albumDetails)
                             {
                                 List<Dictionary<string, string>> tracks = await GetTracks(album["TrackKey"]);
                                 trackCount += tracks.Count;
@@ -149,7 +151,7 @@ public class PlexMusic(ILogger<PlexMusic> logger) : PlexCore(logger)
                         List<Dictionary<string, string>> albumDetails = await GetAlbums(details["Url"]);
                         details["AlbumCount"] = albumDetails.Count.ToString();
                         int trackCount = 0;
-                        foreach (var album in albumDetails)
+                        foreach (Dictionary<string, string> album in albumDetails)
                         {
                             List<Dictionary<string, string>> tracks = await GetTracks(album["Url"]);
                             trackCount += tracks.Count;
@@ -247,12 +249,8 @@ public class PlexMusic(ILogger<PlexMusic> logger) : PlexCore(logger)
             ["Studio"] = item["studio"]?.ToString() ?? "N/A"
         };
 
-        StringBuilder sb = new StringBuilder()
-            .AppendLine("Track details:")
-            .AppendLine("Title: {Title}, Artist: {Artist}, Album: {Album}")
-            .AppendLine("Release Date: {ReleaseDate}, Artwork: {Artwork}, URL: {Url}")
-            .AppendLine("Artist URL: {ArtistUrl}, Duration: {Duration}, Studio: {Studio}");
-        logger.LogDebug(sb.ToString(), trackDetails["Title"], trackDetails["Artist"], trackDetails["Album"], trackDetails["ReleaseDate"],
+        logger.LogDebug("Track details:\nTitle: {Title}, Artist: {Artist}, Album: {Album}\nRelease Date: {ReleaseDate}, Artwork: {Artwork}, URL: {Url}\nArtist URL: {ArtistUrl}, Duration: {Duration}, Studio: {Studio}",
+            trackDetails["Title"], trackDetails["Artist"], trackDetails["Album"], trackDetails["ReleaseDate"],
             trackDetails["Artwork"], trackDetails["Url"], trackDetails["ArtistUrl"], trackDetails["Duration"], trackDetails["Studio"]);
 
         return trackDetails;
