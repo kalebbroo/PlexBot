@@ -2,33 +2,7 @@ namespace PlexBot.Core.Helpers;
 
 public static class DiscordHelpers
 {
-    internal static Func<Task> ClientReady(IServiceProvider services)
-    {
-        throw new NotImplementedException();
-    }
-
-    /// <summary>Logs a message to the console and Serilog.</summary>
-    /// <param name="message">The LogMessage object to log.</param>
-    internal static async Task LogMessageAsync(LogMessage message)
-    {
-        LogEventLevel severity = message.Severity switch
-        {
-            LogSeverity.Critical => LogEventLevel.Fatal,
-            LogSeverity.Error => LogEventLevel.Error,
-            LogSeverity.Warning => LogEventLevel.Warning,
-            LogSeverity.Info => LogEventLevel.Information,
-            LogSeverity.Verbose => LogEventLevel.Verbose,
-            LogSeverity.Debug => LogEventLevel.Debug,
-            _ => LogEventLevel.Information
-        };
-        Log.Write(severity, message.Exception, "[{Source}] {Message}", message.Source, message.Message);
-        await Task.CompletedTask;
-    }
-
-    /// <summary>Executes tasks when the bot client is ready, such as command registration and initialization. 
-    /// It registers commands to guilds and sets the bot status.</summary>
-    /// <returns>A Task representing the asynchronous operation.</returns>
-    internal static async Task ReadyAsync(IServiceProvider serviceProvider)
+    internal static async Task ClientReady(IServiceProvider serviceProvider)
     {
         ILogger<Program> logger = serviceProvider.GetRequiredService<ILogger<Program>>();
 
@@ -54,18 +28,38 @@ public static class DiscordHelpers
                 logger?.LogWarning("No guilds found");
             }
 
-            StringBuilder sb = new StringBuilder()
-                .AppendLine("Logged in as " + client.CurrentUser.Username)
-                .AppendLine("Registered " + interactions!.SlashCommands.Count + " slash commands")
-                .AppendLine("Bot is a member of " + client.Guilds.Count + " guilds");
-            logger?.LogInformation("{ReadyMessage}", sb.ToString());
-
+            logger?.LogInformation("Logged in as {Username}", client.CurrentUser.Username);
+            logger?.LogInformation("Registered {Count} slash commands", interactions!.SlashCommands.Count);
+            logger?.LogInformation("Bot is a member of {Count} guilds", client.Guilds.Count);
             await client.SetGameAsync("/help", null, ActivityType.Listening);
         }
         catch (Exception ex)
         {
-            logger.LogError("{Exception}" , ex.Message);
+            logger.LogError("{Exception}", ex.Message);
             throw;
         }
+    }
+
+    /// <summary>Logs a message to the console and Serilog.</summary>
+    /// <param name="message">The LogMessage object to log.</param>
+    internal static async Task LogMessageAsync(LogMessage message)
+    {
+        LogEventLevel severity = message.Severity switch
+        {
+            LogSeverity.Critical => LogEventLevel.Fatal,
+            LogSeverity.Error => LogEventLevel.Error,
+            LogSeverity.Warning => LogEventLevel.Warning,
+            LogSeverity.Info => LogEventLevel.Information,
+            LogSeverity.Verbose => LogEventLevel.Verbose,
+            LogSeverity.Debug => LogEventLevel.Debug,
+            _ => LogEventLevel.Information
+        };
+        Log.Write(severity, message.Exception, "[{Source}] {Message}", message.Source, message.Message);
+        await Task.CompletedTask;
+    }
+
+    internal static Func<Task> ReadyAsync(IServiceProvider services)
+    {
+        throw new NotImplementedException();
     }
 }
