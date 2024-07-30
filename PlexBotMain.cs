@@ -7,13 +7,13 @@ Log.Logger = new LoggerConfiguration()
     .WriteTo.Console()
     .CreateLogger();
 
-var configuration = new ConfigurationBuilder()
+IConfigurationRoot configuration = new ConfigurationBuilder()
     .AddEnvironmentVariables(prefix: "PlexBot_")
     .AddDotNetEnv(System.IO.Path.Combine(Directory.GetCurrentDirectory(), "../../../.env"))
     .AddUserSecrets<Program>()
     .Build();
 
-var builder = Host.CreateApplicationBuilder(args);
+HostApplicationBuilder builder = Host.CreateApplicationBuilder(args);
 
 string? discordToken = builder.Configuration.GetRequiredValue<string>("DISCORD_TOKEN");
 builder.Services.AddSerilog();
@@ -55,7 +55,7 @@ builder.Services.ConfigureLavalink(options =>
     options.ResumptionOptions = new LavalinkSessionResumptionOptions(TimeSpan.FromSeconds(60));
 });
 
-var host = builder.Build();
+IHost host = builder.Build();
 
 // Start all IHostedService instances
 foreach (IHostedService hostedService in host.Services.GetServices<IHostedService>())
@@ -63,8 +63,8 @@ foreach (IHostedService hostedService in host.Services.GetServices<IHostedServic
     await hostedService.StartAsync(CancellationToken.None);
 }
 
-var discordClient = host.Services.GetRequiredService<DiscordSocketClient>();
-var interactionService = host.Services.GetRequiredService<InteractionService>();
+DiscordSocketClient discordClient = host.Services.GetRequiredService<DiscordSocketClient>();
+InteractionService interactionService = host.Services.GetRequiredService<InteractionService>();
 discordClient.InteractionCreated += async interaction =>
 {
     SocketInteractionContext ctx = new(discordClient, interaction);

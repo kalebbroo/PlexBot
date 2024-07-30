@@ -11,7 +11,7 @@ public static class DiscordHelpers
     /// <param name="message">The LogMessage object to log.</param>
     internal static async Task LogMessageAsync(LogMessage message)
     {
-        var severity = message.Severity switch
+        LogEventLevel severity = message.Severity switch
         {
             LogSeverity.Critical => LogEventLevel.Fatal,
             LogSeverity.Error => LogEventLevel.Error,
@@ -44,7 +44,7 @@ public static class DiscordHelpers
                 // Register command modules with the InteractionService.
                 // Scans the whole assembly for classes that define slash commands.
                 await interactions!.AddModulesAsync(Assembly.GetEntryAssembly(), serviceProvider);
-                foreach (var guild in client.Guilds)
+                foreach (SocketGuild? guild in client.Guilds)
                 {
                     await interactions.RegisterCommandsToGuildAsync(guild.Id, true);
                 }
