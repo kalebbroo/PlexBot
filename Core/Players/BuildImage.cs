@@ -6,6 +6,7 @@ using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
 using SixLabors.ImageSharp.Drawing.Processing;
 using SixLabors.Fonts;
+using Newtonsoft.Json.Linq;
 
 namespace PlexBot.Core.Players
 {
@@ -14,20 +15,29 @@ namespace PlexBot.Core.Players
         public static async Task<Image<Rgba64>> BuildPlayerImage(Dictionary<string, string> track)
         {
             string albumArtURL = track["Artwork"];
-            Font font;
+            Font titleFont;
+            Font valueFont;
             try
             {
-                // TODO: Make the font file part of env?
-                string fontPath = "/app/Moderniz.otf";
-                if (!File.Exists(fontPath))
+                string fontPathTitle = "/app/Moderniz.otf";
+                string fontPathValue = "/app/KGRedHands.ttf";
+                if (!File.Exists(fontPathTitle) || !File.Exists(fontPathValue))
                 {
-                    Console.WriteLine($"Font file '{fontPath}' does not exist.");
-                    throw new FileNotFoundException($"Font file '{fontPath}' not found.");
+                    Console.WriteLine("Font file(s) not found.");
+                    throw new FileNotFoundException("One or more font files not found.");
                 }
                 FontCollection fontCollection = new();
-                using FileStream fontStream = new(fontPath, FileMode.Open, FileAccess.Read);
-                FontFamily fontFamily = fontCollection.Add(fontStream);
-                font = fontFamily.CreateFont(36);
+                FontFamily titleFontFamily, valueFontFamily;
+                using (FileStream titleFontStream = new(fontPathTitle, FileMode.Open, FileAccess.Read))
+                {
+                    titleFontFamily = fontCollection.Add(titleFontStream);
+                }
+                using (FileStream valueFontStream = new(fontPathValue, FileMode.Open, FileAccess.Read))
+                {
+                    valueFontFamily = fontCollection.Add(valueFontStream);
+                }
+                titleFont = titleFontFamily.CreateFont(36);
+                valueFont = valueFontFamily.CreateFont(26);
             }
             catch (Exception ex)
             {
@@ -63,12 +73,37 @@ namespace PlexBot.Core.Players
                     },
                     Color.FromRgba(0, 0, 0, 150) // Semi-transparent black
                 );
-                ctx.DrawText(track.GetValueOrDefault("Artist", "Unknown Artist"), font, Color.White, new PointF(20, 20));
-                ctx.DrawText(track.GetValueOrDefault("Title", "Unknown Title"), font, Color.White, new PointF(20, 70));
-                ctx.DrawText(track.GetValueOrDefault("Album", "Unknown Album"), font, Color.White, new PointF(20, 120));
-                ctx.DrawText(track.GetValueOrDefault("Studio", "Unknown Studio"), font, Color.White, new PointF(20, 170));
-                ctx.DrawText(track.GetValueOrDefault("Progress", "0:00"), font, Color.White, new PointF(20, 220)); // TODO: Progress does not currently exist. Do something with this or remove it.
-                ctx.DrawText(track.GetValueOrDefault("Duration", "0:00"), font, Color.White, new PointF(20, 270));
+                // Adjusted positions
+                float titleX = 40; // Moved titles to the right
+                float valueX = 180; // Moved values further to the right
+                float y = 20;
+                float yIncrement = 50;
+                // Titles
+                ctx.DrawText("ARTIST:", titleFont, Color.White, new PointF(titleX, y));
+                y += yIncrement;
+                ctx.DrawText("TITLE:", titleFont, Color.White, new PointF(titleX, y));
+                y += yIncrement;
+                ctx.DrawText("ALBUM:", titleFont, Color.White, new PointF(titleX, y));
+                y += yIncrement;
+                ctx.DrawText("STUDIO:", titleFont, Color.White, new PointF(titleX, y));
+                y += yIncrement;
+                ctx.DrawText("PROGRESS:", titleFont, Color.White, new PointF(titleX, y)); // Progress does not currently exist
+                y += yIncrement;
+                ctx.DrawText("DURATION:", titleFont, Color.White, new PointF(titleX, y));
+                // Reset y position for values
+                y = 20;
+                // Values
+                ctx.DrawText(track.GetValueOrDefault("Artist", "Unknown Artist"), valueFont, Color.White, new PointF(valueX, y));
+                y += yIncrement;
+                ctx.DrawText(track.GetValueOrDefault("Title", "Unknown Title"), valueFont, Color.White, new PointF(valueX, y));
+                y += yIncrement;
+                ctx.DrawText(track.GetValueOrDefault("Album", "Unknown Album"), valueFont, Color.White, new PointF(valueX, y));
+                y += yIncrement;
+                ctx.DrawText(track.GetValueOrDefault("Studio", "Unknown Studio"), valueFont, Color.White, new PointF(valueX, y));
+                y += yIncrement;
+                ctx.DrawText(track.GetValueOrDefault("Progress", "0:00"), valueFont, Color.White, new PointF(valueX, y));
+                y += yIncrement;
+                ctx.DrawText(track.GetValueOrDefault("Duration", "0:00"), valueFont, Color.White, new PointF(valueX, y));
             });
             IPath roundedRectPath = CreateRoundedRectanglePath(new RectangleF(0, 0, 800, 400), 100); // Create the rounded edges
             image.Mutate(ctx =>
