@@ -1,4 +1,4 @@
-﻿using SwarmUI.Utils;
+﻿using PlexBot.Utils;
 
 namespace PlexBot.Core.Models.Extensions;
 

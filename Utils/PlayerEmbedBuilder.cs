@@ -1,16 +1,14 @@
-﻿namespace PlexBot.Utils;
+﻿using PlexBot.Services;
 
-/// <summary>
-/// Utility class for building Discord embeds for the music player.
+namespace PlexBot.Utils;
+
+/// <summary>Utility class for building Discord embeds for the music player.
 /// Creates rich, informative embeds to display track information and playback status
-/// in Discord channels, enhancing the user experience with visual feedback.
-/// </summary>
+/// in Discord channels, enhancing the user experience with visual feedback.</summary>
 public static class PlayerEmbedBuilder
 {
-    /// <summary>
-    /// Builds a player embed with track information and image.
-    /// Creates a rich Discord embed that displays the current track's details.
-    /// </summary>
+    /// <summary>Builds a player embed with track information and image.
+    /// Creates a rich Discord embed that displays the current track's details.</summary>
     /// <param name="track">Dictionary containing track information</param>
     /// <param name="imageUrl">URL to the player image (usually an attachment)</param>
     /// <returns>An EmbedBuilder with the configured embed</returns>
@@ -20,12 +18,10 @@ public static class PlayerEmbedBuilder
         {
             // Get volume from environment
             string volume = Environment.GetEnvironmentVariable("VOLUME") ?? "100";
-
             // Build description with track info
             string description = $"{track.GetValueOrDefault("Artist", "Unknown Artist")} - {track.GetValueOrDefault("Title", "Unknown Title")}\n" +
                                 $"{track.GetValueOrDefault("Album", "Unknown Album")} - {track.GetValueOrDefault("Studio", "Unknown Studio")}\n\n" +
                                 $"Duration: {track.GetValueOrDefault("Duration", "0:00")}";
-
             // Create the embed
             EmbedBuilder embed = new EmbedBuilder()
                 .WithTitle("Now Playing")
@@ -40,7 +36,6 @@ public static class PlayerEmbedBuilder
         catch (Exception ex)
         {
             Logs.Error($"Failed to build player embed: {ex.Message}");
-
             // Return a simple fallback embed
             return new EmbedBuilder()
                 .WithTitle("Now Playing")
@@ -49,10 +44,8 @@ public static class PlayerEmbedBuilder
         }
     }
 
-    /// <summary>
-    /// Builds a queue embed showing the current queue state.
-    /// Creates a paginated embed display of the track queue.
-    /// </summary>
+    /// <summary>Builds a queue embed showing the current queue state.
+    /// Creates a paginated embed display of the track queue.</summary>
     /// <param name="queue">List of tracks in the queue</param>
     /// <param name="currentTrack">The currently playing track</param>
     /// <param name="currentPage">The current page to display</param>
@@ -70,14 +63,12 @@ public static class PlayerEmbedBuilder
             int totalTracks = queue.Count;
             int totalPages = (totalTracks + itemsPerPage - 1) / itemsPerPage;
             currentPage = Math.Clamp(currentPage, 1, Math.Max(1, totalPages));
-
             // Create the base embed
             EmbedBuilder embed = new EmbedBuilder()
                 .WithTitle("Current Music Queue")
                 .WithColor(Discord.Color.Blue)
                 .WithFooter($"Page {currentPage} of {totalPages} ({totalTracks} Queued Tracks)")
                 .WithTimestamp(DateTimeOffset.Now);
-
             // Add the currently playing track (only on first page)
             if (currentPage == 1 && currentTrack != null)
             {
@@ -87,11 +78,9 @@ public static class PlayerEmbedBuilder
                     inline: false
                 );
             }
-
             // Add queue items for the current page
             int startIndex = (currentPage - 1) * itemsPerPage;
             int endIndex = Math.Min(startIndex + itemsPerPage, totalTracks);
-
             for (int i = startIndex; i < endIndex; i++)
             {
                 var item = queue[i];
@@ -101,19 +90,16 @@ public static class PlayerEmbedBuilder
                     inline: true
                 );
             }
-
             // If queue is empty, show a message
             if (totalTracks == 0 && currentTrack == null)
             {
                 embed.WithDescription("The queue is currently empty.");
             }
-
             return embed;
         }
         catch (Exception ex)
         {
             Logs.Error($"Failed to build queue embed: {ex.Message}");
-
             // Return a simple fallback embed
             return new EmbedBuilder()
                 .WithTitle("Queue")

@@ -30,7 +30,7 @@ public class SourceAutocompleteHandler : AutocompleteHandler
             Logs.Debug("Generating source suggestions for autocomplete");
 
             // Start with Plex which is always available
-            List<AutocompleteResult> results = new List<AutocompleteResult>
+            List<AutocompleteResult> results = new()
             {
                 new AutocompleteResult("Plex", "plex")
             };
@@ -72,5 +72,24 @@ public class SourceAutocompleteHandler : AutocompleteHandler
             Logs.Error($"Error generating source suggestions: {ex.Message}");
             return Task.FromResult(AutocompletionResult.FromError(ex));
         }
+    }
+}
+
+public class PlaylistAutocompleteHandler : AutocompleteHandler
+{
+    /// <summary>Generates playlist suggestions based on the configured sources.
+    /// This is a placeholder implementation and should be overridden in derived classes.</summary>
+    /// <param name="context">The interaction context</param>
+    /// <param name="autocompleteInteraction">The autocomplete interaction</param>
+    /// <param name="parameter">The parameter to provide suggestions for</param>
+    /// <param name="service">The service provider</param>
+    /// <returns>Autocomplete results containing available playlists</returns>
+    public override Task<AutocompletionResult> GenerateSuggestionsAsync(
+        IInteractionContext context,
+        IAutocompleteInteraction autocompleteInteraction,
+        IParameterInfo parameter,
+        IServiceProvider service)
+    {
+        return Task.FromResult(AutocompletionResult.FromError(InteractionCommandError.UnknownCommand, "Playlist autocomplete is not implemented yet."));
     }
 }

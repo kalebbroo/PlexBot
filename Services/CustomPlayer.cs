@@ -71,7 +71,7 @@ public sealed class CustomPlayer : QueuedLavalinkPlayer
 
             // Build the player image
             using var memoryStream = new MemoryStream();
-            Image image = await ImageBuilder.BuildPlayerImageAsync(trackInfo);
+            SixLabors.ImageSharp.Image image = await ImageBuilder.BuildPlayerImageAsync(trackInfo);
             await image.SaveAsync(memoryStream, new PngEncoder());
             memoryStream.Position = 0;
 
@@ -262,9 +262,7 @@ public sealed record CustomPlayerOptions(ITextChannel? TextChannel) : QueuedLava
 
     /// <summary>
     /// Initializes a new instance of the <see cref="CustomPlayerOptions"/> class.
-    /// Sets default values for player options.
-    /// </summary>
-    public CustomPlayerOptions() : this(null)
+    public CustomPlayerOptions() : this((ITextChannel?)null)
     {
         // Set LavaLink player defaults
         DisconnectOnStop = false;

@@ -1,6 +1,6 @@
 ﻿using PlexBot.Utils;
 
-namespace PlexBot;
+namespace PlexBot.Main;
 
 /// <summary>
 /// Main entry point for the application.

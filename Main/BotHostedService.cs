@@ -44,13 +44,14 @@ public class BotHostedService(
 
             // Initialize event handlers
             await _eventHandler.InitializeAsync();
+            ServiceCollection serviceDescriptors = new();
 
             // Initialize extension handler
-            string extensionsDir = Path.Combine(AppContext.BaseDirectory, "extensions");
+            string extensionsDir = System.IO.Path.Combine(AppContext.BaseDirectory, "extensions");
             Logs.Info($"Loading extensions from {extensionsDir}");
 
             // Load extensions
-            int extensionsLoaded = await ExtensionHandler.LoadAllExtensionsAsync(extensionsDir);
+            int extensionsLoaded = await ExtensionHandler.LoadAllExtensionsAsync(serviceDescriptors, _serviceProvider);
             Logs.Info($"Loaded {extensionsLoaded} extensions");
 
             // Connect to Discord

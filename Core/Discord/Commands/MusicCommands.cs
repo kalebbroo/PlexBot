@@ -1,7 +1,10 @@
 ﻿using PlexBot.Core.Models;
 using PlexBot.Core.Models.Media;
+using PlexBot.Core.Discord.Autocomplete;
 using PlexBot.Services;
 using PlexBot.Utils;
+
+using Color = Discord.Color;
 
 namespace PlexBot.Core.Discord.Commands;
 
@@ -76,19 +79,19 @@ public class MusicCommands : InteractionModuleBase<SocketInteractionContext>
             Logs.Debug($"Found {results.Artists.Count} artists, {results.Albums.Count} albums, {results.Tracks.Count} tracks");
 
             // Build response with select menus for each result type
-            ComponentBuilder builder = new ComponentBuilder();
-            List<ActionRowBuilder> rows = new List<ActionRowBuilder>();
+            ComponentBuilder builder = new();
+            List<ActionRowBuilder> rows = [];
 
             // Add artist select menu if we have artists
-            if (results.Artists.Any())
+            if (results.Artists.Count != 0)
             {
-                var artistMenu = new SelectMenuBuilder()
+                SelectMenuBuilder artistMenu = new SelectMenuBuilder()
                     .WithPlaceholder("Select an artist")
                     .WithCustomId("search:artist")
                     .WithMinValues(1)
                     .WithMaxValues(1);
 
-                foreach (var artist in results.Artists.Take(25)) // Discord limit of 25 options
+                foreach (Artist artist in results.Artists.Take(25)) // Discord limit of 25 options
                 {
                     artistMenu.AddOption(
                         artist.Name,
@@ -102,52 +105,45 @@ public class MusicCommands : InteractionModuleBase<SocketInteractionContext>
             // Add album select menu if we have albums
             if (results.Albums.Any())
             {
-                var albumMenu = new SelectMenuBuilder()
+                SelectMenuBuilder albumMenu = new SelectMenuBuilder()
                     .WithPlaceholder("Select an album")
                     .WithCustomId("search:album")
                     .WithMinValues(1)
                     .WithMaxValues(1);
-
-                foreach (var album in results.Albums.Take(25))
+                foreach (Album album in results.Albums.Take(25)) // Discord Limit of 25 options
                 {
                     albumMenu.AddOption(
                         album.Title,
                         album.SourceKey,
                         $"Album by {album.Artist}");
                 }
-
                 if (builder.ActionRows.Count < 5) // Discord limit of 5 action rows
                 {
                     builder.WithSelectMenu(albumMenu);
                 }
             }
-
             // Add track select menu if we have tracks
-            if (results.Tracks.Any())
+            if (results.Tracks.Count != 0)
             {
-                var trackMenu = new SelectMenuBuilder()
+                SelectMenuBuilder trackMenu = new SelectMenuBuilder()
                     .WithPlaceholder("Select a track")
                     .WithCustomId("search:track")
                     .WithMinValues(1)
                     .WithMaxValues(1);
-
-                foreach (var track in results.Tracks.Take(25))
+                foreach (Track track in results.Tracks.Take(25))
                 {
                     trackMenu.AddOption(
                         track.Title,
                         track.SourceKey,
                         $"Track by {track.Artist}");
                 }
-
                 if (builder.ActionRows.Count < 5)
                 {
                     builder.WithSelectMenu(trackMenu);
                 }
             }
-
             // Build the response
             string summary = $"Found {results.Artists.Count} artists, {results.Albums.Count} albums, and {results.Tracks.Count} tracks";
-
             await FollowupAsync(
                 $"Search results for '{query}':\n{summary}",
                 components: builder.Build(),
@@ -160,10 +156,8 @@ public class MusicCommands : InteractionModuleBase<SocketInteractionContext>
         }
     }
 
-    /// <summary>
-    /// Plays music from a Plex playlist.
-    /// Allows users to quickly play entire playlists with optional shuffling.
-    /// </summary>
+    /// <summary>Plays music from a Plex playlist.
+    /// Allows users to quickly play entire playlists with optional shuffling.</summary>
     /// <param name="playlist">The playlist to play</param>
     /// <param name="shuffle">Whether to shuffle the playlist</param>
     /// <returns>A task representing the asynchronous operation</returns>
@@ -176,28 +170,23 @@ public class MusicCommands : InteractionModuleBase<SocketInteractionContext>
         bool shuffle = false)
     {
         await DeferAsync();
-
         try
         {
             Logs.Info($"Loading playlist: {playlist}, shuffle: {shuffle}");
-
             if (string.IsNullOrWhiteSpace(playlist))
             {
                 await FollowupAsync("Please select a playlist.", ephemeral: true);
                 return;
             }
-
             // Get the playlist details
-            var playlistDetails = await _plexMusicService.GetPlaylistDetailsAsync(playlist);
-
+            Playlist playlistDetails = await _plexMusicService.GetPlaylistDetailsAsync(playlist);
             if (playlistDetails.Tracks.Count == 0)
             {
                 await FollowupAsync($"Playlist '{playlistDetails.Title}' is empty.", ephemeral: true);
                 return;
             }
-
             // Shuffle the tracks if requested
-            var tracks = playlistDetails.Tracks;
+            List<Track> tracks = playlistDetails.Tracks;
             if (shuffle)
             {
                 // Create a new shuffled list
@@ -205,14 +194,11 @@ public class MusicCommands : InteractionModuleBase<SocketInteractionContext>
                 tracks = tracks.OrderBy(x => rng.Next()).ToList();
                 Logs.Debug("Shuffled playlist tracks");
             }
-
             // Add tracks to the queue
             await _playerService.AddToQueueAsync(Context.Interaction, tracks);
-
             string message = shuffle
                 ? $"Playing {playlistDetails.Tracks.Count} tracks from '{playlistDetails.Title}' (Shuffled)"
                 : $"Playing {playlistDetails.Tracks.Count} tracks from '{playlistDetails.Title}'";
-
             await FollowupAsync(message);
         }
         catch (Exception ex)
@@ -222,10 +208,8 @@ public class MusicCommands : InteractionModuleBase<SocketInteractionContext>
         }
     }
 
-    /// <summary>
-    /// Plays a single track by URL or search term.
-    /// Provides a convenient shortcut for playing individual tracks without searching first.
-    /// </summary>
+    /// <summary>Plays a single track by URL or search term.
+    /// Provides a convenient shortcut for playing individual tracks without searching first.</summary>
     /// <param name="query">The track to play (URL or search term)</param>
     /// <returns>A task representing the asynchronous operation</returns>
     [SlashCommand("play", "Play a track by URL or search term")]
@@ -234,41 +218,33 @@ public class MusicCommands : InteractionModuleBase<SocketInteractionContext>
         string query)
     {
         await DeferAsync();
-
         try
         {
             Logs.Info($"Play command: {query}");
-
             if (string.IsNullOrWhiteSpace(query))
             {
                 await FollowupAsync("Please enter a URL or search term.", ephemeral: true);
                 return;
             }
-
             // Check if the query is a URL
             bool isUrl = Uri.TryCreate(query, UriKind.Absolute, out _);
-
             if (isUrl)
             {
                 // URL handling would go here, but for now we'll treat it as a search
                 await FollowupAsync("Direct URL playback is not yet implemented. Treating as a search query.", ephemeral: true);
             }
-
             // Search for the track
             SearchResults results = await _plexMusicService.SearchLibraryAsync(query);
-
             if (!results.HasResults)
             {
                 await FollowupAsync($"No results found for '{query}'.", ephemeral: true);
                 return;
             }
-
             // If we found tracks, play the first one
             if (results.Tracks.Any())
             {
-                var track = results.Tracks.First();
+                Track track = results.Tracks.First();
                 await _playerService.PlayTrackAsync(Context.Interaction, track);
-
                 await FollowupAsync($"Playing '{track.Title}' by {track.Artist}");
                 return;
             }
@@ -276,9 +252,8 @@ public class MusicCommands : InteractionModuleBase<SocketInteractionContext>
             // If we found albums but no tracks, play the first album
             if (results.Albums.Any())
             {
-                var album = results.Albums.First();
-                var tracks = await _plexMusicService.GetTracksAsync(album.SourceKey);
-
+                Album album = results.Albums.First();
+                List<Track> tracks = await _plexMusicService.GetTracksAsync(album.SourceKey);
                 if (tracks.Any())
                 {
                     await _playerService.AddToQueueAsync(Context.Interaction, tracks);
@@ -286,28 +261,24 @@ public class MusicCommands : InteractionModuleBase<SocketInteractionContext>
                     return;
                 }
             }
-
             // If we found artists but no tracks or albums, play the first artist
-            if (results.Artists.Any())
+            if (results.Artists.Count != 0)
             {
-                var artist = results.Artists.First();
-                var albums = await _plexMusicService.GetAlbumsAsync(artist.SourceKey);
-                List<Track> allTracks = new List<Track>();
-
+                Artist artist = results.Artists.First();
+                List<Album> albums = await _plexMusicService.GetAlbumsAsync(artist.SourceKey);
+                List<Track> allTracks = [];
                 foreach (var album in albums)
                 {
-                    var tracks = await _plexMusicService.GetTracksAsync(album.SourceKey);
+                    List<Track> tracks = await _plexMusicService.GetTracksAsync(album.SourceKey);
                     allTracks.AddRange(tracks);
                 }
-
-                if (allTracks.Any())
+                if (allTracks.Count != 0)
                 {
                     await _playerService.AddToQueueAsync(Context.Interaction, allTracks);
                     await FollowupAsync($"Playing {allTracks.Count} tracks by {artist.Name}");
                     return;
                 }
             }
-
             // If we get here, we found results but couldn't play anything
             await FollowupAsync("Found results, but couldn't play any tracks.", ephemeral: true);
         }
@@ -318,10 +289,8 @@ public class MusicCommands : InteractionModuleBase<SocketInteractionContext>
         }
     }
 
-    /// <summary>
-    /// Shows information about the bot and available commands.
-    /// Provides a user-friendly help interface with command examples.
-    /// </summary>
+    /// <summary>Shows information about the bot and available commands.
+    /// Provides a user-friendly help interface with command examples.</summary>
     /// <returns>A task representing the asynchronous operation</returns>
     [SlashCommand("help", "Shows information about the bot and available commands")]
     public async Task HelpCommand()
@@ -329,28 +298,24 @@ public class MusicCommands : InteractionModuleBase<SocketInteractionContext>
         try
         {
             // Create a rich embed with command information
-            var embed = new EmbedBuilder()
+            EmbedBuilder embed = new EmbedBuilder()
                 .WithTitle("📻 Plex Music Bot Help")
                 .WithDescription("Play music from your Plex library directly in Discord voice channels.")
                 .WithColor(Color.Blue)
                 .WithCurrentTimestamp();
-
             // Add command sections
             embed.AddField("/search [query] [source]",
                 "Search for music in your Plex library or other sources.\n" +
                 "Example: `/search query:\"The Beatles\" source:\"plex\"`",
                 false);
-
             embed.AddField("/playlist [playlist] [shuffle]",
                 "Play a Plex playlist, optionally shuffled.\n" +
                 "Example: `/playlist playlist:\"Summer Hits\" shuffle:true`",
                 false);
-
             embed.AddField("/play [query]",
                 "Quickly play music that matches your search.\n" +
                 "Example: `/play query:\"Bohemian Rhapsody\"`",
                 false);
-
             embed.AddField("Player Controls",
                 "Use the buttons on the player message to control playback:\n" +
                 "• **Play/Pause**: Toggle playback\n" +
@@ -359,7 +324,6 @@ public class MusicCommands : InteractionModuleBase<SocketInteractionContext>
                 "• **Repeat**: Set repeat mode\n" +
                 "• **Kill**: Stop playback and disconnect",
                 false);
-
             // Send the embed
             await RespondAsync(embed: embed.Build());
         }
@@ -370,10 +334,8 @@ public class MusicCommands : InteractionModuleBase<SocketInteractionContext>
         }
     }
 
-    /// <summary>
-    /// Truncates a description to fit within Discord's select menu limits.
-    /// Discord select menu option descriptions must be 100 characters or less.
-    /// </summary>
+    /// <summary>Truncates a description to fit within Discord's select menu limits.
+    /// Discord select menu option descriptions must be 100 characters or less.</summary>
     /// <param name="description">The description to truncate</param>
     /// <param name="maxLength">Maximum allowed length</param>
     /// <returns>The truncated description</returns>
@@ -383,7 +345,6 @@ public class MusicCommands : InteractionModuleBase<SocketInteractionContext>
         {
             return "No description available";
         }
-
         return description.Length <= maxLength
             ? description
             : description.Substring(0, maxLength - 3) + "...";
