@@ -44,16 +44,6 @@
 # Rider files
 .idea/
 
-# Project files
-*.csproj
-*.vbproj
-*.fsproj
-*.xproj
-*.sqlproj
-*.wixproj
-*.shproj
-*.rpp
-
 # Others
 *.swp
 *.swo
@@ -160,4 +150,4 @@ ScaffoldingReadMe.txt
 # sub folders inside of the images folder
 images/**/*
 # Ignore.cs files in the Plugins folder
-Plugins/**/*.cs
+Extensions/**/*.cs
