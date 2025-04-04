@@ -3,7 +3,7 @@ using PlexBot.Services;
 using PlexBot.Services.PlexApi;
 using PlexBot.Utils;
 
-namespace PlexBot.App
+namespace PlexBot.Main
 {
     /// <summary>
     /// Extension methods for registering services with the DI container.
