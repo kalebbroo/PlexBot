@@ -57,14 +57,25 @@ public class PlayerService : IPlayerService
             var channelBehavior = connectToVoiceChannel ? PlayerChannelBehavior.Join : PlayerChannelBehavior.None;
             var retrieveOptions = new PlayerRetrieveOptions(channelBehavior);
 
+            // Create player factory
+            static ValueTask<CustomPlayer> CreatePlayerAsync(
+                IPlayerProperties<CustomPlayer, CustomPlayerOptions> properties,
+                CancellationToken token = default)
+            {
+                return ValueTask.FromResult(new CustomPlayer(properties));
+            }
+
             // Create player options
             var playerOptions = new CustomPlayerOptions
             {
                 DisconnectOnStop = false,
-                SelfDeaf = true, // Bot deafens itself to save bandwidth
-                TextChannel = interaction.Channel as ITextChannel,
-                DefaultVolume = _defaultVolume,
-                InactivityTimeout = _inactivityTimeout
+                SelfDeaf = true,
+                // Get text channel based on interaction type
+                TextChannel = interaction is SocketInteraction socketInteraction
+                    ? socketInteraction.Channel as ITextChannel
+                    : null,
+                InactivityTimeout = _inactivityTimeout,
+                DefaultVolume = _defaultVolume
             };
 
             // Wrap options for DI
@@ -75,8 +86,7 @@ public class PlayerService : IPlayerService
                 .RetrieveAsync<CustomPlayer, CustomPlayerOptions>(
                     guildId,
                     voiceChannelId,
-                    // Factory method to create a new player if needed
-                    (properties, token) => new ValueTask<CustomPlayer>(new CustomPlayer(properties)),
+                    CreatePlayerAsync,
                     optionsWrapper,
                     retrieveOptions,
                     cancellationToken)
@@ -97,7 +107,7 @@ public class PlayerService : IPlayerService
             }
 
             // Set volume if it's a new player
-            if (result.IsNewPlayer)
+            if (result.Status == PlayerRetrieveStatus.Created)
             {
                 await result.Player.SetVolumeAsync(_defaultVolume, cancellationToken);
                 Logs.Debug($"Created new player for guild {guildId} with volume {_defaultVolume * 100:F0}%");
@@ -130,10 +140,17 @@ public class PlayerService : IPlayerService
         {
             // Load the track through Lavalink
             Logs.Debug($"Loading track: {track.Title} from URL: {track.PlaybackUrl}");
+
+            // Create track load options
+            var loadOptions = new TrackLoadOptions
+            {
+                SearchMode = TrackSearchMode.None
+            };
+
             LavalinkTrack? lavalinkTrack = await _audioService.Tracks.LoadTrackAsync(
                 track.PlaybackUrl,
-                TrackSearchMode.None,
-                cancellationToken);
+                loadOptions,
+                cancellationToken: cancellationToken);
 
             if (lavalinkTrack == null)
             {
@@ -161,9 +178,7 @@ public class PlayerService : IPlayerService
             // Set playback options
             TrackPlayProperties playProperties = new TrackPlayProperties
             {
-                StartTime = null, // Start from the beginning
-                EndTime = null,   // Play until the end
-                NoReplace = true  // If something's already playing, add to queue instead of replacing
+                NoReplace = true // If something's already playing, add to queue instead of replacing
             };
 
             // Play the track
@@ -205,11 +220,17 @@ public class PlayerService : IPlayerService
                 {
                     Logs.Debug($"Loading track for queue: {track.Title}");
 
+                    // Create track load options
+                    var loadOptions = new TrackLoadOptions
+                    {
+                        SearchMode = TrackSearchMode.None
+                    };
+
                     // Load the track through Lavalink
                     LavalinkTrack? lavalinkTrack = await _audioService.Tracks.LoadTrackAsync(
                         track.PlaybackUrl,
-                        TrackSearchMode.None,
-                        cancellationToken);
+                        loadOptions,
+                        cancellationToken: cancellationToken);
 
                     if (lavalinkTrack == null)
                     {
@@ -373,8 +394,8 @@ public class PlayerService : IPlayerService
                 trackTitle = currentTrack.Title ?? "the current track";
             }
 
-            // Skip the current track
-            await player.SkipAsync(cancellationToken);
+            // Skip the current track - default to 1 track to fix argument type error
+            await player.SkipAsync(1, cancellationToken);
             Logs.Info($"Track skipped by {interaction.User.Username}");
 
             await interaction.FollowupAsync($"Skipped {trackTitle}.", ephemeral: true);
