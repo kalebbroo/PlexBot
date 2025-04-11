@@ -1,5 +1,7 @@
 using PlexBot.Utils;
 using SixLabors.ImageSharp.Formats.Png;
+using Discord.WebSocket;
+using PlexBot.Core.Discord.Embeds;
 
 namespace PlexBot.Services;
 
@@ -72,7 +74,7 @@ public sealed class CustomPlayer : QueuedLavalinkPlayer
                 string fileName = "playerImage.png";
 
                 // Build the player embed
-                EmbedBuilder embed = PlayerEmbedBuilder.BuildPlayerEmbed(trackInfo, $"attachment://{fileName}");
+                EmbedBuilder embed = DiscordEmbedBuilder.BuildPlayerEmbed(trackInfo, $"attachment://{fileName}");
 
                 // Create player control buttons
                 ComponentBuilder components = new ComponentBuilder()

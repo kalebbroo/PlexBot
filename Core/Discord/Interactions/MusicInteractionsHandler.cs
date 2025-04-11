@@ -1,8 +1,10 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using Lavalink4NET;
 using PlexBot.Core.Models.Media;
 using PlexBot.Services;
 using PlexBot.Utils;
+using Discord.WebSocket;
+using PlexBot.Core.Discord.Embeds;
 
 namespace PlexBot.Core.Discord.Interactions;
 
@@ -13,6 +15,7 @@ namespace PlexBot.Core.Discord.Interactions;
 /// Sets up the interaction handler with necessary services.</remarks>
 /// <param name="plexMusicService">Service for interacting with Plex music</param>
 /// <param name="playerService">Service for managing audio playback</param>
+/// <param name="audioService">Service for managing audio playback</param>
 public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayerService playerService, 
     IAudioService audioService) : InteractionModuleBase<SocketInteractionContext>
 {
@@ -464,7 +467,7 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
             List<CustomTrackQueueItem> queue = player.Queue.Select(item => item as CustomTrackQueueItem).ToList();
             // Build the embed
             const int itemsPerPage = 10;
-            EmbedBuilder embed = PlayerEmbedBuilder.BuildQueueEmbed(queue, currentTrack, page, itemsPerPage);
+            EmbedBuilder embed = DiscordEmbedBuilder.BuildQueueEmbed(queue, currentTrack, page, itemsPerPage);
             // Calculate pagination info
             int totalTracks = queue.Count;
             int totalPages = (totalTracks + itemsPerPage - 1) / itemsPerPage;
