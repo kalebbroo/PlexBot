@@ -4,40 +4,31 @@ using PlexBot.Utils;
 
 namespace PlexBot.Services;
 
-/// <summary>
-/// Service for managing audio players in Discord voice channels.
+/// <summary>Service for managing audio players in Discord voice channels.
 /// This service handles the creation, retrieval, and control of CustomPlayer instances,
 /// providing a high-level interface for playing music from various sources
-/// in Discord voice channels with rich metadata and visual interfaces.
-/// </summary>
+/// in Discord voice channels with rich metadata and visual interfaces.</summary>
 public class PlayerService : IPlayerService
 {
     private readonly IAudioService _audioService;
     private readonly float _defaultVolume;
     private readonly TimeSpan _inactivityTimeout;
 
-    /// <summary>
-    /// Initializes a new instance of the <see cref="PlayerService"/> class.
-    /// Sets up the service with necessary dependencies and configuration.
-    /// </summary>
+    /// <summary>Initializes a new instance of the <see cref="PlayerService"/> class.
+    /// Sets up the service with necessary dependencies and configuration.</summary>
     /// <param name="audioService">The Lavalink audio service for playback</param>
     public PlayerService(IAudioService audioService)
     {
         _audioService = audioService ?? throw new ArgumentNullException(nameof(audioService));
-
         // Get configuration from environment variables
         _defaultVolume = (float)(EnvConfig.GetDouble("PLAYER_DEFAULT_VOLUME", 50.0) / 100.0f);
         _defaultVolume = Math.Clamp(_defaultVolume, 0.0f, 1.0f);
-
         _inactivityTimeout = TimeSpan.FromMinutes(EnvConfig.GetDouble("PLAYER_INACTIVITY_TIMEOUT", 2.0));
-
         Logs.Init($"PlayerService initialized with default volume: {_defaultVolume * 100:F0}% and inactivity timeout: {_inactivityTimeout.TotalMinutes} minutes");
     }
 
     /// <inheritdoc />
-    public async Task<QueuedLavalinkPlayer?> GetPlayerAsync(
-        IDiscordInteraction interaction,
-        bool connectToVoiceChannel = true,
+    public async Task<QueuedLavalinkPlayer?> GetPlayerAsync(IDiscordInteraction interaction, bool connectToVoiceChannel = true,
         CancellationToken cancellationToken = default)
     {
         // Check if the user is in a voice channel
@@ -46,17 +37,14 @@ public class PlayerService : IPlayerService
             await interaction.FollowupAsync("You must be in a voice channel to use the music player.", ephemeral: true);
             return null;
         }
-
         try
         {
             // Get guild and channel information
             ulong guildId = user.Guild.Id;
             ulong voiceChannelId = user.VoiceChannel.Id;
-
             // Determine channel behavior based on connectToVoiceChannel parameter
-            var channelBehavior = connectToVoiceChannel ? PlayerChannelBehavior.Join : PlayerChannelBehavior.None;
-            var retrieveOptions = new PlayerRetrieveOptions(channelBehavior);
-
+            PlayerChannelBehavior channelBehavior = connectToVoiceChannel ? PlayerChannelBehavior.Join : PlayerChannelBehavior.None;
+            PlayerRetrieveOptions retrieveOptions = new(channelBehavior);
             // Create player factory
             static ValueTask<CustomPlayer> CreatePlayerAsync(
                 IPlayerProperties<CustomPlayer, CustomPlayerOptions> properties,
@@ -64,9 +52,8 @@ public class PlayerService : IPlayerService
             {
                 return ValueTask.FromResult(new CustomPlayer(properties));
             }
-
             // Create player options
-            var playerOptions = new CustomPlayerOptions
+            CustomPlayerOptions playerOptions = new()
             {
                 DisconnectOnStop = false,
                 SelfDeaf = true,
@@ -77,10 +64,8 @@ public class PlayerService : IPlayerService
                 InactivityTimeout = _inactivityTimeout,
                 DefaultVolume = _defaultVolume
             };
-
             // Wrap options for DI
             var optionsWrapper = Options.Create(playerOptions);
-
             // Retrieve or create the player
             PlayerResult<CustomPlayer> result = await _audioService.Players
                 .RetrieveAsync<CustomPlayer, CustomPlayerOptions>(
@@ -91,7 +76,6 @@ public class PlayerService : IPlayerService
                     retrieveOptions,
                     cancellationToken)
                 .ConfigureAwait(false);
-
             // Handle retrieval failures
             if (!result.IsSuccess)
             {
@@ -101,18 +85,15 @@ public class PlayerService : IPlayerService
                     PlayerRetrieveStatus.BotNotConnected => "The bot is currently not connected to a voice channel.",
                     _ => "An unknown error occurred while trying to retrieve the player."
                 };
-
                 await interaction.FollowupAsync(errorMessage, ephemeral: true);
                 return null;
             }
-
             // Set volume if it's a new player
-            if (result.Status == PlayerRetrieveStatus.Created)
+            if (result.Status == PlayerRetrieveStatus.Success)
             {
                 await result.Player.SetVolumeAsync(_defaultVolume, cancellationToken);
                 Logs.Debug($"Created new player for guild {guildId} with volume {_defaultVolume * 100:F0}%");
             }
-
             return result.Player;
         }
         catch (Exception ex)
@@ -135,32 +116,28 @@ public class PlayerService : IPlayerService
             Logs.Warning("Failed to get player for playback");
             return;
         }
-
         try
         {
             // Load the track through Lavalink
             Logs.Debug($"Loading track: {track.Title} from URL: {track.PlaybackUrl}");
 
             // Create track load options
-            var loadOptions = new TrackLoadOptions
+            TrackLoadOptions loadOptions = new()
             {
                 SearchMode = TrackSearchMode.None
             };
-
             LavalinkTrack? lavalinkTrack = await _audioService.Tracks.LoadTrackAsync(
                 track.PlaybackUrl,
                 loadOptions,
                 cancellationToken: cancellationToken);
-
             if (lavalinkTrack == null)
             {
                 Logs.Error($"Failed to load track: {track.Title} from URL: {track.PlaybackUrl}");
                 await interaction.FollowupAsync($"Failed to load track: {track.Title}", ephemeral: true);
                 return;
             }
-
             // Create custom queue item with rich metadata
-            CustomTrackQueueItem queueItem = new CustomTrackQueueItem
+            CustomTrackQueueItem queueItem = new()
             {
                 Title = track.Title,
                 Artist = track.Artist,
@@ -174,17 +151,14 @@ public class PlayerService : IPlayerService
                 RequestedBy = interaction.User.Username,
                 Reference = new TrackReference(lavalinkTrack)
             };
-
             // Set playback options
-            TrackPlayProperties playProperties = new TrackPlayProperties
+            TrackPlayProperties playProperties = new()
             {
                 NoReplace = true // If something's already playing, add to queue instead of replacing
             };
-
             // Play the track
             Logs.Info($"Playing track: {track.Title} by {track.Artist} (requested by {interaction.User.Username})");
             await player.PlayAsync(queueItem, playProperties, cancellationToken);
-
             await interaction.FollowupAsync($"Playing: {track.Title} by {track.Artist}", ephemeral: true);
         }
         catch (Exception ex)
@@ -195,57 +169,78 @@ public class PlayerService : IPlayerService
     }
 
     /// <inheritdoc />
-    public async Task AddToQueueAsync(
-        IDiscordInteraction interaction,
-        IEnumerable<Track> tracks,
+    public async Task AddToQueueAsync(IDiscordInteraction interaction, IEnumerable<Track> tracks,
         CancellationToken cancellationToken = default)
     {
         QueuedLavalinkPlayer? player = await GetPlayerAsync(interaction, true, cancellationToken);
-
         if (player == null)
         {
             Logs.Warning("Failed to get player for queueing");
             return;
         }
-
         try
         {
             List<Track> trackList = tracks.ToList();
             int addedCount = 0;
             int totalCount = trackList.Count;
-
             foreach (Track track in trackList)
             {
                 try
                 {
-                    Logs.Debug($"Loading track for queue: {track.Title}");
-
-                    // Create track load options
-                    var loadOptions = new TrackLoadOptions
+                    Logs.Debug($"Loading track for queue: {track.Title} - URL: {track.PlaybackUrl} - Source: {track.SourceSystem}");
+                    LavalinkTrack? lavalinkTrack = null;
+                    // Handle YouTube tracks differently
+                    if (track.SourceSystem.Equals("youtube", StringComparison.OrdinalIgnoreCase))
                     {
-                        SearchMode = TrackSearchMode.None
-                    };
-
-                    // Load the track through Lavalink
-                    LavalinkTrack? lavalinkTrack = await _audioService.Tracks.LoadTrackAsync(
-                        track.PlaybackUrl,
-                        loadOptions,
-                        cancellationToken: cancellationToken);
-
+                        // First try direct loading with None search mode
+                        TrackLoadOptions directOptions = new()
+                        {
+                            SearchMode = TrackSearchMode.None
+                        };
+                        lavalinkTrack = await _audioService.Tracks.LoadTrackAsync(
+                            track.PlaybackUrl,
+                            directOptions,
+                            cancellationToken: cancellationToken);
+                        // If direct loading fails, try with YouTube search mode
+                        if (lavalinkTrack == null)
+                        {
+                            Logs.Debug($"Retrying YouTube track with search mode: {track.PlaybackUrl}");
+                            TrackLoadOptions searchOptions = new()
+                            {
+                                SearchMode = TrackSearchMode.YouTube
+                            };
+                            lavalinkTrack = await _audioService.Tracks.LoadTrackAsync(
+                                track.PlaybackUrl,
+                                searchOptions,
+                                cancellationToken: cancellationToken);
+                        }
+                    }
+                    else
+                    {
+                        // For Plex tracks - USE THE EXACT SAME CODE AS THE ORIGINAL
+                        TrackLoadOptions loadOptions = new()
+                        {
+                            SearchMode = TrackSearchMode.None
+                        };
+                        lavalinkTrack = await _audioService.Tracks.LoadTrackAsync(
+                            track.PlaybackUrl,
+                            loadOptions,
+                            cancellationToken: cancellationToken);
+                    }
                     if (lavalinkTrack == null)
                     {
-                        Logs.Warning($"Failed to load track for queue: {track.Title}");
+                        Logs.Warning($"Failed to load track for queue: {track.Title} from URL: {track.PlaybackUrl}");
                         continue;
                     }
-
+                    Logs.Debug($"Successfully loaded track: {lavalinkTrack.Title} by {lavalinkTrack.Author}");
                     // Create custom queue item with rich metadata
-                    CustomTrackQueueItem queueItem = new CustomTrackQueueItem
+                    CustomTrackQueueItem queueItem = new()
                     {
-                        Title = track.Title,
-                        Artist = track.Artist,
+                        Title = lavalinkTrack.Title ?? track.Title,
+                        Artist = lavalinkTrack.Author ?? track.Artist,
                         Album = track.Album,
                         ReleaseDate = track.ReleaseDate,
-                        Artwork = track.ArtworkUrl,
+                        Artwork = lavalinkTrack.ArtworkUri?.ToString() ?? track.ArtworkUrl,
                         Url = track.PlaybackUrl,
                         ArtistUrl = track.ArtistUrl,
                         Duration = track.DurationDisplay,
@@ -253,7 +248,6 @@ public class PlayerService : IPlayerService
                         RequestedBy = interaction.User.Username,
                         Reference = new TrackReference(lavalinkTrack)
                     };
-
                     // Add to queue or play if first track
                     if (player.State != PlayerState.Playing && player.State != PlayerState.Paused && addedCount == 0)
                     {
@@ -265,24 +259,31 @@ public class PlayerService : IPlayerService
                         // Add to queue
                         await player.Queue.AddAsync(queueItem, cancellationToken);
                     }
-
                     addedCount++;
                 }
                 catch (Exception ex)
                 {
-                    Logs.Warning($"Error adding track to queue: {track.Title} - {ex.Message}");
-                    // Continue with other tracks
+                    // Check if this is a login-required error TODO: Dont use string comparison
+                    bool requiresLogin = ex.Message.Contains("login", StringComparison.OrdinalIgnoreCase);
+
+                    if (track.SourceSystem.Equals("youtube", StringComparison.OrdinalIgnoreCase) && requiresLogin)
+                    {
+                        Logs.Warning($"YouTube login required for track: {track.Title}");
+                        throw new PlayerException($"Video requires login: {track.Title}", "Play", true);
+                    }
+                    else
+                    {
+                        Logs.Error($"Error playing track: {ex.Message}");
+                        throw new PlayerException($"Failed to play track: {ex.Message}", "Play", ex);
+                    }
                 }
             }
-
             Logs.Info($"Added {addedCount} of {totalCount} tracks to queue");
-
             if (addedCount > 0)
             {
                 string message = addedCount == 1
                     ? $"Added '{trackList[0].Title}' to the queue"
                     : $"Added {addedCount} tracks to the queue";
-
                 await interaction.FollowupAsync(message, ephemeral: true);
             }
             else
@@ -303,13 +304,11 @@ public class PlayerService : IPlayerService
         CancellationToken cancellationToken = default)
     {
         QueuedLavalinkPlayer? player = await GetPlayerAsync(interaction, false, cancellationToken);
-
         if (player == null)
         {
             Logs.Warning("Failed to get player for pause/resume");
             throw new PlayerException("No active player found", "Pause");
         }
-
         try
         {
             if (player.State == PlayerState.Paused)
@@ -317,20 +316,17 @@ public class PlayerService : IPlayerService
                 // Resume playback
                 await player.ResumeAsync(cancellationToken);
                 Logs.Info($"Playback resumed by {interaction.User.Username}");
-
                 // Update player UI if it's our custom player
                 if (player is CustomPlayer customPlayer)
                 {
-                    var components = new ComponentBuilder()
+                    ComponentBuilder components = new ComponentBuilder()
                         .WithButton("Pause", "pause_resume:pause", ButtonStyle.Secondary)
                         .WithButton("Skip", "skip:skip", ButtonStyle.Primary)
                         .WithButton("Queue Options", "queue_options:options:1", ButtonStyle.Success)
                         .WithButton("Repeat", "repeat:select", ButtonStyle.Secondary)
                         .WithButton("Kill", "kill:kill", ButtonStyle.Danger);
-
                     await customPlayer.UpdatePlayerComponentsAsync(components);
                 }
-
                 return "Resumed";
             }
             else if (player.State == PlayerState.Playing)
@@ -338,20 +334,17 @@ public class PlayerService : IPlayerService
                 // Pause playback
                 await player.PauseAsync(cancellationToken);
                 Logs.Info($"Playback paused by {interaction.User.Username}");
-
                 // Update player UI if it's our custom player
                 if (player is CustomPlayer customPlayer)
                 {
-                    var components = new ComponentBuilder()
+                    ComponentBuilder components = new ComponentBuilder()
                         .WithButton("Resume", "pause_resume:resume", ButtonStyle.Success)
                         .WithButton("Skip", "skip:skip", ButtonStyle.Primary)
                         .WithButton("Queue Options", "queue_options:options:1", ButtonStyle.Success)
                         .WithButton("Repeat", "repeat:select", ButtonStyle.Secondary)
                         .WithButton("Kill", "kill:kill", ButtonStyle.Danger);
-
                     await customPlayer.UpdatePlayerComponentsAsync(components);
                 }
-
                 return "Paused";
             }
             else
@@ -368,36 +361,29 @@ public class PlayerService : IPlayerService
     }
 
     /// <inheritdoc />
-    public async Task SkipTrackAsync(
-        IDiscordInteraction interaction,
-        CancellationToken cancellationToken = default)
+    public async Task SkipTrackAsync(IDiscordInteraction interaction, CancellationToken cancellationToken = default)
     {
         QueuedLavalinkPlayer? player = await GetPlayerAsync(interaction, false, cancellationToken);
-
         if (player == null)
         {
             Logs.Warning("Failed to get player for skip");
             throw new PlayerException("No active player found", "Skip");
         }
-
         try
         {
             if (player.State != PlayerState.Playing && player.State != PlayerState.Paused)
             {
                 throw new PlayerException("No track is currently playing", "Skip");
             }
-
             // Get current track info for the message
             string trackTitle = "the current track";
             if (player is CustomPlayer customPlayer && customPlayer.CurrentItem is CustomTrackQueueItem currentTrack)
             {
                 trackTitle = currentTrack.Title ?? "the current track";
             }
-
             // Skip the current track - default to 1 track to fix argument type error
             await player.SkipAsync(1, cancellationToken);
             Logs.Info($"Track skipped by {interaction.User.Username}");
-
             await interaction.FollowupAsync($"Skipped {trackTitle}.", ephemeral: true);
         }
         catch (Exception ex) when (ex is not PlayerException)
@@ -408,24 +394,19 @@ public class PlayerService : IPlayerService
     }
 
     /// <inheritdoc />
-    public async Task SetRepeatModeAsync(
-        IDiscordInteraction interaction,
-        TrackRepeatMode repeatMode,
+    public async Task SetRepeatModeAsync(IDiscordInteraction interaction, TrackRepeatMode repeatMode,
         CancellationToken cancellationToken = default)
     {
         QueuedLavalinkPlayer? player = await GetPlayerAsync(interaction, false, cancellationToken);
-
         if (player == null)
         {
             Logs.Warning("Failed to get player for setting repeat mode");
             throw new PlayerException("No active player found", "Repeat");
         }
-
         try
         {
             // Set the repeat mode
             player.RepeatMode = repeatMode;
-
             string modeDescription = repeatMode switch
             {
                 TrackRepeatMode.None => "Repeat mode disabled",
@@ -433,7 +414,6 @@ public class PlayerService : IPlayerService
                 TrackRepeatMode.Queue => "Now repeating the entire queue",
                 _ => "Unknown repeat mode"
             };
-
             Logs.Info($"Repeat mode set to {repeatMode} by {interaction.User.Username}");
             await interaction.FollowupAsync(modeDescription, ephemeral: true);
         }
@@ -445,27 +425,21 @@ public class PlayerService : IPlayerService
     }
 
     /// <inheritdoc />
-    public async Task StopAsync(
-        IDiscordInteraction interaction,
-        bool disconnect = false,
+    public async Task StopAsync(IDiscordInteraction interaction, bool disconnect = false,
         CancellationToken cancellationToken = default)
     {
         QueuedLavalinkPlayer? player = await GetPlayerAsync(interaction, false, cancellationToken);
-
         if (player == null)
         {
             Logs.Warning("Failed to get player for stop");
             throw new PlayerException("No active player found", "Stop");
         }
-
         try
         {
             // Stop playback
             await player.StopAsync(cancellationToken);
-
             // Clear the queue
             await player.Queue.ClearAsync(cancellationToken);
-
             // Disconnect if requested
             if (disconnect)
             {

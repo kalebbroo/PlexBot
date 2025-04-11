@@ -32,6 +32,7 @@
 [Bb]in/
 [Oo]bj/
 [Ll]ogs/
+/logs/
 [Tt]est[Rr]esults/
 
 # Visual Studio files

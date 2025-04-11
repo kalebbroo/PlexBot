@@ -21,15 +21,15 @@ public class PlexBotMain
             EnvConfig.Initialize();
 
             // Initialize logging
-            Dictionary<string, string> logSettings = new Dictionary<string, string>
+            Dictionary<string, string> logSettings = new()
             {
-                ["SaveToFile"] = EnvConfig.Get("LOG_SAVE_TO_FILE", "true"),
+                ["SaveToFile"] = EnvConfig.Get("LOG_SAVE_TO_FILE", "true"), // TODO: Add these to the ENV
                 ["LogPath"] = EnvConfig.Get("LOG_PATH", "logs/plex-bot-[year]-[month]-[day].log")
             };
 
             Logs.StartLogSaving(logSettings);
 
-            string logLevel = EnvConfig.Get("LOG_LEVEL", "Info");
+            string logLevel = EnvConfig.Get("LOG_LEVEL", "Debug");
             Logs.MinimumLevel = logLevel.ToLowerInvariant() switch
             {
                 "verbose" => Logs.LogLevel.Verbose,

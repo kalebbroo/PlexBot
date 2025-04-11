@@ -6,41 +6,102 @@ using Font = SixLabors.Fonts.Font;
 
 namespace PlexBot.Utils;
 
-/// <summary>
-/// Utility class for building player images with album art and track information.
+/// <summary>Utility class for building player images with album art and track information.
 /// Creates visually appealing player images by downloading album artwork, overlaying
-/// track information, and applying visual effects like shadows and rounded corners.
-/// </summary>
+/// track information, and applying visual effects like shadows and rounded corners.</summary>
 public static class ImageBuilder
 {
-    private static readonly HttpClientWrapper _httpClientWrapper;
-    public static Font Font = new(SystemFonts.Get("Arial"), 36); // Fallback font if custom font fails
+    private static readonly HttpClient _httpClient; // TODO: Use IHttpClientFactory
+    public static Font Font;
 
     static ImageBuilder()
     {
-        // Initialize HttpClientWrapper with a long-lived HttpClient
-        HttpClient httpClient = new();
-        _httpClientWrapper = new HttpClientWrapper(httpClient, "ArtworkService");
-        // Initialize font
         try
         {
-            string fontPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Moderniz.otf");
-            if (File.Exists(fontPath))
+            Logs.Debug("ImageBuilder initialization started");
+
+            // Step 1: Initialize HttpClient
+            try
             {
-                FontCollection fontCollection = new();
-                using FileStream fontStream = new(fontPath, FileMode.Open, FileAccess.Read);
-                FontFamily fontFamily = fontCollection.Add(fontStream);
-                Font = fontFamily.CreateFont(36);
-                Logs.Init($"Font loaded: {Font.Name}");
+                _httpClient = new HttpClient();
+                Logs.Debug("HttpClient initialized successfully");
             }
-            else
+            catch (Exception ex)
             {
-                Logs.Warning($"Font file not found at {fontPath}, will use fallback font");
+                Logs.Error($"Failed to initialize HttpClient: {ex.Message}");
+                // Rethrow to stop initialization if we can't have an HttpClient
+                throw new InvalidOperationException("Failed to initialize essential HttpClient", ex);
             }
+
+            // Step 2: Initialize Font with a safe default first
+            try
+            {
+                // Try to get Arial or any default system font
+                var systemFontCollection = SystemFonts.Collection;
+                if (systemFontCollection.TryGet("Arial", out var arialFamily))
+                {
+                    Font = arialFamily.CreateFont(36);
+                    Logs.Debug("Default Arial font initialized");
+                }
+                else
+                {
+                    // Get the first available font
+                    var firstFont = systemFontCollection.Families.FirstOrDefault();
+                    if (firstFont != null)
+                    {
+                        Font = firstFont.CreateFont(36);
+                        Logs.Debug($"Fallback to system font: {firstFont.Name}");
+                    }
+                    else
+                    {
+                        Logs.Error("No system fonts available!");
+                        throw new InvalidOperationException("No system fonts available");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logs.Error($"Failed to initialize default font: {ex.Message}");
+                throw new InvalidOperationException("Cannot initialize any fonts", ex);
+            }
+
+            // Step 3: Try loading a custom font (optional - won't break if fails)
+            try
+            {
+                string fontPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Moderniz.otf");
+                Logs.Debug($"Looking for custom font at: {fontPath}");
+
+                if (File.Exists(fontPath))
+                {
+                    Logs.Debug("Custom font file found, attempting to load");
+                    var fontCollection = new FontCollection();
+                    var family = fontCollection.Add(fontPath);
+                    Font = family.CreateFont(36);
+                    Logs.Debug($"Custom font loaded successfully: {Font.Name}");
+                }
+                else
+                {
+                    Logs.Debug("Custom font file not found, using system font");
+                }
+            }
+            catch (Exception ex)
+            {
+                // Just log this error but continue with the system font
+                Logs.Warning($"Failed to load custom font: {ex.Message}");
+            }
+            Logs.Debug("ImageBuilder initialized successfully");
         }
         catch (Exception ex)
         {
-            Logs.Error($"Failed to load font: {ex.Message}");
+            Logs.Error($"CRITICAL ERROR in ImageBuilder initialization: {ex.Message}");
+            Logs.Error($"Stack trace: {ex.StackTrace}");
+            if (ex.InnerException != null)
+            {
+                Logs.Error($"Inner exception: {ex.InnerException.Message}");
+                Logs.Error($"Inner stack trace: {ex.InnerException.StackTrace}");
+            }
+            // Rethrow to ensure the caller knows we failed
+            throw;
         }
     }
 
@@ -54,18 +115,16 @@ public static class ImageBuilder
         {
             // Get the album artwork URL
             string artworkUrl = track.GetValueOrDefault("Artwork", "");
-
             if (string.IsNullOrEmpty(artworkUrl) || artworkUrl == "N/A")
             {
                 // Use a placeholder image if no artwork is available
-                artworkUrl = "https://via.placeholder.com/800x400?text=No+Artwork";
+                artworkUrl = "https://t3.ftcdn.net/jpg/06/04/96/54/360_F_604965492_lCfxDUwNF1YiogR3SN0lbmbdvFnfDCHa.jpg";
             }
-            // Download the image
             Image<Rgba32> image;
             try
             {
-                byte[] imageBytes = await _httpClientWrapper.SendRequestForStringAsync(HttpMethod.Get, artworkUrl, null, null,
-                    CancellationToken.None).ContinueWith(t => Convert.FromBase64String(Convert.ToBase64String(Encoding.UTF8.GetBytes(t.Result))));
+                // Direct download using HttpClient
+                byte[] imageBytes = await _httpClient.GetByteArrayAsync(artworkUrl);
                 using MemoryStream imageStream = new(imageBytes);
                 image = Image.Load<Rgba32>(imageStream);
             }
@@ -75,7 +134,6 @@ public static class ImageBuilder
                 // Create a blank image if download fails
                 image = new Image<Rgba32>(800, 400, Color.DarkGray);
             }
-            // Process the image
             try
             {
                 // Resize if necessary to ensure we have proper dimensions
@@ -92,18 +150,8 @@ public static class ImageBuilder
                 // Add semi-transparent overlay for better text visibility
                 image.Mutate(ctx =>
                 {
-                    ctx.Fill(
-                        new DrawingOptions
-                        {
-                            GraphicsOptions = new GraphicsOptions
-                            {
-                                BlendPercentage = 0.5f,
-                                ColorBlendingMode = PixelColorBlendingMode.Normal,
-                                AlphaCompositionMode = PixelAlphaCompositionMode.SrcOver
-                            }
-                        },
-                        Color.FromRgba(0, 0, 0, 150) // Semi-transparent black
-                    );
+                    // Simplified overlay approach
+                    ctx.Fill(Color.FromRgba(0, 0, 0, 150), new RectangleF(0, 0, 800, 400));
                     // Add track information
                     float y = 20;
                     ctx.DrawText(track.GetValueOrDefault("Artist", "Unknown Artist"), Font, Color.White, new PointF(20, y));
@@ -116,13 +164,21 @@ public static class ImageBuilder
                     y += 50;
                     ctx.DrawText("Duration: " + track.GetValueOrDefault("Duration", "0:00"), Font, Color.White, new PointF(20, y));
                 });
-                // Apply rounded corners
-                IPath roundedRectPath = CreateRoundedRectanglePath(new RectangleF(0, 0, 800, 400), 20);
-                image.Mutate(ctx =>
+                // Apply rounded corners - This was a bitch to get right
+                try
                 {
-                    ctx.SetGraphicsOptions(new GraphicsOptions { AlphaCompositionMode = PixelAlphaCompositionMode.DestIn });
-                    ctx.Fill(Color.Black, roundedRectPath);
-                });
+                    IPath roundedRectPath = CreateRoundedRectanglePath(new RectangleF(0, 0, 800, 400), 20);
+                    image.Mutate(ctx =>
+                    {
+                        ctx.SetGraphicsOptions(new GraphicsOptions { AlphaCompositionMode = PixelAlphaCompositionMode.DestIn });
+                        ctx.Fill(Color.Black, roundedRectPath);
+                    });
+                }
+                catch (Exception ex)
+                {
+                    Logs.Warning($"Failed to apply rounded corners: {ex.Message}");
+                    // Continue without rounded corners.....
+                }
                 return image;
             }
             catch (Exception ex)

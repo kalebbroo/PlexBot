@@ -8,32 +8,27 @@ using Color = Discord.Color;
 
 namespace PlexBot.Core.Discord.Commands;
 
-/// <summary>
-/// Provides slash commands for music playback and control.
+/// <summary>Provides slash commands for music playback and control.
 /// This module implements the primary user interface for searching, playing,
-/// and managing music through Discord's slash command system.
-/// </summary>
-public class MusicCommands : InteractionModuleBase<SocketInteractionContext>
+/// and managing music through Discord's slash command system.</summary>
+/// <remarks>Initializes a new instance of the <see cref="MusicCommands"/> class.
+/// Sets up the command module with necessary services.</remarks>
+/// <param name="plexMusicService">Service for interacting with Plex music</param>
+/// <param name="playerService">Service for managing audio playback</param>
+public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService playerService, IAudioService audioService) 
+    : InteractionModuleBase<SocketInteractionContext>
 {
-    private readonly IPlexMusicService _plexMusicService;
-    private readonly IPlayerService _playerService;
+    private readonly IPlexMusicService _plexMusicService = plexMusicService ?? throw new ArgumentNullException(nameof(plexMusicService));
+    private readonly IPlayerService _playerService = playerService ?? throw new ArgumentNullException(nameof(playerService));
+    private readonly IAudioService _audioService = audioService ?? throw new ArgumentNullException(nameof(audioService));
 
-    /// <summary>
-    /// Initializes a new instance of the <see cref="MusicCommands"/> class.
-    /// Sets up the command module with necessary services.
-    /// </summary>
-    /// <param name="plexMusicService">Service for interacting with Plex music</param>
-    /// <param name="playerService">Service for managing audio playback</param>
-    public MusicCommands(IPlexMusicService plexMusicService, IPlayerService playerService)
-    {
-        _plexMusicService = plexMusicService ?? throw new ArgumentNullException(nameof(plexMusicService));
-        _playerService = playerService ?? throw new ArgumentNullException(nameof(playerService));
-    }
-
-    /// <summary>
+    /// <summary>Searches for music in Plex or other configured sources.
+    /// Performs a search and displays interactive results that users can select from.</summary>
+    /// <param name="query">The search query</param>
+    /// <param name="source">The source to search (Plex, YouTube, etc.)</param>
+    /// <returns>A task representing the asynchronous operation</returns><summary>
     /// Searches for music in Plex or other configured sources.
-    /// Performs a search and displays interactive results that users can select from.
-    /// </summary>
+    /// Performs a search and displays interactive results that users can select from.</summary>
     /// <param name="query">The search query</param>
     /// <param name="source">The source to search (Plex, YouTube, etc.)</param>
     /// <returns>A task representing the asynchronous operation</returns>
@@ -41,113 +36,34 @@ public class MusicCommands : InteractionModuleBase<SocketInteractionContext>
     public async Task SearchCommand(
         [Summary("query", "What to search for")] string query,
         [Summary("source", "Where to search for music")]
-        [Autocomplete(typeof(SourceAutocompleteHandler))]
-        string source = "plex")
+    [Autocomplete(typeof(SourceAutocompleteHandler))]
+    string source = "plex")
     {
         // Defer the response to give us time to search
         await DeferAsync(ephemeral: true);
-
         try
         {
-            Logs.Info($"Searching for '{query}' in {source}");
-
+            Logs.Debug($"Searching for '{query}' in {source}");
             if (string.IsNullOrWhiteSpace(query))
             {
                 await FollowupAsync("Please enter a search query.", ephemeral: true);
                 return;
             }
-
             // Normalize source to lowercase
             source = source.ToLowerInvariant();
-
-            // For now, we'll only implement Plex search
-            if (source != "plex")
+            // Handle the search based on the selected source
+            switch (source)
             {
-                await FollowupAsync($"Search in {source} is not yet implemented.", ephemeral: true);
-                return;
+                case "plex":
+                    await HandlePlexSearch(query);
+                    break;
+                case "youtube":
+                    await HandleYouTubeSearch(query);
+                    break;
+                default:
+                    await FollowupAsync($"Search in {source} is not yet implemented.", ephemeral: true);
+                    break;
             }
-
-            // Perform the search
-            SearchResults results = await _plexMusicService.SearchLibraryAsync(query);
-
-            if (!results.HasResults)
-            {
-                await FollowupAsync($"No results found for '{query}' in {source}.", ephemeral: true);
-                return;
-            }
-
-            Logs.Debug($"Found {results.Artists.Count} artists, {results.Albums.Count} albums, {results.Tracks.Count} tracks");
-
-            // Build response with select menus for each result type
-            ComponentBuilder builder = new();
-            List<ActionRowBuilder> rows = [];
-
-            // Add artist select menu if we have artists
-            if (results.Artists.Count != 0)
-            {
-                SelectMenuBuilder artistMenu = new SelectMenuBuilder()
-                    .WithPlaceholder("Select an artist")
-                    .WithCustomId("search:artist")
-                    .WithMinValues(1)
-                    .WithMaxValues(1);
-
-                foreach (Artist artist in results.Artists.Take(25)) // Discord limit of 25 options
-                {
-                    artistMenu.AddOption(
-                        artist.Name,
-                        artist.SourceKey,
-                        TruncateDescription(artist.Summary));
-                }
-
-                builder.WithSelectMenu(artistMenu);
-            }
-
-            // Add album select menu if we have albums
-            if (results.Albums.Any())
-            {
-                SelectMenuBuilder albumMenu = new SelectMenuBuilder()
-                    .WithPlaceholder("Select an album")
-                    .WithCustomId("search:album")
-                    .WithMinValues(1)
-                    .WithMaxValues(1);
-                foreach (Album album in results.Albums.Take(25)) // Discord Limit of 25 options
-                {
-                    albumMenu.AddOption(
-                        album.Title,
-                        album.SourceKey,
-                        $"Album by {album.Artist}");
-                }
-                if (builder.ActionRows.Count < 5) // Discord limit of 5 action rows
-                {
-                    builder.WithSelectMenu(albumMenu);
-                }
-            }
-            // Add track select menu if we have tracks
-            if (results.Tracks.Count != 0)
-            {
-                SelectMenuBuilder trackMenu = new SelectMenuBuilder()
-                    .WithPlaceholder("Select a track")
-                    .WithCustomId("search:track")
-                    .WithMinValues(1)
-                    .WithMaxValues(1);
-                foreach (Track track in results.Tracks.Take(25))
-                {
-                    trackMenu.AddOption(
-                        track.Title,
-                        track.SourceKey,
-                        $"Track by {track.Artist}");
-                }
-                if (builder.ActionRows.Count < 5)
-                {
-                    builder.WithSelectMenu(trackMenu);
-                }
-            }
-            // Build the response
-            string summary = $"Found {results.Artists.Count} artists, {results.Albums.Count} albums, and {results.Tracks.Count} tracks";
-            await FollowupAsync(
-                $"Search results for '{query}':\n{summary}",
-                components: builder.Build(),
-                ephemeral: true);
         }
         catch (Exception ex)
         {
@@ -156,20 +72,150 @@ public class MusicCommands : InteractionModuleBase<SocketInteractionContext>
         }
     }
 
+    /// <summary>Handles searching in the Plex library</summary>
+    private async Task HandlePlexSearch(string query)
+    {
+        // Perform the search
+        SearchResults results = await _plexMusicService.SearchLibraryAsync(query);
+        if (!results.HasResults)
+        {
+            await FollowupAsync($"No results found for '{query}' in Plex.", ephemeral: true);
+            return;
+        }
+        Logs.Debug($"Found {results.Artists.Count} artists, {results.Albums.Count} albums, {results.Tracks.Count} tracks");
+        // Build response with select menus for each result type
+        ComponentBuilder builder = new();
+        // Add artist select menu if we have artists
+        if (results.Artists.Count > 0)
+        {
+            SelectMenuBuilder artistMenu = new SelectMenuBuilder()
+                .WithPlaceholder("Select an artist")
+                .WithCustomId("search:artist")
+                .WithMinValues(1)
+                .WithMaxValues(1);
+            foreach (Artist artist in results.Artists.Take(25)) // Discord limit of 25 options
+            {
+                artistMenu.AddOption(
+                    artist.Name,
+                    artist.SourceKey,
+                    TruncateDescription(artist.Summary));
+            }
+            builder.WithSelectMenu(artistMenu);
+        }
+        // Add album select menu if we have albums
+        if (results.Albums.Count != 0)
+        {
+            SelectMenuBuilder albumMenu = new SelectMenuBuilder()
+                .WithPlaceholder("Select an album")
+                .WithCustomId("search:album")
+                .WithMinValues(1)
+                .WithMaxValues(1);
+            foreach (Album album in results.Albums.Take(25)) // Discord Limit of 25 options
+            {
+                albumMenu.AddOption(
+                    album.Title,
+                    album.SourceKey,
+                    $"Album by {album.Artist}");
+            }
+            if (builder.ActionRows.Count < 5) // Discord limit of 5 action rows
+            {
+                builder.WithSelectMenu(albumMenu);
+            }
+        }
+        // Add track select menu if we have tracks
+        if (results.Tracks.Count > 0)
+        {
+            SelectMenuBuilder trackMenu = new SelectMenuBuilder()
+                .WithPlaceholder("Select a track")
+                .WithCustomId("search:track")
+                .WithMinValues(1)
+                .WithMaxValues(1);
+            foreach (Track track in results.Tracks.Take(25))
+            {
+                trackMenu.AddOption(
+                    track.Title,
+                    track.SourceKey,
+                    $"Track by {track.Artist}");
+            }
+            if (builder.ActionRows.Count < 5)
+            {
+                builder.WithSelectMenu(trackMenu);
+            }
+        }
+        // Build the response
+        string summary = $"Found {results.Artists.Count} artists, {results.Albums.Count} albums, and {results.Tracks.Count} tracks";
+        await FollowupAsync(
+            $"Search results for '{query}':\n{summary}",
+            components: builder.Build(),
+            ephemeral: true);
+    }
+
+    /// <summary>Handles searching on YouTube</summary>
+    private async Task HandleYouTubeSearch(string query)
+    {
+        try
+        {
+            Logs.Debug($"Searching YouTube for: {query}");
+            TrackLoadResult searchResults = await _audioService.Tracks.LoadTracksAsync(
+                query, TrackSearchMode.YouTube, cancellationToken: CancellationToken.None);
+            List<LavalinkTrack> tracks = [.. searchResults.Tracks];
+            if (tracks.Count == 0)
+            {
+                await FollowupAsync($"No results found for '{query}' on YouTube.", ephemeral: true);
+                return;
+            }
+            Logs.Debug($"Found {tracks.Count} YouTube results");
+            // Create a select menu for YouTube results
+            SelectMenuBuilder selectMenu = new SelectMenuBuilder()
+                .WithPlaceholder("Select a YouTube track")
+                .WithCustomId("search:youtube")
+                .WithMinValues(1)
+                .WithMaxValues(1);
+            foreach (LavalinkTrack lavalinkTrack in tracks.Take(25))
+            {
+                // Get track information
+                string title = lavalinkTrack.Title ?? "Unknown Title";
+                string author = lavalinkTrack.Author ?? "Unknown";
+                string duration = FormatDuration(lavalinkTrack.Duration);
+                string trackId = lavalinkTrack.Uri?.ToString() ?? lavalinkTrack.Identifier;
+                // Add to select menu
+                selectMenu.AddOption(
+                    // Limit title length for Discord UI
+                    title.Length > 80 ? title[..77] + "..." : title,
+                    trackId,
+                    $"{author} | {duration}");
+            }
+            // Build and send component
+            ComponentBuilder builder = new ComponentBuilder().WithSelectMenu(selectMenu);
+            await FollowupAsync($"Found {Math.Min(tracks.Count, 25)} results on YouTube for '{query}'",
+                components: builder.Build(), ephemeral: true);
+        }
+        catch (Exception ex)
+        {
+            Logs.Error($"Error searching YouTube: {ex.Message}");
+            await FollowupAsync("An error occurred while searching YouTube. Please try again later.", ephemeral: true);
+        }
+    }
+
+    /// <summary>Format a TimeSpan duration into a readable format</summary>
+    public static string FormatDuration(TimeSpan duration)
+    {
+        return duration.TotalHours >= 1
+            ? $"{(int)duration.TotalHours}:{duration.Minutes:D2}:{duration.Seconds:D2}"
+            : $"{duration.Minutes:D2}:{duration.Seconds:D2}";
+    }
+
     /// <summary>Plays music from a Plex playlist.
     /// Allows users to quickly play entire playlists with optional shuffling.</summary>
     /// <param name="playlist">The playlist to play</param>
     /// <param name="shuffle">Whether to shuffle the playlist</param>
     /// <returns>A task representing the asynchronous operation</returns>
     [SlashCommand("playlist", "Play a Plex playlist")]
-    public async Task PlaylistCommand(
-        [Summary("playlist", "The playlist to play")]
-        [Autocomplete(typeof(PlaylistAutocompleteHandler))]
-        string playlist,
-        [Summary("shuffle", "Shuffle the playlist")]
-        bool shuffle = false)
+    public async Task PlaylistCommand([Summary("playlist", "The playlist to play")]
+    [Autocomplete(typeof(PlaylistAutocompleteHandler))]
+    string playlist, [Summary("shuffle", "Shuffle the playlist")] bool shuffle = false)
     {
-        await DeferAsync();
+        await RespondAsync("Loading playlist...", ephemeral: true); // Respond to acknowledge the command
         try
         {
             Logs.Info($"Loading playlist: {playlist}, shuffle: {shuffle}");
@@ -178,28 +224,20 @@ public class MusicCommands : InteractionModuleBase<SocketInteractionContext>
                 await FollowupAsync("Please select a playlist.", ephemeral: true);
                 return;
             }
-            // Get the playlist details
             Playlist playlistDetails = await _plexMusicService.GetPlaylistDetailsAsync(playlist);
             if (playlistDetails.Tracks.Count == 0)
             {
                 await FollowupAsync($"Playlist '{playlistDetails.Title}' is empty.", ephemeral: true);
                 return;
             }
-            // Shuffle the tracks if requested
+            // Get a list of tracks from the playlist to add to the queue
             List<Track> tracks = playlistDetails.Tracks;
             if (shuffle)
             {
-                // Create a new shuffled list
-                Random rng = new Random();
-                tracks = tracks.OrderBy(x => rng.Next()).ToList();
-                Logs.Debug("Shuffled playlist tracks");
+                Random rng = new();
+                tracks = [.. tracks.OrderBy(x => rng.Next())];
             }
-            // Add tracks to the queue
             await _playerService.AddToQueueAsync(Context.Interaction, tracks);
-            string message = shuffle
-                ? $"Playing {playlistDetails.Tracks.Count} tracks from '{playlistDetails.Title}' (Shuffled)"
-                : $"Playing {playlistDetails.Tracks.Count} tracks from '{playlistDetails.Title}'";
-            await FollowupAsync(message);
         }
         catch (Exception ex)
         {
@@ -241,7 +279,7 @@ public class MusicCommands : InteractionModuleBase<SocketInteractionContext>
                 return;
             }
             // If we found tracks, play the first one
-            if (results.Tracks.Any())
+            if (results.Tracks.Count != 0)
             {
                 Track track = results.Tracks.First();
                 await _playerService.PlayTrackAsync(Context.Interaction, track);
@@ -250,11 +288,11 @@ public class MusicCommands : InteractionModuleBase<SocketInteractionContext>
             }
 
             // If we found albums but no tracks, play the first album
-            if (results.Albums.Any())
+            if (results.Albums.Count != 0)
             {
                 Album album = results.Albums.First();
                 List<Track> tracks = await _plexMusicService.GetTracksAsync(album.SourceKey);
-                if (tracks.Any())
+                if (tracks.Count != 0)
                 {
                     await _playerService.AddToQueueAsync(Context.Interaction, tracks);
                     await FollowupAsync($"Playing album '{album.Title}' by {album.Artist}");
@@ -347,6 +385,6 @@ public class MusicCommands : InteractionModuleBase<SocketInteractionContext>
         }
         return description.Length <= maxLength
             ? description
-            : description.Substring(0, maxLength - 3) + "...";
+            : string.Concat(description.AsSpan(0, maxLength - 3), "...");
     }
 }
