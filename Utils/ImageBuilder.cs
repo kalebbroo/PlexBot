@@ -9,33 +9,33 @@ namespace PlexBot.Utils;
 /// <summary>Provides utilities for generating rich media player images with album art, track information, and visual effects for Discord embeds</summary>
 public static class ImageBuilder
 {
-    private static readonly HttpClient _httpClient; // TODO: Use IHttpClientFactory
-    public static Font Font;
+    private static readonly HttpClientWrapper? _httpClient;
+    public static Font? Font;
 
     static ImageBuilder()
     {
         try
         {
             Logs.Debug("ImageBuilder initialization started");
-
-            // Step 1: Initialize HttpClient
+            // Step 1: Initialize HttpClientWrapper
             try
             {
-                _httpClient = new HttpClient();
-                Logs.Debug("HttpClient initialized successfully");
+                // Create a standard HttpClient for the wrapper
+                HttpClient client = new();
+                _httpClient = new HttpClientWrapper(client, "ImageBuilder");
+                Logs.Debug("HttpClientWrapper initialized successfully");
             }
             catch (Exception ex)
             {
-                Logs.Error($"Failed to initialize HttpClient: {ex.Message}");
+                Logs.Error($"Failed to initialize HttpClientWrapper: {ex.Message}");
                 // Rethrow to stop initialization if we can't have an HttpClient
-                throw new InvalidOperationException("Failed to initialize essential HttpClient", ex);
+                throw new InvalidOperationException("Failed to initialize essential HttpClientWrapper", ex);
             }
-
             // Step 2: Initialize Font with a safe default first
             try
             {
                 // Try to get Arial or any default system font
-                var systemFontCollection = SystemFonts.Collection;
+                IReadOnlySystemFontCollection systemFontCollection = SystemFonts.Collection;
                 if (systemFontCollection.TryGet("Arial", out var arialFamily))
                 {
                     Font = arialFamily.CreateFont(36);
@@ -44,7 +44,7 @@ public static class ImageBuilder
                 else
                 {
                     // Get the first available font
-                    var firstFont = systemFontCollection.Families.FirstOrDefault();
+                    FontFamily firstFont = systemFontCollection.Families.FirstOrDefault();
                     if (firstFont != null)
                     {
                         Font = firstFont.CreateFont(36);
@@ -62,18 +62,16 @@ public static class ImageBuilder
                 Logs.Error($"Failed to initialize default font: {ex.Message}");
                 throw new InvalidOperationException("Cannot initialize any fonts", ex);
             }
-
             // Step 3: Try loading a custom font (optional - won't break if fails)
             try
             {
                 string fontPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Moderniz.otf");
                 Logs.Debug($"Looking for custom font at: {fontPath}");
-
                 if (File.Exists(fontPath))
                 {
                     Logs.Debug("Custom font file found, attempting to load");
-                    var fontCollection = new FontCollection();
-                    var family = fontCollection.Add(fontPath);
+                    FontCollection fontCollection = new();
+                    FontFamily family = fontCollection.Add(fontPath);
                     Font = family.CreateFont(36);
                     Logs.Debug($"Custom font loaded successfully: {Font.Name}");
                 }
@@ -121,10 +119,13 @@ public static class ImageBuilder
             Image<Rgba32> image;
             try
             {
-                // Direct download using HttpClient
-                byte[] imageBytes = await _httpClient.GetByteArrayAsync(artworkUrl);
-                using MemoryStream imageStream = new(imageBytes);
-                image = Image.Load<Rgba32>(imageStream);
+                // Use HttpClientWrapper to download the image
+                string tempFilePath = System.IO.Path.GetTempFileName();
+                await _httpClient.DownloadFileAsync(artworkUrl, tempFilePath);
+                // Load the image from the temp file
+                image = Image.Load<Rgba32>(tempFilePath);
+                // Delete the temp file
+                try { File.Delete(tempFilePath); } catch { /* Ignore cleanup errors */ }
             }
             catch (Exception ex)
             {

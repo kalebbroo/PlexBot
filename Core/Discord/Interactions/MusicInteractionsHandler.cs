@@ -38,14 +38,14 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
         await DeferAsync(ephemeral: true);
         if (IsOnCooldown(Context.User.Id, $"search:{type}"))
         {
-            await FollowupAsync("Please wait a moment before selecting another item.", ephemeral: true);
+            await FollowupAsync(embed: DiscordEmbedBuilder.Error("Cooldown", "Please wait a moment before selecting another item."), ephemeral: true);
             return;
         }
         try
         {
             if (values.Length == 0)
             {
-                await FollowupAsync("No selection made.", ephemeral: true);
+                await FollowupAsync(embed: DiscordEmbedBuilder.Error("No Selection", "No selection made."), ephemeral: true);
                 return;
             }
             string selectedKey = values[0];
@@ -65,14 +65,14 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
                     await HandleYouTubeSelectionAsync(selectedKey);
                     break;
                 default:
-                    await FollowupAsync($"Unrecognized selection type: {type}", ephemeral: true);
+                    await FollowupAsync(embed: DiscordEmbedBuilder.Error("Unknown Type", $"Unrecognized selection type: {type}"), ephemeral: true);
                     break;
             }
         }
         catch (Exception ex)
         {
             Logs.Error($"Error handling search selection: {ex.Message}");
-            await FollowupAsync("An error occurred while processing your selection. Please try again later.", ephemeral: true);
+            await FollowupAsync(embed: DiscordEmbedBuilder.Error("Error", "An error occurred while processing your selection. Please try again later."), ephemeral: true);
         }
     }
 
@@ -86,7 +86,7 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
         await DeferAsync();
         if (IsOnCooldown(Context.User.Id, "pause_resume"))
         {
-            await FollowupAsync("Please wait a moment before clicking again.", ephemeral: true);
+            await FollowupAsync(embed: DiscordEmbedBuilder.Error("Cooldown", "Please wait a moment before clicking again."), ephemeral: true);
             return;
         }
         try
@@ -99,7 +99,7 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
         catch (Exception ex)
         {
             Logs.Error($"Error handling pause/resume: {ex.Message}");
-            await FollowupAsync("An error occurred while toggling playback. Please try again later.", ephemeral: true);
+            await FollowupAsync(embed: DiscordEmbedBuilder.Error("Playback Error", "An error occurred while toggling playback. Please try again later."), ephemeral: true);
         }
     }
 
@@ -112,7 +112,7 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
         await DeferAsync();
         if (IsOnCooldown(Context.User.Id, "skip"))
         {
-            await FollowupAsync("Please wait a moment before clicking again.", ephemeral: true);
+            await FollowupAsync(embed: DiscordEmbedBuilder.Error("Cooldown", "Please wait a moment before clicking again."), ephemeral: true);
             return;
         }
         try
@@ -123,7 +123,7 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
         catch (Exception ex)
         {
             Logs.Error($"Error handling skip: {ex.Message}");
-            await FollowupAsync("An error occurred while skipping the track. Please try again later.", ephemeral: true);
+            await FollowupAsync(embed: DiscordEmbedBuilder.Error("Skip Error", "An error occurred while skipping the track. Please try again later."), ephemeral: true);
         }
     }
 
@@ -138,7 +138,7 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
         await DeferAsync();
         if (IsOnCooldown(Context.User.Id, $"queue_options:{action}"))
         {
-            await FollowupAsync("Please wait a moment before clicking again.", ephemeral: true);
+            await FollowupAsync(embed: DiscordEmbedBuilder.Error("Cooldown", "Please wait a moment before clicking again."), ephemeral: true);
             return;
         }
         try
@@ -146,7 +146,7 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
             // Get the player
             if (await _playerService.GetPlayerAsync(Context.Interaction, false) is not CustomPlayer player)
             {
-                await FollowupAsync("No active player found.", ephemeral: true);
+                await FollowupAsync(embed: DiscordEmbedBuilder.Error("No Player", "No active player found."), ephemeral: true);
                 return;
             }
             int currentPage = int.TryParse(pageStr, out int page) ? page : 1;
@@ -168,12 +168,12 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
                 case "shuffle":
                     // Shuffle the queue
                     await player.Queue.ShuffleAsync();
-                    await FollowupAsync("Queue shuffled.", ephemeral: true);
+                    await FollowupAsync(embed: DiscordEmbedBuilder.Music("Queue Shuffled", "The queue has been shuffled successfully."), ephemeral: true);
                     break;
                 case "clear":
                     // Clear the queue
                     await player.Queue.ClearAsync();
-                    await FollowupAsync("Queue cleared.", ephemeral: true);
+                    await FollowupAsync(embed: DiscordEmbedBuilder.Music("Queue Cleared", "The queue has been cleared successfully."), ephemeral: true);
                     break;
                 case "back":
                     // Restore default player buttons
@@ -188,14 +188,14 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
                     await player.UpdatePlayerComponentsAsync(defaultComponents);
                     break;
                 default:
-                    await FollowupAsync($"Unrecognized queue action: {action}", ephemeral: true);
+                    await FollowupAsync(embed: DiscordEmbedBuilder.Error("Unknown Action", $"Unrecognized queue action: {action}"), ephemeral: true);
                     break;
             }
         }
         catch (Exception ex)
         {
             Logs.Error($"Error handling queue options: {ex.Message}");
-            await FollowupAsync("An error occurred while managing the queue. Please try again later.", ephemeral: true);
+            await FollowupAsync(embed: DiscordEmbedBuilder.Error("Queue Error", "An error occurred while managing the queue. Please try again later."), ephemeral: true);
         }
     }
 
@@ -208,7 +208,7 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
         await DeferAsync(ephemeral: true);
         if (IsOnCooldown(Context.User.Id, "repeat"))
         {
-            await FollowupAsync("Please wait a moment before clicking again.", ephemeral: true);
+            await FollowupAsync(embed: DiscordEmbedBuilder.Error("Cooldown", "Please wait a moment before clicking again."), ephemeral: true);
             return;
         }
         try
@@ -224,12 +224,12 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
                 .AddOption("Repeat Queue", "queue", "Repeat the entire queue");
             ComponentBuilder components = new ComponentBuilder()
                 .WithSelectMenu(selectMenu);
-            await FollowupAsync("Select a repeat mode:", components: components.Build(), ephemeral: true);
+            await FollowupAsync(embed: DiscordEmbedBuilder.Info("Repeat Mode", "Select a repeat mode:"), components: components.Build(), ephemeral: true);
         }
         catch (Exception ex)
         {
             Logs.Error($"Error handling repeat button: {ex.Message}");
-            await FollowupAsync("An error occurred while showing repeat options. Please try again later.", ephemeral: true);
+            await FollowupAsync(embed: DiscordEmbedBuilder.Error("Repeat Error", "An error occurred while showing repeat options. Please try again later."), ephemeral: true);
         }
     }
 
@@ -245,7 +245,7 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
         {
             if (values.Length == 0)
             {
-                await FollowupAsync("No selection made.", ephemeral: true);
+                await FollowupAsync(embed: DiscordEmbedBuilder.Error("No Selection", "No selection made."), ephemeral: true);
                 return;
             }
             string selectedMode = values[0];
@@ -264,12 +264,12 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
                 TrackRepeatMode.Queue => "Repeating the entire queue",
                 _ => "Unknown repeat mode"
             };
-            await FollowupAsync($"Repeat mode set to: {modeDescription}", ephemeral: true);
+            await FollowupAsync(embed: DiscordEmbedBuilder.Music("Repeat Mode", $"Repeat mode set to: {modeDescription}"), ephemeral: true);
         }
         catch (Exception ex)
         {
             Logs.Error($"Error handling repeat selection: {ex.Message}");
-            await FollowupAsync("An error occurred while setting repeat mode. Please try again later.", ephemeral: true);
+            await FollowupAsync(embed: DiscordEmbedBuilder.Error("Repeat Error", "An error occurred while setting repeat mode. Please try again later."), ephemeral: true);
         }
     }
 
@@ -282,7 +282,7 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
         await DeferAsync();
         if (IsOnCooldown(Context.User.Id, "kill"))
         {
-            await FollowupAsync("Please wait a moment before clicking again.", ephemeral: true);
+            await FollowupAsync(embed: DiscordEmbedBuilder.Error("Cooldown", "Please wait a moment before clicking again."), ephemeral: true);
             return;
         }
         try
@@ -293,7 +293,7 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
         catch (Exception ex)
         {
             Logs.Error($"Error handling kill: {ex.Message}");
-            await FollowupAsync("An error occurred while stopping playback. Please try again later.", ephemeral: true);
+            await FollowupAsync(embed: DiscordEmbedBuilder.Error("Playback Error", "An error occurred while stopping playback. Please try again later."), ephemeral: true);
         }
     }
 
@@ -309,12 +309,12 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
             Track? track = await _plexMusicService.GetTrackDetailsAsync(trackKey);
             if (track == null)
             {
-                await FollowupAsync("Failed to retrieve track details.", ephemeral: true);
+                await FollowupAsync(embed: DiscordEmbedBuilder.Error("Track Error", "Failed to retrieve track details."), ephemeral: true);
                 return;
             }
             // Play the track
             await _playerService.PlayTrackAsync(Context.Interaction, track);
-            await FollowupAsync($"Playing '{track.Title}' by {track.Artist}", ephemeral: true);
+            await FollowupAsync(embed: DiscordEmbedBuilder.Music("Now Playing", $"Playing '{track.Title}' by {track.Artist}"), ephemeral: true);
         }
         catch (Exception ex)
         {
@@ -335,12 +335,12 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
             List<Track> tracks = await _plexMusicService.GetTracksAsync(albumKey);
             if (tracks.Count == 0)
             {
-                await FollowupAsync("The selected album has no tracks.", ephemeral: true);
+                await FollowupAsync(embed: DiscordEmbedBuilder.Error("Empty Album", "The selected album has no tracks."), ephemeral: true);
                 return;
             }
             // Add tracks to queue
             await _playerService.AddToQueueAsync(Context.Interaction, tracks);
-            await FollowupAsync($"Playing {tracks.Count} tracks from '{tracks[0].Album}' by {tracks[0].Artist}", ephemeral: true);
+            await FollowupAsync(embed: DiscordEmbedBuilder.Music("Album Added", $"Playing {tracks.Count} tracks from '{tracks[0].Album}' by {tracks[0].Artist}"), ephemeral: true);
         }
         catch (Exception ex)
         {
@@ -361,7 +361,7 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
             List<Album> albums = await _plexMusicService.GetAlbumsAsync(artistKey);
             if (albums.Count == 0)
             {
-                await FollowupAsync("The selected artist has no albums.", ephemeral: true);
+                await FollowupAsync(embed: DiscordEmbedBuilder.Error("Empty Artist", "The selected artist has no albums."), ephemeral: true);
                 return;
             }
             // Get all tracks from all albums
@@ -373,12 +373,12 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
             }
             if (allTracks.Count == 0)
             {
-                await FollowupAsync("The selected artist has no tracks.", ephemeral: true);
+                await FollowupAsync(embed: DiscordEmbedBuilder.Error("Empty Artist", "The selected artist has no tracks."), ephemeral: true);
                 return;
             }
             // Add all tracks to queue
             await _playerService.AddToQueueAsync(Context.Interaction, allTracks);
-            await FollowupAsync($"Playing {allTracks.Count} tracks by {allTracks[0].Artist}", ephemeral: true);
+            await FollowupAsync(embed: DiscordEmbedBuilder.Music("Artist Added", $"Playing {allTracks.Count} tracks by {allTracks[0].Artist}"), ephemeral: true);
         }
         catch (Exception ex)
         {
@@ -396,33 +396,28 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
         try
         {
             Logs.Debug($"Handling YouTube selection for URL: {videoUrl}");
-
             // Get a player
             QueuedLavalinkPlayer? player = await _playerService.GetPlayerAsync(Context.Interaction, true);
             if (player == null)
             {
-                await FollowupAsync("Failed to initialize player for YouTube playback.", ephemeral: true);
+                await FollowupAsync(embed: DiscordEmbedBuilder.Error("Player Error", "Failed to initialize player for YouTube playback."), ephemeral: true);
                 return;
             }
-
             // Create the proper load options
             TrackLoadOptions loadOptions = new()
             {
                 SearchMode = TrackSearchMode.None // Use None since we have a direct URL
             };
-
             // Load the track just to test if it's playable
             LavalinkTrack? lavalinkTrack = await _audioService.Tracks.LoadTrackAsync(
                 videoUrl,
                 loadOptions,
                 cancellationToken: CancellationToken.None);
-
             if (lavalinkTrack == null)
             {
-                await FollowupAsync("This YouTube video cannot be played. It may be age-restricted or requires login.", ephemeral: true);
+                await FollowupAsync(embed: DiscordEmbedBuilder.Error("YouTube Error", "This YouTube video cannot be played. It may be age-restricted or requires login."), ephemeral: true);
                 return;
             }
-
             // Create our custom track
             Track track = Track.CreateFromUrl(
                 lavalinkTrack.Title ?? "YouTube Track",
@@ -434,21 +429,18 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
 
             // Use your existing player service
             await _playerService.AddToQueueAsync(Context.Interaction, [track]);
-
-            await FollowupAsync($"Added '{lavalinkTrack.Title}' to the queue", ephemeral: true);
         }
         catch (Exception ex)
         {
             Logs.Error($"Error handling YouTube selection: {ex.Message}");
-
             // Check for specific error message
             if (ex.Message.Contains("login") || ex.Message.Contains("This video requires login"))
             {
-                await FollowupAsync("This YouTube video cannot be played as it requires login or is age-restricted.", ephemeral: true);
+                await FollowupAsync(embed: DiscordEmbedBuilder.Error("YouTube Error", "This YouTube video cannot be played as it requires login or is age-restricted."), ephemeral: true);
             }
             else
             {
-                await FollowupAsync($"Error playing YouTube track: {ex.Message}", ephemeral: true);
+                await FollowupAsync(embed: DiscordEmbedBuilder.Error("YouTube Error", $"Error playing YouTube track: {ex.Message}"), ephemeral: true);
             }
         }
     }
@@ -463,8 +455,8 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
         try
         {
             // Get the current track and queue
-            CustomTrackQueueItem currentTrack = player.CurrentItem as CustomTrackQueueItem;
-            List<CustomTrackQueueItem> queue = player.Queue.Select(item => item as CustomTrackQueueItem).ToList();
+            CustomTrackQueueItem? currentTrack = player.CurrentItem as CustomTrackQueueItem;
+            List<CustomTrackQueueItem>? queue = player.Queue.Select(item => item as CustomTrackQueueItem).ToList();
             // Build the embed
             const int itemsPerPage = 10;
             EmbedBuilder embed = DiscordEmbedBuilder.BuildQueueEmbed(queue, currentTrack, page, itemsPerPage);
@@ -486,7 +478,7 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
         catch (Exception ex)
         {
             Logs.Error($"Error showing queue: {ex.Message}");
-            await FollowupAsync("An error occurred while showing the queue. Please try again later.", ephemeral: true);
+            await FollowupAsync(embed: DiscordEmbedBuilder.Error("Queue Error", "An error occurred while showing the queue. Please try again later."), ephemeral: true);
         }
     }
 

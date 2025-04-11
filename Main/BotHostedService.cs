@@ -2,6 +2,7 @@ using PlexBot.Core.Discord.Events;
 using PlexBot.Core.Extensions;
 using PlexBot.Core.Models.Extensions;
 using PlexBot.Utils;
+using PlexBot.Utils.Http;
 
 namespace PlexBot.Main;
 
@@ -50,14 +51,16 @@ public class BotHostedService(DiscordSocketClient client, DiscordEventHandler ev
             await _client.LoginAsync(TokenType.Bot, _discordToken);
             await _client.StartAsync();
             Logs.Init("Bot service started");
-
             Logs.Init($"Testing connection to Lavalink server...");
             try
             {
+                // Create a temporary HttpClientWrapper for the Lavalink connection test
                 using var httpClient = new HttpClient();
                 httpClient.Timeout = TimeSpan.FromSeconds(3);
-                var response = await httpClient.GetAsync($"http://{EnvConfig.Get("LAVALINK_HOST")}:{EnvConfig.Get("SERVER_PORT")}/version", cancellationToken);
-                Logs.Init($"Lavalink connection test result: {response.StatusCode}");
+                HttpClientWrapper httpClientWrapper = new(httpClient, "LavalinkTest");
+                string lavalinkUrl = $"http://{EnvConfig.Get("LAVALINK_HOST")}:{EnvConfig.Get("SERVER_PORT")}/version";
+                string response = await httpClientWrapper.GetAsync<string>(lavalinkUrl);
+                Logs.Init($"Lavalink connection test successful");
             }
             catch (Exception ex)
             {

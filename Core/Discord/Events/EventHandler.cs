@@ -112,7 +112,9 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
                 Logs.Warning($"Interaction failed: {result.Error} - {result.ErrorReason}");
 
                 // Create a standardized error embed using our utility
-                var errorEmbed = DiscordEmbedBuilder.CommandError(result.Error.Value, result.ErrorReason);
+                var errorEmbed = result.Error.HasValue 
+                    ? DiscordEmbedBuilder.CommandError(result.Error.Value, result.ErrorReason)
+                    : DiscordEmbedBuilder.Error("Command Error", result.ErrorReason);
                 
                 // Respond with the error embed
                 if (!interaction.HasResponded)
