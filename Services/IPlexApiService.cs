@@ -1,51 +1,23 @@
-﻿namespace PlexBot.Services;
+namespace PlexBot.Services;
 
-/// <summary>
-/// Defines the contract for services that interact with the Plex API.
-/// This interface abstracts the core communication layer with Plex servers,
-/// allowing for flexible implementation details while maintaining a consistent
-/// interaction pattern across the application.
-/// </summary>
+/// <summary>Defines the contract for services that communicate with Plex Media Server through its REST API, abstracting authentication and error handling</summary>
 public interface IPlexApiService
 {
-    /// <summary>
-    /// Performs a request to the Plex API and returns the raw response.
-    /// This method handles all the authentication, request building, and error
-    /// handling necessary to communicate with Plex, while allowing the caller to
-    /// focus on the specific endpoint and parameters needed.
-    /// </summary>
-    /// <param name="uri">The endpoint URI to request, relative to the Plex server base URL</param>
-    /// <param name="cancellationToken">Optional token to cancel the operation</param>
-    /// <returns>
-    /// The raw JSON response from the Plex API as a string, which can be 
-    /// parsed by the caller according to the expected response format
-    /// </returns>
-    /// <exception cref="PlexApiException">Thrown when communication with the Plex API fails</exception>
-    /// <exception cref="OperationCanceledException">Thrown when the operation is canceled</exception>
+    /// <summary>Executes an authenticated HTTP request to a Plex API endpoint and returns the raw JSON response for further processing</summary>
+    /// <param name="uri">The endpoint URI relative to the Plex server base URL (e.g., "/library/sections")</param>
+    /// <param name="cancellationToken">Optional token to cancel the operation for timeout management or user interruption</param>
+    /// <returns>The raw JSON response string from the Plex API, requiring further parsing by the caller</returns>
+    /// <exception cref="PlexApiException">Thrown when communication fails due to network issues, authentication problems, or server errors</exception>
+    /// <exception cref="OperationCanceledException">Thrown when the operation is deliberately canceled through the token</exception>
     Task<string> PerformRequestAsync(string uri, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Generates a complete playback URL for a media item.
-    /// Takes a Plex part key (typically obtained from search results or library browsing)
-    /// and constructs a fully qualified URL including authentication tokens and any
-    /// necessary path adjustments.
-    /// </summary>
-    /// <param name="partKey">
-    /// The part key identifying the media, usually from the Media[0].Part[0].key property 
-    /// in Plex API responses
-    /// </param>
-    /// <returns>
-    /// A complete URL that can be used by media players to stream the content,
-    /// including the necessary authentication
-    /// </returns>
+    /// <summary>Builds a fully authenticated streaming URL for a specific media item that can be used by media players</summary>
+    /// <param name="partKey">The Plex-specific identifier for the media part, typically found in Media[0].Part[0].key in API responses</param>
+    /// <returns>A complete, authenticated URL that can be passed directly to audio/video players for streaming</returns>
     string GetPlaybackUrl(string partKey);
 
-    /// <summary>
-    /// Generates a complete URL for searching the Plex server.
-    /// Combines the base server URL with the provided path and adds any necessary
-    /// authentication parameters.
-    /// </summary>
-    /// <param name="path">The search path relative to the Plex server base URL</param>
-    /// <returns>A complete URL that can be used to search the Plex server</returns>
+    /// <summary>Constructs a fully authenticated URL for performing searches against the Plex server's content libraries</summary>
+    /// <param name="path">The search path component that defines the query parameters and search scope</param>
+    /// <returns>A complete, authenticated URL ready for HTTP requests to search Plex content</returns>
     string GetSearchUrl(string path);
 }

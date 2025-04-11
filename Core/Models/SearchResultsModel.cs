@@ -1,79 +1,43 @@
-﻿using PlexBot.Core.Models.Media;
+using PlexBot.Core.Models.Media;
 
 namespace PlexBot.Core.Models;
 
-/// <summary>
-/// Represents the combined search results across different media types.
-/// This model aggregates results from searches that may return multiple 
-/// types of content (artists, albums, tracks, playlists) in a single response.
-/// It serves as a container for presenting organized search results to users.
-/// </summary>
+/// <summary>Aggregates and organizes media search results by type, providing a unified container for presenting rich search functionality to users</summary>
 public class SearchResults
 {
-    /// <summary>
-    /// Gets or sets the original search query that produced these results.
-    /// Stored for context and potential refinement of results.
-    /// </summary>
+    /// <summary>The original search text entered by the user, preserved for context in UI displays and for potential follow-up refinement</summary>
     public string Query { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Gets or sets the artists found in the search.
-    /// Populated when search results include artist entities.
-    /// </summary>
+    /// <summary>Collection of artist matches from the search, representing performers or groups that can be browsed for their albums and tracks</summary>
     public List<Artist> Artists { get; set; } = new();
 
-    /// <summary>
-    /// Gets or sets the albums found in the search.
-    /// Populated when search results include album entities.
-    /// </summary>
+    /// <summary>Collection of album matches from the search, representing complete music collections that can be played or queued in their entirety</summary>
     public List<Album> Albums { get; set; } = new();
 
-    /// <summary>
-    /// Gets or sets the tracks found in the search.
-    /// Populated when search results include track entities.
-    /// </summary>
+    /// <summary>Collection of individual track matches from the search, representing songs that can be directly played or added to the queue</summary>
     public List<Track> Tracks { get; set; } = new();
 
-    /// <summary>
-    /// Gets or sets the playlists found in the search.
-    /// Populated when search results include playlist entities.
-    /// </summary>
+    /// <summary>Collection of playlist matches from the search, representing user-curated collections that span across different artists and albums</summary>
     public List<Playlist> Playlists { get; set; } = new();
 
-    /// <summary>
-    /// Gets the source system that these results came from.
-    /// If results are mixed from multiple sources, this will be "mixed".
-    /// </summary>
+    /// <summary>Identifies where these results originated from (plex, youtube, spotify, etc.) to help display appropriate context and controls</summary>
     public string SourceSystem { get; set; } = "plex";
 
-    /// <summary>
-    /// Gets a value indicating whether any results were found.
-    /// Used to determine whether to display "no results" messaging.
-    /// </summary>
+    /// <summary>Indicates whether any matching media was found across any category, used to determine whether to show results or an empty state message</summary>
     public bool HasResults => Artists.Count > 0 || Albums.Count > 0 || Tracks.Count > 0 || Playlists.Count > 0;
 
-    /// <summary>
-    /// Gets the total number of results across all categories.
-    /// Used for pagination and results count display.
-    /// </summary>
+    /// <summary>The aggregate count of all results across categories, useful for pagination controls and displaying result statistics to users</summary>
     public int TotalResultCount => Artists.Count + Albums.Count + Tracks.Count + Playlists.Count;
 
-    /// <summary>
-    /// Creates a human-readable representation of the search results primarily for debugging and logging.
-    /// Includes the essential counts of different result types.
-    /// </summary>
-    /// <returns>A string containing the query and result counts</returns>
+    /// <summary>Creates a formatted summary of search results, primarily for logging and debugging to track search effectiveness</summary>
+    /// <returns>A concise description of the search query and the counts of each result type</returns>
     public override string ToString()
     {
         return $"Results for '{Query}': {Artists.Count} artists, {Albums.Count} albums, {Tracks.Count} tracks, {Playlists.Count} playlists";
     }
 
-    /// <summary>
-    /// Merges additional search results into this instance.
-    /// Used when combining results from multiple sources or paginated results.
-    /// Does not check for duplicates - that should be handled by the caller if needed.
-    /// </summary>
-    /// <param name="results">The search results to merge</param>
+    /// <summary>Combines additional search results with the current results, allowing incremental building of result sets from multiple sources or pages</summary>
+    /// <param name="results">The additional results to incorporate into this collection, typically from another search provider or page</param>
     public void Merge(SearchResults results)
     {
         Artists.AddRange(results.Artists);
@@ -87,12 +51,9 @@ public class SearchResults
         }
     }
 
-    /// <summary>
-    /// Creates a new SearchResults instance with limited items per category.
-    /// Useful for preview displays where you only want the top few results of each type.
-    /// </summary>
-    /// <param name="maxItemsPerCategory">Maximum number of items to include in each category</param>
-    /// <returns>A new SearchResults instance with limited items</returns>
+    /// <summary>Creates a truncated version of these search results with a maximum number of items per category for preview displays</summary>
+    /// <param name="maxItemsPerCategory">The maximum number of each media type to include in the limited results</param>
+    /// <returns>A new SearchResults instance containing only the top items from each category</returns>
     public SearchResults GetLimited(int maxItemsPerCategory)
     {
         return new SearchResults

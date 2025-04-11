@@ -1,120 +1,61 @@
-﻿namespace PlexBot.Core.Models.Media;
+namespace PlexBot.Core.Models.Media;
 
-/// <summary>
-/// Represents a music album entity retrieved from Plex or other media sources.
-/// Albums are collections of tracks with shared metadata and are a fundamental 
-/// organizational unit in music libraries. This model normalizes album data across
-/// different source systems.
-/// </summary>
+/// <summary>Represents a music album entity that normalizes metadata across different source systems for consistent display and playback</summary>
 public class Album
 {
-    /// <summary>
-    /// Gets or sets the unique identifier for the album.
-    /// This ID should be globally unique across all content sources.
-    /// For Plex content, this is normally derived from the Plex rating key.
-    /// </summary>
+    /// <summary>Globally unique identifier for the album, typically derived from the source system's native ID (e.g., Plex rating key)</summary>
     public string Id { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Gets or sets the title of the album.
-    /// This is the primary display name that will be shown to users in the interface.
-    /// </summary>
+    /// <summary>Primary display name of the album shown to users in search results and player interfaces</summary>
     public string Title { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Gets or sets the artist who created the album.
-    /// For compilation albums, this may be "Various Artists" or similar.
-    /// </summary>
+    /// <summary>Name of the artist or group who created the album, may be "Various Artists" for compilations</summary>
     public string Artist { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Gets or sets the release date of the album.
-    /// Stored as a string to accommodate various date formats from different sources.
-    /// </summary>
+    /// <summary>Release date of the album stored as a string to accommodate various date formats from different sources</summary>
     public string ReleaseDate { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Gets or sets the URL to the album's artwork/cover image.
-    /// For Plex content, this is typically the thumb URL with the Plex token appended.
-    /// </summary>
+    /// <summary>URL to the album artwork image used for display in the player and search results</summary>
     public string ArtworkUrl { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Gets or sets the URL to the album details in the source system.
-    /// Used for retrieving additional information or for generating links.
-    /// For Plex, this is the album's key that can be appended to the base URL.
-    /// </summary>
-    public string AlbumUrl { get; set; } = string.Empty;
-
-    /// <summary>
-    /// Gets or sets the URL to the artist's page/info.
-    /// This is used when users want to navigate to see more content from the same artist.
-    /// </summary>
-    public string ArtistUrl { get; set; } = string.Empty;
-
-    /// <summary>
-    /// Gets or sets the label/studio that published the album.
-    /// May be empty if not available from the source.
-    /// </summary>
-    public string Studio { get; set; } = string.Empty;
-
-    /// <summary>
-    /// Gets or sets the primary genre associated with the album.
-    /// Used for filtering and display purposes.
-    /// </summary>
+    /// <summary>Primary genre associated with this album, used for filtering and display purposes</summary>
     public string Genre { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Gets or sets a descriptive summary of the album.
-    /// This may include editorial reviews or artist-provided descriptions.
-    /// </summary>
+    /// <summary>Name of the record label or studio that published the album</summary>
+    public string Studio { get; set; } = string.Empty;
+
+    /// <summary>Descriptive summary of the album, may include editorial reviews or artist-provided descriptions</summary>
     public string Summary { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Gets or sets the original source system's key for this album.
-    /// This is used when making follow-up API calls to the source system.
-    /// For Plex, this is typically the metadata key without the base URL.
-    /// </summary>
-    public string SourceKey { get; set; } = string.Empty;
-
-    /// <summary>
-    /// Gets or sets the number of tracks in the album.
-    /// Used for display and for validating that all tracks were retrieved.
-    /// </summary>
+    /// <summary>Number of tracks contained in the album</summary>
     public int TrackCount { get; set; }
 
-    /// <summary>
-    /// Gets or sets the collection of tracks that belong to this album.
-    /// May be populated after the initial album retrieval with a separate call.
-    /// </summary>
+    /// <summary>Collection of tracks that belong to this album, may be populated after the initial album retrieval</summary>
     public List<Track> Tracks { get; set; } = new();
 
-    /// <summary>
-    /// Gets or sets the source system type this album was retrieved from.
-    /// Helps determine how to handle the album for playback and metadata retrieval.
-    /// </summary>
+    /// <summary>Original source system that provided this album data (e.g., "plex", "spotify")</summary>
     public string SourceSystem { get; set; } = "plex";
 
-    /// <summary>
-    /// Gets or sets the year the album was released as an integer.
-    /// Extracted from ReleaseDate for easier sorting and filtering.
-    /// </summary>
+    /// <summary>Source-specific key or identifier used to retrieve this album's tracks from the source API</summary>
+    public string SourceKey { get; set; } = string.Empty;
+
+    /// <summary>URL to the album details in the source system, used for retrieving additional information or generating links</summary>
+    public string AlbumUrl { get; set; } = string.Empty;
+
+    /// <summary>URL to the artist's page/info, used when users want to navigate to see more content from the same artist</summary>
+    public string ArtistUrl { get; set; } = string.Empty;
+
+    /// <summary>Year the album was released as an integer, extracted from ReleaseDate for easier sorting and filtering</summary>
     public int Year { get; set; }
 
-    /// <summary>
-    /// Creates a human-readable representation of the album primarily for debugging and logging.
-    /// Includes the essential identifying information without sensitive details.
-    /// </summary>
+    /// <summary>Creates a human-readable representation of the album primarily for debugging and logging</summary>
     /// <returns>A string containing the album title, artist and track count</returns>
     public override string ToString()
     {
         return $"{Title} by {Artist} ({TrackCount} tracks)";
     }
 
-    /// <summary>
-    /// Extracts the year from the ReleaseDate property and updates the Year property.
-    /// Called when the album is created or when the ReleaseDate is modified.
-    /// </summary>
+    /// <summary>Extracts the year from the ReleaseDate property and updates the Year property</summary>
     public void ExtractYear()
     {
         if (string.IsNullOrEmpty(ReleaseDate))

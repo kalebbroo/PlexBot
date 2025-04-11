@@ -1,33 +1,19 @@
-﻿using PlexBot.Core.Models.Extensions;
+using PlexBot.Core.Models.Extensions;
 using PlexBot.Utils;
 
 namespace PlexBot.Core.Extensions;
 
-/// <summary>
-/// Manages the discovery, loading, and lifecycle of bot extensions.
-/// This static class provides the primary interface for interacting with the extension
-/// system, handling the loading of extension files, initialization of extension instances,
-/// and maintenance of extension state.
-/// </summary>
+/// <summary>Central manager for bot extensions that handles discovery, loading, initialization, and lifecycle management</summary>
 public static class ExtensionHandler
 {
-    /// <summary>
-    /// Gets the collection of all loaded extensions.
-    /// Provides access to currently active extensions for status reporting and management.
-    /// </summary>
+    /// <summary>Catalog of all currently active extensions, providing runtime access for status reporting and management operations</summary>
     public static List<Extension> LoadedExtensions { get; } = new();
 
-    /// <summary>
-    /// Gets the base directory where extensions are stored.
-    /// This is the root directory that contains subdirectories for each extension.
-    /// </summary>
+    /// <summary>Root directory path where extension subdirectories are stored, used as the search base for extension discovery</summary>
     public static string ExtensionsDirectory { get; private set; } = string.Empty;
 
-    /// <summary>
-    /// Initializes the extension system with the specified extensions directory.
-    /// Sets up the extension handler and ensures the extensions directory exists.
-    /// </summary>
-    /// <param name="extensionsDirectory">The directory path where extensions are located</param>
+    /// <summary>Sets up the extension system with the specified folder location and ensures the directory exists</summary>
+    /// <param name="extensionsDirectory">Absolute path to the directory where extension folders are located</param>
     public static void Initialize(string extensionsDirectory)
     {
         ExtensionsDirectory = extensionsDirectory;
@@ -41,12 +27,8 @@ public static class ExtensionHandler
         Logs.Init($"Extension handler initialized with directory: {ExtensionsDirectory}");
     }
 
-    /// <summary>
-    /// Discovers all available extensions in the extensions directory.
-    /// Scans the extensions directory for extension implementations by loading CS files
-    /// and finding types that derive from the Extension base class.
-    /// </summary>
-    /// <returns>A collection of discovered extension types</returns>
+    /// <summary>Scans the extensions directory for implementation assemblies and finds all types that inherit from the Extension base class</summary>
+    /// <returns>Collection of discovered extension types ready for instantiation and loading</returns>
     public static IEnumerable<Type> DiscoverExtensions()
     {
         List<Type> discoveredExtensions = new();
@@ -99,24 +81,20 @@ public static class ExtensionHandler
                 string[] csFiles = Directory.GetFiles(directory, "*.cs");
                 if (csFiles.Length > 0)
                 {
-                    Logs.Debug($"Found {csFiles.Length} CS files in extension directory");
-                    // These will be compiled at runtime if needed
+                    Logs.Warning($"Found CS files in {extensionName} - these will not be loaded directly. Please compile to a DLL.");
                 }
             }
             catch (Exception ex)
             {
-                Logs.Error($"Error scanning extension directory {directory}: {ex.Message}");
+                Logs.Error($"Failed to scan extension directory {extensionName}: {ex.Message}");
             }
         }
 
+        Logs.Info($"Discovered {discoveredExtensions.Count} extension types");
         return discoveredExtensions;
     }
 
-    /// <summary>
-    /// Loads all discovered extensions, respecting dependencies.
-    /// Creates instances of discovered extension types, registers their services,
-    /// and initializes them in the correct order to satisfy dependencies.
-    /// </summary>
+    /// <summary>Loads all discovered extensions, respecting dependencies</summary>
     /// <param name="services">The service collection to register extension services with</param>
     /// <returns>The number of successfully loaded extensions</returns>
     public static async Task<int> LoadAllExtensionsAsync(IServiceCollection services, IServiceProvider serviceProvider)
@@ -170,11 +148,7 @@ public static class ExtensionHandler
         return loadedCount;
     }
 
-    /// <summary>
-    /// Loads a single extension after verifying dependencies.
-    /// Initializes the extension if all its dependencies are satisfied and
-    /// adds it to the loaded extensions collection.
-    /// </summary>
+    /// <summary>Loads a single extension after verifying dependencies</summary>
     /// <param name="extension">The extension to load</param>
     /// <param name="serviceProvider">The service provider for dependency injection</param>
     /// <returns>True if the extension was successfully loaded; otherwise, false</returns>
@@ -226,10 +200,7 @@ public static class ExtensionHandler
         }
     }
 
-    /// <summary>
-    /// Unloads a single extension by its ID.
-    /// Calls the extension's shutdown method and removes it from the loaded extensions.
-    /// </summary>
+    /// <summary>Unloads a single extension by its ID</summary>
     /// <param name="extensionId">The ID of the extension to unload</param>
     /// <returns>True if the extension was found and unloaded; otherwise, false</returns>
     public static async Task<bool> UnloadExtensionAsync(string extensionId)
@@ -265,10 +236,7 @@ public static class ExtensionHandler
         }
     }
 
-    /// <summary>
-    /// Unloads all currently loaded extensions.
-    /// Calls each extension's shutdown method in reverse dependency order.
-    /// </summary>
+    /// <summary>Unloads all currently loaded extensions</summary>
     /// <returns>The number of extensions successfully unloaded</returns>
     public static async Task<int> UnloadAllExtensionsAsync()
     {
@@ -291,10 +259,7 @@ public static class ExtensionHandler
         return unloadedCount;
     }
 
-    /// <summary>
-    /// Gets an extension by its ID.
-    /// Looks up a loaded extension by its unique identifier.
-    /// </summary>
+    /// <summary>Gets an extension by its ID</summary>
     /// <param name="extensionId">The ID of the extension to find</param>
     /// <returns>The extension if found; otherwise, null</returns>
     public static Extension? GetExtension(string extensionId)
@@ -307,11 +272,7 @@ public static class ExtensionHandler
         return LoadedExtensions.FirstOrDefault(e => e.Id == extensionId);
     }
 
-    /// <summary>
-    /// Sorts a collection of extensions by dependency order.
-    /// Uses a topological sort to ensure extensions are loaded/unloaded in the correct order,
-    /// respecting dependencies between extensions.
-    /// </summary>
+    /// <summary>Sorts a collection of extensions by dependency order</summary>
     /// <param name="extensions">The extensions to sort</param>
     /// <returns>A list of extensions sorted by dependency order</returns>
     private static List<Extension> SortExtensionsByDependencies(IEnumerable<Extension> extensions)
@@ -335,10 +296,7 @@ public static class ExtensionHandler
         return sorted;
     }
 
-    /// <summary>
-    /// Helper method for the topological sort algorithm.
-    /// Recursively visits extensions and their dependencies to build the sorted list.
-    /// </summary>
+    /// <summary>Helper method for the topological sort algorithm</summary>
     /// <param name="id">The ID of the extension to visit</param>
     /// <param name="extensionMap">Map of extension IDs to extensions</param>
     /// <param name="visited">Set of visited extensions</param>

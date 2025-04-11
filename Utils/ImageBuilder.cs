@@ -1,4 +1,4 @@
-﻿using PlexBot.Utils.Http;
+using PlexBot.Utils.Http;
 
 using Color = SixLabors.ImageSharp.Color;
 using Image = SixLabors.ImageSharp.Image;
@@ -6,9 +6,7 @@ using Font = SixLabors.Fonts.Font;
 
 namespace PlexBot.Utils;
 
-/// <summary>Utility class for building player images with album art and track information.
-/// Creates visually appealing player images by downloading album artwork, overlaying
-/// track information, and applying visual effects like shadows and rounded corners.</summary>
+/// <summary>Provides utilities for generating rich media player images with album art, track information, and visual effects for Discord embeds</summary>
 public static class ImageBuilder
 {
     private static readonly HttpClient _httpClient; // TODO: Use IHttpClientFactory
@@ -100,13 +98,13 @@ public static class ImageBuilder
                 Logs.Error($"Inner exception: {ex.InnerException.Message}");
                 Logs.Error($"Inner stack trace: {ex.InnerException.StackTrace}");
             }
-            // Rethrow to ensure the caller knows we failed
-            throw;
+            // We can't throw here because it would prevent the application from starting,
+            // but the image generation functionality won't work
+            Logs.Critical("ImageBuilder failed to initialize properly. Image generation will be unavailable.");
         }
     }
 
-    /// <summary>Builds a player image for a track.
-    /// Downloads the album artwork, applies visual effects, and overlays track information.</summary>
+    /// <summary>Creates a visually appealing player image by downloading album art and overlaying track details for Discord display</summary>
     /// <param name="track">Dictionary containing track information</param>
     /// <returns>The generated image</returns>
     public static async Task<Image> BuildPlayerImageAsync(Dictionary<string, string> track)

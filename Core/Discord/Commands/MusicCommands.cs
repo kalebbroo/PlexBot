@@ -1,4 +1,4 @@
-﻿using PlexBot.Core.Models;
+using PlexBot.Core.Models;
 using PlexBot.Core.Models.Media;
 using PlexBot.Core.Discord.Autocomplete;
 using PlexBot.Services;
@@ -8,13 +8,10 @@ using Color = Discord.Color;
 
 namespace PlexBot.Core.Discord.Commands;
 
-/// <summary>Provides slash commands for music playback and control.
-/// This module implements the primary user interface for searching, playing,
-/// and managing music through Discord's slash command system.</summary>
-/// <remarks>Initializes a new instance of the <see cref="MusicCommands"/> class.
-/// Sets up the command module with necessary services.</remarks>
-/// <param name="plexMusicService">Service for interacting with Plex music</param>
-/// <param name="playerService">Service for managing audio playback</param>
+/// <summary>Provides discord slash commands for music playback with interactive UI components to control playback and manage the music queue</summary>
+/// <param name="plexMusicService">Service that interfaces with Plex API to search and retrieve media from the library</param>
+/// <param name="playerService">Service that manages audio player lifecycle and provides playback controls</param>
+/// <param name="audioService">Lavalink audio service that handles the actual streaming and playback</param>
 public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService playerService, IAudioService audioService) 
     : InteractionModuleBase<SocketInteractionContext>
 {
@@ -22,16 +19,10 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
     private readonly IPlayerService _playerService = playerService ?? throw new ArgumentNullException(nameof(playerService));
     private readonly IAudioService _audioService = audioService ?? throw new ArgumentNullException(nameof(audioService));
 
-    /// <summary>Searches for music in Plex or other configured sources.
-    /// Performs a search and displays interactive results that users can select from.</summary>
-    /// <param name="query">The search query</param>
-    /// <param name="source">The source to search (Plex, YouTube, etc.)</param>
-    /// <returns>A task representing the asynchronous operation</returns><summary>
-    /// Searches for music in Plex or other configured sources.
-    /// Performs a search and displays interactive results that users can select from.</summary>
-    /// <param name="query">The search query</param>
-    /// <param name="source">The source to search (Plex, YouTube, etc.)</param>
-    /// <returns>A task representing the asynchronous operation</returns>
+    /// <summary>Searches media libraries and displays interactive results that users can directly queue from the search results</summary>
+    /// <param name="query">The search text to find matching media across available sources</param>
+    /// <param name="source">The media source to search (Plex, YouTube, etc.) with autocomplete support</param>
+    /// <returns>A task representing the asynchronous operation of the search and response</returns>
     [SlashCommand("search", "Search for music in your Plex library or other sources")]
     public async Task SearchCommand(
         [Summary("query", "What to search for")] string query,
@@ -72,7 +63,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         }
     }
 
-    /// <summary>Handles searching in the Plex library</summary>
+    /// <summary>Searches Plex library for media matching the query and displays interactive select menus for artists, albums, and tracks</summary>
     private async Task HandlePlexSearch(string query)
     {
         // Perform the search
@@ -150,7 +141,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
             ephemeral: true);
     }
 
-    /// <summary>Handles searching on YouTube</summary>
+    /// <summary>Searches YouTube for tracks matching the query and presents results in an interactive select menu for quick playback</summary>
     private async Task HandleYouTubeSearch(string query)
     {
         try
@@ -197,7 +188,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         }
     }
 
-    /// <summary>Format a TimeSpan duration into a readable format</summary>
+    /// <summary>Converts a TimeSpan duration into a human-readable format (e.g., "3:45" or "1:23:45") for display in UI elements</summary>
     public static string FormatDuration(TimeSpan duration)
     {
         return duration.TotalHours >= 1

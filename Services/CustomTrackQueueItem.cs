@@ -1,88 +1,51 @@
-﻿namespace PlexBot.Services;
+namespace PlexBot.Services;
 
-/// <summary>
-/// Custom implementation of ITrackQueueItem with extended Plex metadata.
-/// This class enriches the standard Lavalink track queue item with additional
-/// metadata from Plex, allowing for a richer playback experience with detailed
-/// track information displayed in the player interface.
-/// </summary>
+/// <summary>Enhanced track queue item that extends the standard Lavalink interface with rich Plex metadata for improved display and user experience</summary>
 public class CustomTrackQueueItem : ITrackQueueItem
 {
-    /// <summary>
-    /// Gets or sets the Lavalink track reference for playback.
-    /// This is the core reference that Lavalink uses to stream the audio.
-    /// </summary>
+    /// <summary>Contains the core Lavalink track reference needed for audio streaming and playback control</summary>
     public TrackReference Reference { get; set; }
 
-    /// <summary>
-    /// Gets the Lavalink track from the reference.
-    /// Required implementation of ITrackQueueItem interface.
-    /// </summary>
+    /// <summary>Provides access to the underlying Lavalink track object through the interface implementation</summary>
     LavalinkTrack? ITrackQueueItem.Track => Reference.Track;
 
-    /// <summary>
-    /// Gets or sets the title of the track.
-    /// </summary>
+    /// <summary>Stores the track's title as retrieved from Plex metadata</summary>
     public string? Title { get; set; }
 
-    /// <summary>
-    /// Gets or sets the artist of the track.
-    /// </summary>
+    /// <summary>Stores the track's artist name as retrieved from Plex metadata</summary>
     public string? Artist { get; set; }
 
-    /// <summary>
-    /// Gets or sets the album of the track.
-    /// </summary>
+    /// <summary>Stores the album name containing this track as retrieved from Plex metadata</summary>
     public string? Album { get; set; }
 
-    /// <summary>
-    /// Gets or sets the release date of the track.
-    /// </summary>
+    /// <summary>Stores the track's release date to show age/recency information to users</summary>
     public string? ReleaseDate { get; set; }
 
-    /// <summary>
-    /// Gets or sets the artwork URL for the track.
-    /// </summary>
+    /// <summary>URL to the album/track artwork for embedding in Discord messages and UI</summary>
     public string? Artwork { get; set; }
 
-    /// <summary>
-    /// Gets or sets the playback URL for the track.
-    /// </summary>
+    /// <summary>Direct URL to the track's playback source for reference and linking</summary>
     public string? Url { get; set; }
 
-    /// <summary>
-    /// Gets or sets the URL for the artist.
-    /// </summary>
+    /// <summary>URL to the artist's page for linking in the UI and providing additional context</summary>
     public string? ArtistUrl { get; set; }
 
-    /// <summary>
-    /// Gets or sets the duration of the track in a human-readable format.
-    /// </summary>
+    /// <summary>Human-readable duration string formatted for display in player embeds</summary>
     public string? Duration { get; set; }
 
-    /// <summary>
-    /// Gets or sets the studio that produced the track.
-    /// </summary>
+    /// <summary>Recording studio information to provide additional context about the track's origin</summary>
     public string? Studio { get; set; }
 
-    /// <summary>
-    /// Gets or sets the user who requested this track.
-    /// </summary>
+    /// <summary>Username of the Discord user who requested this track for attribution and permission management</summary>
     public string? RequestedBy { get; set; }
 
-    /// <summary>
-    /// Generic type conversion method required by the ITrackQueueItem interface.
-    /// Allows casting to other compatible queue item types.
-    /// </summary>
-    /// <typeparam name="T">The type to cast to</typeparam>
-    /// <returns>This instance as type T, or null if not compatible</returns>
+    /// <summary>Implementation of the interface's type conversion method to support Lavalink's player architecture</summary>
+    /// <typeparam name="T">The target type to convert to within the Lavalink player system</typeparam>
+    /// <returns>This instance as the requested type if compatible, otherwise null</returns>
     public T? As<T>() where T : class, ITrackQueueItem => this as T;
 
-    /// <summary>
-    /// Creates a human-readable representation of the queue item.
-    /// Useful for debugging and logging.
-    /// </summary>
-    /// <returns>A string representation of the queue item</returns>
+    /// <summary>Generates a user-friendly string representation of this track for logging and debugging purposes</summary>
+    /// <returns>A formatted string containing essential track information</returns>
     public override string ToString()
     {
         return $"{Title} by {Artist} ({Duration})";

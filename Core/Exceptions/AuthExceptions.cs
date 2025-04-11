@@ -1,64 +1,41 @@
-﻿namespace PlexBot.Core.Exceptions;
+namespace PlexBot.Core.Exceptions;
 
-/// <summary>
-/// Exception thrown when authentication with the Plex server fails.
-/// This exception type specifically handles errors related to the authentication process,
-/// such as invalid credentials, expired tokens, or failures in the OAuth flow.
-/// </summary>
+/// <summary>Specialized exception type for authentication-related failures with detailed context for troubleshooting Plex server connectivity issues</summary>
 public class AuthenticationException : PlexBotException
 {
-    /// <summary>
-    /// Gets or sets the authentication method that was being attempted.
-    /// Indicates whether the failure was during token validation, PIN generation,
-    /// or another part of the authentication process.
-    /// </summary>
+    /// <summary>Identifies which part of the authentication process failed, helping pinpoint exactly where the auth flow broke down</summary>
     public string AuthMethod { get; }
 
-    /// <summary>
-    /// Initializes a new instance of the <see cref="AuthenticationException"/> class with a message.
-    /// Creates a basic authentication exception with an error message but no specific auth method.
-    /// </summary>
-    /// <param name="message">The error message that explains the authentication failure</param>
+    /// <summary>Creates a basic authentication exception for general auth failures when the specific authentication step is unknown</summary>
+    /// <param name="message">Detailed error message explaining the technical cause of the authentication failure</param>
     public AuthenticationException(string message)
         : base(message, "Failed to authenticate with your Plex server. Please check your credentials.")
     {
         AuthMethod = "Unknown";
     }
 
-    /// <summary>
-    /// Initializes a new instance of the <see cref="AuthenticationException"/> class with a message and auth method.
-    /// Creates an authentication exception with both an error message and the specific authentication
-    /// method that failed.
-    /// </summary>
-    /// <param name="message">The error message that explains the authentication failure</param>
-    /// <param name="authMethod">The authentication method that was being attempted</param>
+    /// <summary>Creates an authentication exception with context about which specific authentication mechanism failed (token validation, pin generation, etc.)</summary>
+    /// <param name="message">Technical error details for logging and developer troubleshooting</param>
+    /// <param name="authMethod">The specific authentication method that failed, used to generate appropriate user-facing messages</param>
     public AuthenticationException(string message, string authMethod)
         : base(message, GetUserFriendlyMessage(authMethod))
     {
         AuthMethod = authMethod;
     }
 
-    /// <summary>
-    /// Initializes a new instance of the <see cref="AuthenticationException"/> class with a message, auth method, and inner exception.
-    /// Creates a detailed authentication exception with error message, auth method, and the
-    /// underlying exception that caused the failure.
-    /// </summary>
-    /// <param name="message">The error message that explains the authentication failure</param>
-    /// <param name="authMethod">The authentication method that was being attempted</param>
-    /// <param name="innerException">The exception that is the cause of the authentication failure</param>
+    /// <summary>Creates a detailed exception that captures both the auth failure context and the underlying cause for complete diagnostic information</summary>
+    /// <param name="message">Technical error explanation for developers</param>
+    /// <param name="authMethod">The authentication mechanism that failed (TokenValidation, PinGeneration, PinCheck, etc.)</param>
+    /// <param name="innerException">The original exception that triggered this authentication failure, preserving the full error chain</param>
     public AuthenticationException(string message, string authMethod, Exception innerException)
         : base(message, GetUserFriendlyMessage(authMethod), innerException)
     {
         AuthMethod = authMethod;
     }
 
-    /// <summary>
-    /// Generates a user-friendly error message based on the authentication method.
-    /// Maps technical authentication method names to messages that end users can understand
-    /// and potentially act upon.
-    /// </summary>
-    /// <param name="authMethod">The authentication method that failed</param>
-    /// <returns>A user-friendly error message corresponding to the authentication method</returns>
+    /// <summary>Maps technical authentication failure points to user-friendly messages that guide users toward appropriate remedial actions</summary>
+    /// <param name="authMethod">The authentication method identifier that failed</param>
+    /// <returns>A human-readable explanation and suggested remedy tailored to the specific failure point</returns>
     private static string GetUserFriendlyMessage(string authMethod)
     {
         return authMethod switch

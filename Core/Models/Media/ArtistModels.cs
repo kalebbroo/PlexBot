@@ -1,98 +1,51 @@
-﻿namespace PlexBot.Core.Models.Media;
+namespace PlexBot.Core.Models.Media;
 
-/// <summary>
-/// Represents a music artist entity retrieved from Plex or other media sources.
-/// Artists are the creators of music content and serve as a primary organizational 
-/// structure in music libraries. This model normalizes artist data across different 
-/// source systems.
-/// </summary>
+/// <summary>Represents a music artist entity that normalizes metadata across different source systems for consistent display and navigation</summary>
 public class Artist
 {
-    /// <summary>
-    /// Gets or sets the unique identifier for the artist.
-    /// This ID should be globally unique across all content sources.
-    /// For Plex content, this is normally derived from the Plex rating key.
-    /// </summary>
+    /// <summary>Globally unique identifier for the artist, typically derived from the source system's native ID (e.g., Plex rating key)</summary>
     public string Id { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Gets or sets the name of the artist.
-    /// This is the primary display name that will be shown to users in the interface.
-    /// </summary>
+    /// <summary>Primary display name of the artist shown to users in search results and player interfaces</summary>
     public string Name { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Gets or sets a descriptive summary of the artist.
-    /// This may include biographical information or other relevant details.
-    /// </summary>
+    /// <summary>Biographical information or other relevant details about the artist for display in detailed views</summary>
     public string Summary { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Gets or sets the URL to the artist's artwork/image.
-    /// For Plex content, this is typically the thumb URL with the Plex token appended.
-    /// </summary>
+    /// <summary>URL to the artist's profile image used for display in the player and search results</summary>
     public string ArtworkUrl { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Gets or sets the URL to the artist details in the source system.
-    /// Used for retrieving additional information or for generating links.
-    /// For Plex, this is the artist's key that can be appended to the base URL.
-    /// </summary>
+    /// <summary>URL to the artist details in the source system, used for retrieving additional information or generating links</summary>
     public string ArtistUrl { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Gets or sets the original source system's key for this artist.
-    /// This is used when making follow-up API calls to the source system.
-    /// For Plex, this is typically the metadata key without the base URL.
-    /// </summary>
+    /// <summary>Source-specific key or identifier used to retrieve this artist's albums from the source API</summary>
     public string SourceKey { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Gets or sets the number of albums by this artist.
-    /// Used for display and for validating that all albums were retrieved.
-    /// </summary>
+    /// <summary>Number of albums created by this artist, used for display and validation purposes</summary>
     public int AlbumCount { get; set; }
 
-    /// <summary>
-    /// Gets or sets the total number of tracks by this artist.
-    /// This may be an estimate and is primarily used for display purposes.
-    /// </summary>
+    /// <summary>Total number of tracks by this artist, may be an estimate primarily used for display purposes</summary>
     public int TrackCount { get; set; }
 
-    /// <summary>
-    /// Gets or sets the collection of albums by this artist.
-    /// May be populated after the initial artist retrieval with a separate call.
-    /// </summary>
+    /// <summary>Collection of albums by this artist, may be populated after the initial artist retrieval</summary>
     public List<Album> Albums { get; set; } = new();
 
-    /// <summary>
-    /// Gets or sets the primary genre associated with the artist.
-    /// Used for filtering and display purposes.
-    /// </summary>
+    /// <summary>Primary musical genre associated with this artist, used for filtering and display purposes</summary>
     public string Genre { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Gets or sets the source system type this artist was retrieved from.
-    /// Helps determine how to handle the artist for metadata retrieval.
-    /// </summary>
+    /// <summary>Original source system that provided this artist data (e.g., "plex", "spotify")</summary>
     public string SourceSystem { get; set; } = "plex";
 
-    /// <summary>
-    /// Creates a human-readable representation of the artist primarily for debugging and logging.
-    /// Includes the essential identifying information without sensitive details.
-    /// </summary>
+    /// <summary>Creates a human-readable representation of the artist primarily for debugging and logging</summary>
     /// <returns>A string containing the artist name and album count</returns>
     public override string ToString()
     {
         return $"{Name} ({AlbumCount} albums, {TrackCount} tracks)";
     }
 
-    /// <summary>
-    /// Gets a truncated summary for display in UI components with limited space.
-    /// Ensures that the summary doesn't exceed the given length and adds an ellipsis if truncated.
-    /// </summary>
+    /// <summary>Provides a truncated summary for display in UI components with limited space</summary>
     /// <param name="maxLength">The maximum length of the returned summary</param>
-    /// <returns>A truncated summary</returns>
+    /// <returns>A truncated summary with ellipsis if needed</returns>
     public string GetTruncatedSummary(int maxLength = 100)
     {
         if (string.IsNullOrEmpty(Summary) || Summary.Length <= maxLength)

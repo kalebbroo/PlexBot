@@ -4,11 +4,9 @@ using PlexBot.Utils;
 
 namespace PlexBot.Core.Discord.Autocomplete;
 
-/// <summary>
-/// Provides autocomplete suggestions for music sources.
+/// <summary>Provides autocomplete suggestions for music sources.
 /// This handler dynamically generates source options based on the
-/// configured music sources in the environment variables.
-/// </summary>
+/// configured music sources in the environment variables.</summary>
 public class SourceAutocompleteHandler : AutocompleteHandler
 {
     /// <summary>Generates source suggestions based on the configured sources.

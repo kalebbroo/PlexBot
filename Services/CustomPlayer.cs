@@ -1,24 +1,16 @@
-﻿using PlexBot.Utils;
+using PlexBot.Utils;
 using SixLabors.ImageSharp.Formats.Png;
 
 namespace PlexBot.Services;
 
-/// <summary>
-/// Custom Lavalink player with enhanced Discord integration.
-/// Extends the QueuedLavalinkPlayer with specialized player UI, richer metadata,
-/// and event handlers specifically designed for the Plex Music Bot. This class
-/// handles the actual playback while providing a rich visual interface in Discord.
-/// </summary>
+/// <summary>Enhanced Lavalink player implementation that integrates with Discord to provide rich visual UI, track metadata, and interactive controls</summary>
 public sealed class CustomPlayer : QueuedLavalinkPlayer
 {
     private readonly ITextChannel? _textChannel;
     private IUserMessage? _currentPlayerMessage;
 
-    /// <summary>
-    /// Initializes a new instance of the <see cref="CustomPlayer"/> class.
-    /// Creates a player with the specified properties and options.
-    /// </summary>
-    /// <param name="properties">The player properties</param>
+    /// <summary>Constructs the player with specified properties to enable audio playback with enhanced Discord integration for visual feedback</summary>
+    /// <param name="properties">Configuration container with player settings, options, and channel information</param>
     public CustomPlayer(IPlayerProperties<CustomPlayer, CustomPlayerOptions> properties)
         : base(properties)
     {
@@ -28,13 +20,10 @@ public sealed class CustomPlayer : QueuedLavalinkPlayer
         Logs.Debug($"CustomPlayer initialized for guild {GuildId} in channel {_textChannel?.Id}");
     }
 
-    /// <summary>
-    /// Called when a track starts playing.
-    /// Creates and sends a visual player embed with track information and player controls.
-    /// </summary>
-    /// <param name="track">The track that started playing</param>
-    /// <param name="cancellationToken">Token to cancel the operation</param>
-    /// <returns>A task representing the asynchronous operation</returns>
+    /// <summary>Handles the track start event by building and sending a rich visual player interface with artwork and interactive controls</summary>
+    /// <param name="track">The track that started playing, containing metadata for display</param>
+    /// <param name="cancellationToken">Token to cancel the operation in case of shutdown or timeout</param>
+    /// <returns>A task representing the asynchronous operation of creating and sending the player UI</returns>
     protected override async ValueTask NotifyTrackStartedAsync(ITrackQueueItem track, CancellationToken cancellationToken = default)
     {
         try
@@ -165,14 +154,11 @@ public sealed class CustomPlayer : QueuedLavalinkPlayer
         }
     }
 
-    /// <summary>
-    /// Called when a track finishes playing.
-    /// Handles cleanup and logging of track completion.
-    /// </summary>
-    /// <param name="queueItem">The track that ended</param>
-    /// <param name="endReason">The reason the track ended</param>
-    /// <param name="cancellationToken">Token to cancel the operation</param>
-    /// <returns>A task representing the asynchronous operation</returns>
+    /// <summary>Handles the track end event by logging track completion and performing cleanup</summary>
+    /// <param name="queueItem">The track that ended, containing metadata for logging</param>
+    /// <param name="endReason">The reason the track ended, used for logging and debugging</param>
+    /// <param name="cancellationToken">Token to cancel the operation in case of shutdown or timeout</param>
+    /// <returns>A task representing the asynchronous operation of logging track completion</returns>
     protected override async ValueTask NotifyTrackEndedAsync(ITrackQueueItem queueItem, TrackEndReason endReason, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -186,12 +172,9 @@ public sealed class CustomPlayer : QueuedLavalinkPlayer
         Logs.Debug($"Track ended: {trackTitle}, Reason: {endReason}");
     }
 
-    /// <summary>
-    /// Called when the player becomes active.
-    /// This happens when users join the voice channel after all users had left.
-    /// </summary>
-    /// <param name="cancellationToken">Token to cancel the operation</param>
-    /// <returns>A task representing the asynchronous operation</returns>
+    /// <summary>Handles the player active event when users join the voice channel after all users had left</summary>
+    /// <param name="cancellationToken">Token to cancel the operation in case of shutdown or timeout</param>
+    /// <returns>A task representing the asynchronous operation of handling player activation</returns>
     public ValueTask NotifyPlayerActiveAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -199,13 +182,9 @@ public sealed class CustomPlayer : QueuedLavalinkPlayer
         return default; // No special handling needed
     }
 
-    /// <summary>
-    /// Called when the player becomes inactive due to inactivity timeout.
-    /// This is triggered when all users leave the voice channel and the inactivity
-    /// deadline is reached. The player will automatically stop and disconnect.
-    /// </summary>
-    /// <param name="cancellationToken">Token to cancel the operation</param>
-    /// <returns>A task representing the asynchronous operation</returns>
+    /// <summary>Handles the player inactive event due to inactivity timeout, stopping playback and disconnecting from the voice channel</summary>
+    /// <param name="cancellationToken">Token to cancel the operation in case of shutdown or timeout</param>
+    /// <returns>A task representing the asynchronous operation of handling player inactivity</returns>
     public async ValueTask NotifyPlayerInactiveAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -231,12 +210,9 @@ public sealed class CustomPlayer : QueuedLavalinkPlayer
         }
     }
 
-    /// <summary>
-    /// Called when the player state changes.
-    /// This can be used to update the visual player interface when state changes.
-    /// </summary>
-    /// <param name="cancellationToken">Token to cancel the operation</param>
-    /// <returns>A task representing the asynchronous operation</returns>
+    /// <summary>Handles the player tracked state change event, used to update the visual player interface</summary>
+    /// <param name="cancellationToken">Token to cancel the operation in case of shutdown or timeout</param>
+    /// <returns>A task representing the asynchronous operation of handling player state changes</returns>
     public ValueTask NotifyPlayerTrackedAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -244,12 +220,9 @@ public sealed class CustomPlayer : QueuedLavalinkPlayer
         return default; // No special handling needed
     }
 
-    /// <summary>
-    /// Updates the player message with new button components.
-    /// This is used when the player state changes to update control buttons.
-    /// </summary>
-    /// <param name="components">The new components to display</param>
-    /// <returns>A task representing the asynchronous operation</returns>
+    /// <summary>Updates the player message with new button components, used to refresh the visual player interface</summary>
+    /// <param name="components">The new components to display, containing updated button configurations</param>
+    /// <returns>A task representing the asynchronous operation of updating the player message</returns>
     public async Task UpdatePlayerComponentsAsync(ComponentBuilder components)
     {
         if (_currentPlayerMessage == null)
@@ -271,34 +244,22 @@ public sealed class CustomPlayer : QueuedLavalinkPlayer
     }
 }
 
-/// <summary>
-/// Custom options for the CustomPlayer class.
-/// Extends the standard QueuedLavalinkPlayerOptions with additional configuration
-/// specific to the Plex Music Bot implementation.
-/// </summary>
-/// <param name="TextChannel"> Gets or sets the Discord text channel where player messages will be sent.
-/// This channel is used for displaying the visual player and notifications. </param>
+/// <summary>Custom options for the CustomPlayer class, extending the standard QueuedLavalinkPlayerOptions with additional configuration</summary>
+/// <param name="TextChannel">Gets or sets the Discord text channel where player messages will be sent, used for displaying the visual player and notifications</param>
 public sealed record CustomPlayerOptions(ITextChannel? TextChannel) : QueuedLavalinkPlayerOptions
 {
-    /// <summary>
-    /// Gets or sets the default volume level (0.0 to 1.0).
-    /// </summary>
+    /// <summary>Gets or sets the default volume level, ranging from 0.0 to 1.0</summary>
     public float DefaultVolume { get; init; } = 0.5f;
 
-    /// <summary>
-    /// Gets or sets whether to show track thumbnails in player messages.
-    /// </summary>
+    /// <summary>Gets or sets whether to show track thumbnails in player messages, used for visual feedback</summary>
     public bool ShowThumbnails { get; init; } = true;
 
-    /// <summary>
-    /// Gets or sets whether to delete player messages when they become outdated.
-    /// </summary>
+    /// <summary>Gets or sets whether to delete player messages when they become outdated, used for cleanup and organization</summary>
     public bool DeleteOutdatedMessages { get; init; } = true;
 
     public TimeSpan InactivityTimeout { get; init; } = TimeSpan.FromMinutes(20);
 
-    /// <summary>
-    /// Initializes a new instance of the <see cref="CustomPlayerOptions"/> class.
+    /// <summary>Initializes a new instance of the CustomPlayerOptions class, setting default values for LavaLink player configuration</summary>
     public CustomPlayerOptions() : this((ITextChannel?)null)
     {
         // Set LavaLink player defaults

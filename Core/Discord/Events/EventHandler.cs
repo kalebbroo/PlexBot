@@ -1,29 +1,19 @@
-﻿using PlexBot.Utils;
+using PlexBot.Utils;
 
 namespace PlexBot.Core.Discord.Events;
 
-/// <summary>
-/// Handles Discord events and interaction routing.
-/// This class is responsible for registering, setting up, and managing
-/// Discord event handlers, including slash commands and interactive components.
-/// </summary>
-/// <remarks>
-/// Initializes a new instance of the <see cref="DiscordEventHandler"/> class.
-/// Sets up the event handler with necessary dependencies.
-/// </remarks>
-/// <param name="client">The Discord client</param>
-/// <param name="interactions">The interaction service</param>
-/// <param name="services">The service provider</param>
+/// <summary>Handles Discord events and interaction routing for slash commands and interactive components</summary>
+/// <remarks>Initializes a new instance of the DiscordEventHandler class with necessary dependencies</remarks>
+/// <param name="client">The Discord client for connecting to Discord's API</param>
+/// <param name="interactions">The interaction service for handling slash commands</param>
+/// <param name="services">The service provider for dependency injection</param>
 public class DiscordEventHandler(DiscordSocketClient client, InteractionService interactions, IServiceProvider services)
 {
     private readonly DiscordSocketClient _client = client ?? throw new ArgumentNullException(nameof(client));
     private readonly InteractionService _interactions = interactions ?? throw new ArgumentNullException(nameof(interactions));
     private readonly IServiceProvider _services = services ?? throw new ArgumentNullException(nameof(services));
 
-    /// <summary>
-    /// Initializes Discord event handlers.
-    /// Sets up event handlers for client log events, ready events, and interaction events.
-    /// </summary>
+    /// <summary>Initializes Discord event handlers for logging, ready events, and interactions</summary>
     /// <returns>A task representing the asynchronous operation</returns>
     public Task InitializeAsync()
     {
@@ -42,10 +32,7 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
         return Task.CompletedTask;
     }
 
-    /// <summary>
-    /// Handles the client ready event.
-    /// Registers slash commands and sets up the bot's status.
-    /// </summary>
+    /// <summary>Handles the client ready event by registering slash commands and setting the bot's status</summary>
     /// <returns>A task representing the asynchronous operation</returns>
     private async Task ReadyAsync()
     {
@@ -106,9 +93,8 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
         }
     }
 
-    /// <summary>Handles incoming interactions.
-    /// Routes interactions to the appropriate handler based on their type.</summary>
-    /// <param name="interaction">The interaction to handle</param>
+    /// <summary>Routes incoming interactions to appropriate handlers and manages error responses</summary>
+    /// <param name="interaction">The interaction to handle from Discord</param>
     /// <returns>A task representing the asynchronous operation</returns>
     private async Task HandleInteractionAsync(SocketInteraction interaction)
     {
@@ -161,11 +147,8 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
         }
     }
 
-    /// <summary>
-    /// Handles Discord client log events.
-    /// Routes log messages to the application's logging system.
-    /// </summary>
-    /// <param name="message">The log message</param>
+    /// <summary>Processes Discord client log events and routes them to the application's logging system</summary>
+    /// <param name="message">The log message from Discord</param>
     /// <returns>A task representing the asynchronous operation</returns>
     private Task LogAsync(LogMessage message)
     {

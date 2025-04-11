@@ -1,108 +1,55 @@
 namespace PlexBot.Core.Models.Media;
 
-/// <summary>
-/// Represents a music track entity retrieved from Plex or other media sources.
-/// This model serves as the normalized representation of tracks across different source systems,
-/// allowing for consistent handling regardless of the original source format.
-/// </summary>
+/// <summary>Represents a music track entity that normalizes metadata across different source systems for consistent playback and display</summary>
 public class Track
 {
-    /// <summary>
-    /// Gets or sets the unique identifier for the track.
-    /// This ID should be globally unique across all content sources.
-    /// For Plex content, this is normally derived from the Plex rating key.
-    /// </summary>
+    /// <summary>Globally unique identifier for the track, typically derived from the source system's native ID (e.g., Plex rating key)</summary>
     public string Id { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Gets or sets the title of the track.
-    /// This is the primary display name that will be shown to users in the interface.
-    /// </summary>
+    /// <summary>Primary display name of the track shown to users in search results and player interfaces</summary>
     public string Title { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Gets or sets the artist who created the track.
-    /// For multiple artists, this typically contains the primary/first artist.
-    /// </summary>
+    /// <summary>Name of the artist or group who created the track, typically contains the primary/first artist for collaborations</summary>
     public string Artist { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Gets or sets the album the track belongs to.
-    /// Will be empty for standalone tracks not associated with an album.
-    /// </summary>
+    /// <summary>Name of the album the track belongs to, may be empty for standalone tracks not associated with an album</summary>
     public string Album { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Gets or sets the release date of the track.
-    /// Stored as a string to accommodate various date formats from different sources.
-    /// </summary>
+    /// <summary>Release date of the track stored as a string to accommodate various date formats from different sources</summary>
     public string ReleaseDate { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Gets or sets the URL to the track's artwork/cover image.
-    /// For Plex content, this is typically the thumb URL with the Plex token appended.
-    /// </summary>
+    /// <summary>URL to the track's artwork image used for display in the player and search results</summary>
     public string ArtworkUrl { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Gets or sets the direct playback URL for the track.
-    /// This is the actual URL that will be passed to Lavalink for streaming.
-    /// For Plex content, this typically includes the Plex token for authorization.
-    /// </summary>
+    /// <summary>Direct streaming URL that will be passed to the audio player for playback, includes authentication tokens if needed</summary>
     public string PlaybackUrl { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Gets or sets the URL to the artist's page/info.
-    /// This is used when users want to navigate to see more content from the same artist.
-    /// </summary>
+    /// <summary>URL to the artist's page/info, used for navigation to see more content from the same artist</summary>
     public string ArtistUrl { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Gets or sets the duration of the track in milliseconds.
-    /// This is used for calculating playback time and progress displays.
-    /// </summary>
+    /// <summary>Duration of the track in milliseconds, used for calculating playback time and progress displays</summary>
     public long DurationMs { get; set; }
 
-    /// <summary>
-    /// Gets or sets the formatted human-readable duration string.
-    /// Calculated from DurationMs but stored for efficiency.
-    /// Format is typically "mm:ss" or "hh:mm:ss" for longer tracks.
-    /// </summary>
+    /// <summary>Formatted human-readable duration string (e.g., "3:45") calculated from DurationMs but stored for efficiency</summary>
     public string DurationDisplay { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Gets or sets the label/studio that published the track.
-    /// May be empty if not available from the source.
-    /// </summary>
+    /// <summary>Name of the record label or studio that published the track, may be empty if not available from the source</summary>
     public string Studio { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Gets or sets the original source system's key for this track.
-    /// This is used when making follow-up API calls to the source system.
-    /// For Plex, this is typically the metadata key without the base URL.
-    /// </summary>
+    /// <summary>Source-specific key or identifier used to retrieve this track from the source API for playback</summary>
     public string SourceKey { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Gets or sets the source system type this track was retrieved from.
-    /// Helps determine how to handle the track for playback and metadata retrieval.
-    /// </summary>
+    /// <summary>Original source system that provided this track data (e.g., "plex", "spotify", "youtube")</summary>
     public string SourceSystem { get; set; } = "plex";
 
-    /// <summary>
-    /// Creates a human-readable representation of the track primarily for debugging and logging.
-    /// Includes the essential identifying information without sensitive details.
-    /// </summary>
+    /// <summary>Creates a human-readable representation of the track primarily for debugging and logging</summary>
     /// <returns>A string containing the track title, artist and duration</returns>
     public override string ToString()
     {
         return $"{Title} by {Artist} ({DurationDisplay})";
     }
 
-    /// <summary>
-    /// Creates a new instance of a Track from a playback URL directly.
-    /// Used primarily for quick creation of tracks from non-Plex sources like YouTube.
-    /// </summary>
+    /// <summary>Creates a new Track instance from a direct playback URL for quick creation from external sources like YouTube</summary>
     /// <param name="title">Title of the track</param>
     /// <param name="artist">Artist name</param>
     /// <param name="playbackUrl">Direct URL for playback</param>

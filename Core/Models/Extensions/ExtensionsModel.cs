@@ -1,91 +1,47 @@
-﻿using PlexBot.Utils;
+using PlexBot.Utils;
 
 namespace PlexBot.Core.Models.Extensions;
 
-/// <summary>
-/// Base class that all bot extensions must inherit from.
-/// Provides the fundamental structure and lifecycle methods that the extension system
-/// uses to discover, initialize, and manage extensions. This class handles the core
-/// extension functionality while allowing derived classes to focus on their specific features.
-/// </summary>
+/// <summary>Base class for all bot extensions providing the fundamental structure and lifecycle methods for extension management</summary>
 public abstract class Extension
 {
-    /// <summary>
-    /// Gets the unique identifier for this extension.
-    /// This should be a lowercase, hyphenated string with no spaces, e.g., "youtube-downloader".
-    /// Used internally for extension management and must be unique across all extensions.
-    /// </summary>
+    /// <summary>Unique identifier for this extension used for dependency management and must be unique across all extensions</summary>
     public abstract string Id { get; }
 
-    /// <summary>
-    /// Gets the display name of the extension.
-    /// This is the user-friendly name shown in UIs and logs.
-    /// </summary>
+    /// <summary>User-friendly display name shown in UIs and logs for better readability and recognition</summary>
     public abstract string Name { get; }
 
-    /// <summary>
-    /// Gets the version of the extension using semantic versioning.
-    /// Format should be MAJOR.MINOR.PATCH (e.g., "1.0.0").
-    /// </summary>
+    /// <summary>Semantic version (MAJOR.MINOR.PATCH) used to track compatibility and feature updates</summary>
     public abstract string Version { get; }
 
-    /// <summary>
-    /// Gets the author(s) of the extension.
-    /// Names or usernames of the creators.
-    /// </summary>
+    /// <summary>Names or usernames of the extension creators for attribution and support contacts</summary>
     public abstract string Author { get; }
 
-    /// <summary>
-    /// Gets a description of what the extension does.
-    /// Should be a concise explanation of the extension's purpose and features.
-    /// </summary>
+    /// <summary>Concise explanation of the extension's purpose and features to help users understand its functionality</summary>
     public abstract string Description { get; }
 
-    /// <summary>
-    /// Gets the minimum bot version required for this extension.
-    /// Extensions will only load if the bot version is greater than or equal to this value.
-    /// </summary>
+    /// <summary>Minimum bot version required for compatibility, preventing loading on incompatible bot versions</summary>
     public virtual string MinimumBotVersion => "1.0.0";
 
-    /// <summary>
-    /// Gets a list of extension IDs that this extension depends on.
-    /// These extensions must be loaded before this one can be initialized.
-    /// </summary>
+    /// <summary>List of extension IDs that must be loaded before this extension can be initialized</summary>
     public virtual IEnumerable<string> Dependencies => Array.Empty<string>();
 
-    /// <summary>
-    /// Gets a value indicating whether the extension is currently loaded and initialized.
-    /// Set internally by the extension system during the lifecycle management process.
-    /// </summary>
+    /// <summary>Indicates whether the extension is currently loaded and initialized, managed by the extension system</summary>
     public bool IsLoaded { get; private set; }
 
-    /// <summary>
-    /// Gets the timestamp when the extension was loaded.
-    /// Used for diagnostics and uptime tracking.
-    /// </summary>
+    /// <summary>Timestamp when the extension was loaded for diagnostics and uptime tracking</summary>
     public DateTimeOffset LoadedAt { get; private set; }
 
-    /// <summary>
-    /// Gets any error message that occurred during initialization.
-    /// Null if no errors occurred or the extension hasn't been initialized.
-    /// </summary>
+    /// <summary>Error message from initialization failures, null if no errors occurred or not yet initialized</summary>
     public string? ErrorMessage { get; private set; }
 
-    /// <summary>
-    /// Initializes a new instance of the Extension class.
-    /// Protected constructor ensures only derived classes can be instantiated.
-    /// </summary>
+    /// <summary>Protected constructor ensuring only derived classes can be instantiated</summary>
     protected Extension()
     {
         IsLoaded = false;
     }
 
-    /// <summary>
-    /// Initializes the extension with the provided service provider.
-    /// This method is called by the extension system during the extension loading process.
-    /// It prepares the extension for use, creating any necessary resources and
-    /// establishing connections to external services.
-    /// </summary>
+    /// <summary>Initializes the extension with required services and prepares it for use in the bot system</summary>
     /// <param name="services">The service provider containing registered services</param>
     /// <exception cref="Exception">Thrown if initialization fails</exception>
     /// <returns>A task representing the asynchronous initialization operation</returns>
@@ -121,12 +77,7 @@ public abstract class Extension
         }
     }
 
-    /// <summary>
-    /// Called by the extension system to register the extension's services.
-    /// This method is called before initialization to allow the extension to register
-    /// its dependencies in the service collection. Services registered here will be
-    /// available to the extension and to other extensions that depend on them.
-    /// </summary>
+    /// <summary>Registers the extension's services in the dependency injection container before initialization</summary>
     /// <param name="services">The service collection to register services with</param>
     public virtual void RegisterServices(IServiceCollection services)
     {
@@ -134,12 +85,7 @@ public abstract class Extension
         // Base implementation does nothing - extensions should override as needed
     }
 
-    /// <summary>
-    /// Called when the extension is being unloaded.
-    /// Derived classes should override this to clean up any resources, close connections,
-    /// unregister event handlers, etc. This ensures proper cleanup when an extension
-    /// is disabled or the bot is shutting down.
-    /// </summary>
+    /// <summary>Cleans up resources when the extension is being unloaded to prevent memory leaks and resource conflicts</summary>
     /// <returns>A task representing the asynchronous shutdown operation</returns>
     public virtual Task ShutdownAsync()
     {
@@ -148,20 +94,12 @@ public abstract class Extension
         return Task.CompletedTask;
     }
 
-    /// <summary>
-    /// Override this method to implement extension-specific initialization logic.
-    /// This is where the extension should set up its core functionality, register
-    /// commands, and prepare for operation. This method is called by the base
-    /// InitializeAsync method and should return true only if initialization was successful.
-    /// </summary>
+    /// <summary>Extension-specific initialization logic to be implemented by derived classes</summary>
     /// <param name="services">The service provider containing registered services</param>
     /// <returns>True if initialization was successful; otherwise, false</returns>
     protected abstract Task<bool> OnInitializeAsync(IServiceProvider services);
 
-    /// <summary>
-    /// Creates a human-readable representation of the extension primarily for debugging and logging.
-    /// Includes the essential identifying information.
-    /// </summary>
+    /// <summary>Creates a human-readable representation of the extension for debugging and logging purposes</summary>
     /// <returns>A string containing the extension name, version and status</returns>
     public override string ToString()
     {
