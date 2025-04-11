@@ -152,3 +152,4 @@ ScaffoldingReadMe.txt
 images/**/*
 # Ignore.cs files in the Plugins folder
 Extensions/**/*.cs
+/Install/Docker/plugins
