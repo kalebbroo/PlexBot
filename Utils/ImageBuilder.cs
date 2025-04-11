@@ -10,7 +10,6 @@ namespace PlexBot.Utils;
 public static class ImageBuilder
 {
     private static readonly HttpClientWrapper? _httpClient;
-    public static Font? Font;
 
     static ImageBuilder()
     {
@@ -31,71 +30,11 @@ public static class ImageBuilder
                 // Rethrow to stop initialization if we can't have an HttpClient
                 throw new InvalidOperationException("Failed to initialize essential HttpClientWrapper", ex);
             }
-            // Step 2: Initialize Font with a safe default first
-            try
-            {
-                // Try to get Arial or any default system font
-                IReadOnlySystemFontCollection systemFontCollection = SystemFonts.Collection;
-                if (systemFontCollection.TryGet("Arial", out var arialFamily))
-                {
-                    Font = arialFamily.CreateFont(36);
-                    Logs.Debug("Default Arial font initialized");
-                }
-                else
-                {
-                    // Get the first available font
-                    FontFamily firstFont = systemFontCollection.Families.FirstOrDefault();
-                    if (firstFont != null)
-                    {
-                        Font = firstFont.CreateFont(36);
-                        Logs.Debug($"Fallback to system font: {firstFont.Name}");
-                    }
-                    else
-                    {
-                        Logs.Error("No system fonts available!");
-                        throw new InvalidOperationException("No system fonts available");
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Logs.Error($"Failed to initialize default font: {ex.Message}");
-                throw new InvalidOperationException("Cannot initialize any fonts", ex);
-            }
-            // Step 3: Try loading a custom font (optional - won't break if fails)
-            try
-            {
-                string fontPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Moderniz.otf");
-                Logs.Debug($"Looking for custom font at: {fontPath}");
-                if (File.Exists(fontPath))
-                {
-                    Logs.Debug("Custom font file found, attempting to load");
-                    FontCollection fontCollection = new();
-                    FontFamily family = fontCollection.Add(fontPath);
-                    Font = family.CreateFont(36);
-                    Logs.Debug($"Custom font loaded successfully: {Font.Name}");
-                }
-                else
-                {
-                    Logs.Debug("Custom font file not found, using system font");
-                }
-            }
-            catch (Exception ex)
-            {
-                // Just log this error but continue with the system font
-                Logs.Warning($"Failed to load custom font: {ex.Message}");
-            }
+            
             Logs.Debug("ImageBuilder initialized successfully");
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            Logs.Error($"CRITICAL ERROR in ImageBuilder initialization: {ex.Message}");
-            Logs.Error($"Stack trace: {ex.StackTrace}");
-            if (ex.InnerException != null)
-            {
-                Logs.Error($"Inner exception: {ex.InnerException.Message}");
-                Logs.Error($"Inner stack trace: {ex.InnerException.StackTrace}");
-            }
             // We can't throw here because it would prevent the application from starting,
             // but the image generation functionality won't work
             Logs.Error("ImageBuilder failed to initialize properly. Image generation will be unavailable.");
@@ -151,17 +90,43 @@ public static class ImageBuilder
                 {
                     // Simplified overlay approach
                     ctx.Fill(Color.FromRgba(0, 0, 0, 150), new RectangleF(0, 0, 800, 400));
-                    // Add track information
+                    
+                    // Simple font handling - just create a font when needed
+                    Font font;
+                    try
+                    {
+                        // Get any available system font - super simple
+                        IReadOnlySystemFontCollection systemFontCollection = SystemFonts.Collection;
+                        var fontFamilies = systemFontCollection.Families.ToList();
+                        
+                        if (fontFamilies.Count > 0)
+                        {
+                            // Use the first system font available
+                            font = fontFamilies[0].CreateFont(36);
+                        }
+                        else
+                        {
+                            Logs.Error("No system fonts available - cannot draw text");
+                            return; // Skip text drawing
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Logs.Error($"Font error: {ex.Message}");
+                        return; // Skip text drawing if font creation fails
+                    }
+                    
+                    // Add track information with the font we just created
                     float y = 20;
-                    ctx.DrawText(track.GetValueOrDefault("Artist", "Unknown Artist"), Font, Color.White, new PointF(20, y));
+                    ctx.DrawText(track.GetValueOrDefault("Artist", "Unknown Artist"), font, Color.White, new PointF(20, y));
                     y += 50;
-                    ctx.DrawText(track.GetValueOrDefault("Title", "Unknown Title"), Font, Color.White, new PointF(20, y));
+                    ctx.DrawText(track.GetValueOrDefault("Title", "Unknown Title"), font, Color.White, new PointF(20, y));
                     y += 50;
-                    ctx.DrawText(track.GetValueOrDefault("Album", "Unknown Album"), Font, Color.White, new PointF(20, y));
+                    ctx.DrawText(track.GetValueOrDefault("Album", "Unknown Album"), font, Color.White, new PointF(20, y));
                     y += 50;
-                    ctx.DrawText(track.GetValueOrDefault("Studio", "Unknown Studio"), Font, Color.White, new PointF(20, y));
+                    ctx.DrawText(track.GetValueOrDefault("Studio", "Unknown Studio"), font, Color.White, new PointF(20, y));
                     y += 50;
-                    ctx.DrawText("Duration: " + track.GetValueOrDefault("Duration", "0:00"), Font, Color.White, new PointF(20, y));
+                    ctx.DrawText("Duration: " + track.GetValueOrDefault("Duration", "0:00"), font, Color.White, new PointF(20, y));
                 });
                 // Apply rounded corners - This was a bitch to get right
                 try
