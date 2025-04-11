@@ -1,24 +1,15 @@
-﻿using PlexBot.Utils;
+using PlexBot.Utils;
 
 namespace PlexBot.Utils;
 
-/// <summary>
-/// Handles environment-based configuration for the application.
-/// This utility class provides access to configuration values from environment variables
-/// and .env files, with strong typing support and default values for missing configurations.
-/// </summary>
+/// <summary>Centralizes configuration management by providing access to environment variables and .env files with strong typing support</summary>
 public static class EnvConfig
 {
     private static readonly Dictionary<string, string> _envVariables = new();
     private static bool _initialized = false;
 
-    /// <summary>
-    /// Initializes the configuration by loading values from .env files and environment variables.
-    /// This method should be called at application startup to ensure all configuration is loaded
-    /// before it's needed. It handles both reading from a .env file (if present) and from system
-    /// environment variables, with environment variables taking precedence.
-    /// </summary>
-    /// <param name="envFilePath">Optional explicit path to the .env file</param>
+    /// <summary>Loads configuration values from both .env files and system environment variables, with system variables taking precedence</summary>
+    /// <param name="envFilePath">Optional custom path to the .env file, defaults to the application base directory</param>
     public static void Initialize(string? envFilePath = null)
     {
         if (_initialized)
@@ -53,14 +44,10 @@ public static class EnvConfig
         Logs.Init($"Configuration initialized with {_envVariables.Count} values");
     }
 
-    /// <summary>
-    /// Gets a configuration value as a string, with an optional default value.
-    /// This is the core method for retrieving configuration values, used by the
-    /// strongly-typed getter methods.
-    /// </summary>
-    /// <param name="key">The configuration key to look up</param>
-    /// <param name="defaultValue">The default value to return if the key is not found</param>
-    /// <returns>The configuration value if found; otherwise, the default value</returns>
+    /// <summary>Retrieves a string configuration value, automatically initializing the system if needed</summary>
+    /// <param name="key">The configuration key name to look up, case-sensitive</param>
+    /// <param name="defaultValue">Value to return if the key doesn't exist, protecting against null configurations</param>
+    /// <returns>The configuration value if found; otherwise, the provided default value</returns>
     public static string Get(string key, string defaultValue = "")
     {
         if (!_initialized)
@@ -76,13 +63,10 @@ public static class EnvConfig
         return defaultValue;
     }
 
-    /// <summary>
-    /// Gets a configuration value as a boolean.
-    /// Handles various string representations of boolean values ("true", "yes", "1", etc.)
-    /// </summary>
-    /// <param name="key">The configuration key to look up</param>
-    /// <param name="defaultValue">The default value to return if the key is not found or cannot be parsed</param>
-    /// <returns>The configuration value as a boolean</returns>
+    /// <summary>Converts a configuration string to a boolean value, supporting various common boolean representations</summary>
+    /// <param name="key">The configuration key to look up, case-sensitive</param>
+    /// <param name="defaultValue">The fallback value when the key is missing or has an invalid format</param>
+    /// <returns>True for values like "true", "yes", "1"; False for "false", "no", "0"; default value for anything else</returns>
     public static bool GetBool(string key, bool defaultValue = false)
     {
         string value = Get(key);
@@ -100,21 +84,59 @@ public static class EnvConfig
         };
     }
 
-    /// <summary>
-    /// Gets a configuration value as an integer.
-    /// </summary>
-    /// <param name="key">The configuration key to look up</param>
-    /// <param name="defaultValue">The default value to return if the key is not found or cannot be parsed</param>
-    /// <returns>The configuration value as an integer</returns>
+    /// <summary>Parses a configuration string to an integer, protecting against conversion errors with a default value</summary>
+    /// <param name="key">The configuration key to look up, case-sensitive</param>
+    /// <param name="defaultValue">The fallback value when the key is missing or cannot be parsed</param>
+    /// <returns>The integer value if conversion succeeds; otherwise, the default value</returns>
     public static int GetInt(string key, int defaultValue = 0)
     {
         string value = Get(key);
-        return int.TryParse(value, out int result) ? result : defaultValue;
+        if (string.IsNullOrEmpty(value) || !int.TryParse(value, out int result))
+        {
+            return defaultValue;
+        }
+
+        return result;
     }
 
-    /// <summary>
-    /// Gets a configuration value as a long integer.
-    /// </summary>
+    /// <summary>Reads and parses a .env file, extracting key-value pairs while handling comments and formatting</summary>
+    /// <param name="filePath">Path to the .env file to read</param>
+    private static void LoadEnvFile(string filePath)
+    {
+        // Each line in the file should be in the format KEY=VALUE
+        foreach (string line in File.ReadAllLines(filePath))
+        {
+            string trimmedLine = line.Trim();
+
+            // Skip empty lines and comments
+            if (string.IsNullOrEmpty(trimmedLine) || trimmedLine.StartsWith("#"))
+            {
+                continue;
+            }
+
+            // Split on the first = character
+            int equalSignIndex = trimmedLine.IndexOf('=');
+            if (equalSignIndex <= 0)
+            {
+                Logs.Warning($"Invalid configuration line in .env file: {trimmedLine}");
+                continue;
+            }
+
+            string key = trimmedLine.Substring(0, equalSignIndex).Trim();
+            string value = trimmedLine.Substring(equalSignIndex + 1).Trim();
+
+            // Remove quotes if present
+            if ((value.StartsWith("\"") && value.EndsWith("\"")) ||
+                (value.StartsWith("'") && value.EndsWith("'")))
+            {
+                value = value.Substring(1, value.Length - 2);
+            }
+
+            _envVariables[key] = value;
+        }
+    }
+
+    /// <summary>Gets a configuration value as a long integer.</summary>
     /// <param name="key">The configuration key to look up</param>
     /// <param name="defaultValue">The default value to return if the key is not found or cannot be parsed</param>
     /// <returns>The configuration value as a long integer</returns>
@@ -124,9 +146,7 @@ public static class EnvConfig
         return long.TryParse(value, out long result) ? result : defaultValue;
     }
 
-    /// <summary>
-    /// Gets a configuration value as a double.
-    /// </summary>
+    /// <summary>Gets a configuration value as a double.</summary>
     /// <param name="key">The configuration key to look up</param>
     /// <param name="defaultValue">The default value to return if the key is not found or cannot be parsed</param>
     /// <returns>The configuration value as a double</returns>
@@ -136,9 +156,7 @@ public static class EnvConfig
         return double.TryParse(value, out double result) ? result : defaultValue;
     }
 
-    /// <summary>
-    /// Gets a configuration value as a TimeSpan, parsing it from seconds.
-    /// </summary>
+    /// <summary>Gets a configuration value as a TimeSpan, parsing it from seconds.</summary>
     /// <param name="key">The configuration key to look up</param>
     /// <param name="defaultSeconds">The default seconds to return if the key is not found or cannot be parsed</param>
     /// <returns>The configuration value as a TimeSpan</returns>
@@ -148,10 +166,7 @@ public static class EnvConfig
         return TimeSpan.FromSeconds(seconds);
     }
 
-    /// <summary>
-    /// Gets a configuration value as an enum of type T.
-    /// Case-insensitive matching is used for enum value names.
-    /// </summary>
+    /// <summary>Gets a configuration value as an enum of type T.</summary>
     /// <typeparam name="T">The enum type to parse</typeparam>
     /// <param name="key">The configuration key to look up</param>
     /// <param name="defaultValue">The default value to return if the key is not found or cannot be parsed</param>
@@ -162,11 +177,7 @@ public static class EnvConfig
         return Enum.TryParse(value, true, out T result) ? result : defaultValue;
     }
 
-    /// <summary>
-    /// Gets all configuration values with keys that start with the specified prefix.
-    /// Useful for retrieving grouped configuration values, such as all settings for a
-    /// particular component.
-    /// </summary>
+    /// <summary>Gets all configuration values with keys that start with the specified prefix.</summary>
     /// <param name="prefix">The prefix to filter keys by</param>
     /// <returns>A dictionary of matching configuration keys and values</returns>
     public static Dictionary<string, string> GetSection(string prefix)
@@ -187,11 +198,7 @@ public static class EnvConfig
         return result;
     }
 
-    /// <summary>
-    /// Sets a configuration value at runtime.
-    /// This is useful for dynamically updating configuration during execution
-    /// or for setting derived configuration values.
-    /// </summary>
+    /// <summary>Sets a configuration value at runtime.</summary>
     /// <param name="key">The configuration key to set</param>
     /// <param name="value">The value to set</param>
     public static void Set(string key, string value)
@@ -202,48 +209,5 @@ public static class EnvConfig
         }
 
         _envVariables[key] = value;
-    }
-
-    /// <summary>
-    /// Loads environment variables from a .env file.
-    /// Parses the file line by line, handling comments and variable assignments.
-    /// </summary>
-    /// <param name="filePath">The path to the .env file</param>
-    private static void LoadEnvFile(string filePath)
-    {
-        try
-        {
-            string[] lines = File.ReadAllLines(filePath);
-            foreach (string line in lines)
-            {
-                // Skip empty lines and comments
-                string trimmedLine = line.Trim();
-                if (string.IsNullOrEmpty(trimmedLine) || trimmedLine.StartsWith("#"))
-                {
-                    continue;
-                }
-
-                // Parse key=value pairs
-                int equalsPos = trimmedLine.IndexOf('=');
-                if (equalsPos > 0)
-                {
-                    string key = trimmedLine.Substring(0, equalsPos).Trim();
-                    string value = trimmedLine.Substring(equalsPos + 1).Trim();
-
-                    // Remove surrounding quotes if present
-                    if (value.StartsWith("\"") && value.EndsWith("\"") ||
-                        value.StartsWith("'") && value.EndsWith("'"))
-                    {
-                        value = value.Substring(1, value.Length - 2);
-                    }
-
-                    _envVariables[key] = value;
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            Logs.Error($"Error loading .env file: {ex.Message}");
-        }
     }
 }

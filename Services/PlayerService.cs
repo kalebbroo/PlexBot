@@ -1,22 +1,18 @@
-﻿using PlexBot.Core.Exceptions;
+using PlexBot.Core.Exceptions;
 using PlexBot.Core.Models.Media;
 using PlexBot.Utils;
 
 namespace PlexBot.Services;
 
-/// <summary>Service for managing audio players in Discord voice channels.
-/// This service handles the creation, retrieval, and control of CustomPlayer instances,
-/// providing a high-level interface for playing music from various sources
-/// in Discord voice channels with rich metadata and visual interfaces.</summary>
+/// <summary>Comprehensive service that manages audio playback in Discord voice channels, handling player lifecycle, track queueing, and providing rich metadata integration with Plex</summary>
 public class PlayerService : IPlayerService
 {
     private readonly IAudioService _audioService;
     private readonly float _defaultVolume;
     private readonly TimeSpan _inactivityTimeout;
 
-    /// <summary>Initializes a new instance of the <see cref="PlayerService"/> class.
-    /// Sets up the service with necessary dependencies and configuration.</summary>
-    /// <param name="audioService">The Lavalink audio service for playback</param>
+    /// <summary>Constructs the player service with necessary dependencies and loads configuration from environment variables to ensure consistent playback settings</summary>
+    /// <param name="audioService">The Lavalink audio service that provides the underlying audio streaming capabilities</param>
     public PlayerService(IAudioService audioService)
     {
         _audioService = audioService ?? throw new ArgumentNullException(nameof(audioService));

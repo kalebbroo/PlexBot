@@ -1,82 +1,48 @@
-﻿namespace PlexBot.Core.Exceptions;
+namespace PlexBot.Core.Exceptions;
 
-/// <summary>
-/// Base exception class for all application-specific exceptions.
-/// Serves as the foundation for a domain-specific exception hierarchy, allowing
-/// for consistent error handling patterns across the application while providing
-/// meaningful context about the nature of errors.
-/// </summary>
+/// <summary>Foundation exception class that provides the basis for all application-specific errors with both technical and user-friendly messaging</summary>
 public class PlexBotException : Exception
 {
-    /// <summary>
-    /// Gets or sets a recommended user-friendly error message.
-    /// This property provides a message suitable for displaying to end users,
-    /// with technical details abstracted away while still conveying the nature
-    /// of the error. If not explicitly set, it defaults to a generic message.
-    /// </summary>
+    /// <summary>A simplified, non-technical message that can be safely displayed to end users through Discord or other interfaces</summary>
     public string UserFriendlyMessage { get; set; }
 
-    /// <summary>
-    /// Initializes a new instance of the <see cref="PlexBotException"/> class.
-    /// Creates a basic exception with no specific message or inner exception.
-    /// </summary>
+    /// <summary>Creates a basic exception with default generic messages for both technical logging and user-facing output</summary>
     public PlexBotException()
         : base("An error occurred in the Plex Bot application.")
     {
         UserFriendlyMessage = "Something went wrong. Please try again later.";
     }
 
-    /// <summary>
-    /// Initializes a new instance of the <see cref="PlexBotException"/> class with a message.
-    /// Creates an exception with a specific error message explaining the issue.
-    /// </summary>
-    /// <param name="message">The error message that explains the reason for the exception</param>
+    /// <summary>Creates an exception with a detailed technical message for logging but still uses a generic user-facing message</summary>
+    /// <param name="message">Technical error description for developers and logs, should include specific details about what failed</param>
     public PlexBotException(string message)
         : base(message)
     {
         UserFriendlyMessage = "Something went wrong. Please try again later.";
     }
 
-    /// <summary>
-    /// Initializes a new instance of the <see cref="PlexBotException"/> class with a message and user-friendly message.
-    /// Creates an exception with both a detailed technical message for logging and
-    /// a simplified message suitable for displaying to users.
-    /// </summary>
-    /// <param name="message">The error message that explains the reason for the exception</param>
-    /// <param name="userFriendlyMessage">A simplified message suitable for displaying to users</param>
+    /// <summary>Creates an exception with separate messages for technical logging and user interface display</summary>
+    /// <param name="message">Detailed technical message that explains precisely what went wrong for developers and logs</param>
+    /// <param name="userFriendlyMessage">Simplified, helpful message suitable for displaying to end users without exposing technical details</param>
     public PlexBotException(string message, string userFriendlyMessage)
         : base(message)
     {
         UserFriendlyMessage = userFriendlyMessage;
     }
 
-    /// <summary>
-    /// Initializes a new instance of the <see cref="PlexBotException"/> class with a message and inner exception.
-    /// Creates an exception with a specific error message and includes the inner exception
-    /// that is the cause of the current exception.
-    /// </summary>
-    /// <param name="message">The error message that explains the reason for the exception</param>
-    /// <param name="innerException">
-    /// The exception that is the cause of the current exception, or a null reference if no
-    /// inner exception is specified
-    /// </param>
+    /// <summary>Creates an exception that wraps another exception while preserving the detailed technical context for debugging</summary>
+    /// <param name="message">Additional context about where/why the inner exception occurred</param>
+    /// <param name="innerException">The original exception that triggered this higher-level exception, maintaining the full error chain</param>
     public PlexBotException(string message, Exception innerException)
         : base(message, innerException)
     {
         UserFriendlyMessage = "Something went wrong. Please try again later.";
     }
 
-    /// <summary>
-    /// Initializes a new instance of the <see cref="PlexBotException"/> class with a message, user-friendly message, and inner exception.
-    /// Creates an exception with a detailed technical message, user-friendly message, and
-    /// includes the inner exception that is the cause of the current exception.
-    /// </summary>
-    /// <param name="message">The error message that explains the reason for the exception</param>
-    /// <param name="userFriendlyMessage">A simplified message suitable for displaying to users</param>
-    /// <param name="innerException">
-    /// The exception that is the cause of the current exception, or a null reference if no
-    /// inner exception is specified
-    /// </param>
+    /// <summary>Creates a fully-featured exception with technical message, user-friendly message, and the original exception for complete error handling</summary>
+    /// <param name="message">Technical explanation of the error for developers and logs</param>
+    /// <param name="userFriendlyMessage">End-user appropriate message that can guide them toward resolution without exposing implementation details</param>
+    /// <param name="innerException">The original exception that triggered this error, providing the complete error stack trace for debugging</param>
     public PlexBotException(string message, string userFriendlyMessage, Exception innerException)
         : base(message, innerException)
     {

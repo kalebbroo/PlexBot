@@ -1,39 +1,21 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using PlexBot.Utils;
 
 namespace PlexBot.Core.Models.Extensions;
 
-/// <summary>
-/// Manages the discovery, loading, and lifecycle of bot extensions.
-/// This class is the central coordinator for all extension-related operations,
-/// providing a consistent interface for working with extensions and ensuring
-/// they're properly initialized, configured, and eventually shut down.
-/// </summary>
+/// <summary>Manages the discovery, loading, and lifecycle of bot extensions, providing a central coordination point for all extension operations</summary>
 public class ExtensionManager
 {
-    /// <summary>
-    /// Dictionary of all loaded extensions, keyed by their unique ID.
-    /// Provides fast lookup of extensions by ID for dependency management.
-    /// </summary>
+    /// <summary>Dictionary of all loaded extensions keyed by their unique ID for fast lookup and dependency management</summary>
     private readonly ConcurrentDictionary<string, Extension> _loadedExtensions = [];
 
-    /// <summary>
-    /// Service provider for dependency injection within extensions.
-    /// Used to provide services to extensions during initialization.
-    /// </summary>
+    /// <summary>Service provider for dependency injection to supply extensions with required services during initialization</summary>
     private readonly IServiceProvider _serviceProvider;
 
-    /// <summary>
-    /// Base directory where extension folders are located.
-    /// Each extension should have its own subdirectory within this path.
-    /// </summary>
+    /// <summary>Base directory path where extension folders are located, with each extension having its own subdirectory</summary>
     private readonly string _extensionsDirectory;
 
-    /// <summary>
-    /// Initializes a new instance of the ExtensionManager class.
-    /// Sets up the manager with the necessary dependencies and prepares
-    /// for loading extensions from the specified directory.
-    /// </summary>
+    /// <summary>Initializes a new ExtensionManager with the necessary dependencies for loading and managing extensions</summary>
     /// <param name="serviceProvider">The service provider for dependency injection</param>
     /// <param name="extensionsDirectory">Directory path where extensions are located</param>
     public ExtensionManager(IServiceProvider serviceProvider, string extensionsDirectory)
@@ -49,11 +31,7 @@ public class ExtensionManager
         }
     }
 
-    /// <summary>
-    /// Discovers all available extensions in the extensions directory.
-    /// Scans each subdirectory for extension implementations by loading assemblies
-    /// and finding types that derive from the Extension base class.
-    /// </summary>
+    /// <summary>Discovers available extensions by scanning subdirectories for assemblies containing Extension-derived types</summary>
     /// <returns>A collection of discovered but not yet loaded extension instances</returns>
     public IEnumerable<Extension> DiscoverExtensions()
     {
@@ -124,11 +102,7 @@ public class ExtensionManager
         return discoveredExtensions;
     }
 
-    /// <summary>
-    /// Loads all discovered extensions, respecting dependencies.
-    /// Sorts extensions by dependency order, registers their services,
-    /// and initializes them. Extensions with missing dependencies will not be loaded.
-    /// </summary>
+    /// <summary>Loads all discovered extensions in dependency order, registering their services and initializing them</summary>
     /// <param name="serviceCollection">The service collection to register extension services with</param>
     /// <returns>The number of successfully loaded extensions</returns>
     public async Task<int> LoadAllExtensionsAsync(IServiceCollection serviceCollection)
@@ -177,11 +151,7 @@ public class ExtensionManager
         }
     }
 
-    /// <summary>
-    /// Loads a single extension.
-    /// Checks dependencies, initializes the extension, and adds it to the
-    /// loaded extensions dictionary if successful.
-    /// </summary>
+    /// <summary>Loads a single extension by checking dependencies, initializing it, and adding it to the loaded extensions</summary>
     /// <param name="extension">The extension to load</param>
     /// <returns>True if the extension was successfully loaded; otherwise, false</returns>
     public async Task<bool> LoadExtensionAsync(Extension extension)
@@ -200,7 +170,7 @@ public class ExtensionManager
             {
                 if (!_loadedExtensions.ContainsKey(dependencyId))
                 {
-                    Logs.Error($"Cannot load extension {extension.Name}: Missing dependency {dependencyId}");
+                    Logs.Error($"Extension {extension.Name} depends on {dependencyId} which is not loaded");
                     return false;
                 }
             }
@@ -208,203 +178,227 @@ public class ExtensionManager
             try
             {
                 // Initialize the extension
-                if (await extension.InitializeAsync(_serviceProvider))
+                Logs.Info($"Initializing extension: {extension.Name}");
+                await extension.InitializeAsync(_serviceProvider);
+
+                // Add to loaded extensions
+                if (_loadedExtensions.TryAdd(extension.Id, extension))
                 {
-                    // Add to loaded extensions
-                    if (_loadedExtensions.TryAdd(extension.Id, extension))
-                    {
-                        Logs.Info($"Successfully loaded extension: {extension.Name} v{extension.Version}");
-                        return true;
-                    }
-                    else
-                    {
-                        Logs.Error($"Failed to add extension {extension.Name} to loaded extensions dictionary");
-                        await extension.ShutdownAsync();
-                        return false;
-                    }
+                    Logs.Info($"Successfully loaded extension: {extension.Name}");
+                    return true;
                 }
                 else
                 {
-                    Logs.Error($"Extension {extension.Name} failed to initialize");
-                    return false;
+                    Logs.Error($"Failed to add extension {extension.Name} to loaded extensions dictionary");
                 }
             }
             catch (Exception ex)
             {
-                Logs.Error($"Exception loading extension {extension.Name}: {ex.Message}");
-                return false;
+                Logs.Error($"Failed to initialize extension {extension.Name}: {ex.Message}");
             }
         }
-        throw new ArgumentNullException(nameof(extension));
+
+        return false;
     }
 
-    /// <summary>
-    /// Unloads a single extension by its ID.
-    /// Calls the extension's shutdown method and removes it from the loaded extensions.
-    /// </summary>
+    /// <summary>Unloads a single extension by shutting it down and removing it from the loaded extensions</summary>
     /// <param name="extensionId">The ID of the extension to unload</param>
-    /// <returns>True if the extension was found and unloaded; otherwise, false</returns>
+    /// <returns>True if the extension was successfully unloaded; otherwise, false</returns>
     public async Task<bool> UnloadExtensionAsync(string extensionId)
     {
         if (string.IsNullOrEmpty(extensionId))
         {
-            throw new ArgumentNullException(nameof(extensionId));
+            return false;
         }
 
-        // Try to get the extension
-        if (_loadedExtensions.TryRemove(extensionId, out Extension? extension))
+        // Check if the extension is loaded
+        if (!_loadedExtensions.TryGetValue(extensionId, out Extension? extension))
         {
-            try
+            Logs.Warning($"Extension {extensionId} is not loaded");
+            return false;
+        }
+
+        // Check if other extensions depend on this one
+        foreach (var loadedExtension in _loadedExtensions.Values)
+        {
+            if (loadedExtension.Dependencies.Contains(extensionId))
             {
-                // Call shutdown
-                await extension.ShutdownAsync();
-                Logs.Info($"Unloaded extension: {extension.Name}");
-                return true;
-            }
-            catch (Exception ex)
-            {
-                Logs.Error($"Error during extension shutdown for {extension.Name}: {ex.Message}");
+                Logs.Error($"Cannot unload extension {extension.Name} because {loadedExtension.Name} depends on it");
                 return false;
             }
         }
 
-        Logs.Warning($"Extension with ID {extensionId} not found for unloading");
+        try
+        {
+            // Shutdown the extension
+            Logs.Info($"Shutting down extension: {extension.Name}");
+            await extension.ShutdownAsync();
+
+            // Remove from loaded extensions
+            if (_loadedExtensions.TryRemove(extensionId, out _))
+            {
+                Logs.Info($"Successfully unloaded extension: {extension.Name}");
+                return true;
+            }
+            else
+            {
+                Logs.Error($"Failed to remove extension {extension.Name} from loaded extensions dictionary");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logs.Error($"Failed to shutdown extension {extension.Name}: {ex.Message}");
+        }
+
         return false;
     }
 
-    /// <summary>
-    /// Unloads all currently loaded extensions.
-    /// Calls each extension's shutdown method in reverse dependency order.
-    /// This is typically used during bot shutdown to ensure clean termination.
-    /// </summary>
-    /// <returns>The number of extensions successfully unloaded</returns>
+    /// <summary>Unloads all extensions in reverse dependency order to ensure safe shutdown</summary>
+    /// <returns>The number of successfully unloaded extensions</returns>
     public async Task<int> UnloadAllExtensionsAsync()
     {
-        int unloadedCount = 0;
-
-        // Get all loaded extensions
-        var extensions = _loadedExtensions.Values.ToList();
-
-        // Sort in reverse dependency order
-        List<Extension> sortedExtensions = SortExtensionsByDependencies(extensions);
-        sortedExtensions.Reverse(); // Reverse to unload in opposite order
-
-        // Unload each extension
-        foreach (var extension in sortedExtensions)
+        try
         {
-            if (await UnloadExtensionAsync(extension.Id))
-            {
-                unloadedCount++;
-            }
-        }
+            // Get all loaded extensions
+            var extensions = _loadedExtensions.Values.ToList();
 
-        Logs.Info($"Unloaded {unloadedCount} extensions");
-        return unloadedCount;
+            // Sort extensions in reverse dependency order
+            List<Extension> sortedExtensions = SortExtensionsByDependencies(extensions);
+            sortedExtensions.Reverse(); // Reverse to unload in opposite order of loading
+
+            // This counter tracks the number of extensions that were successfully unloaded
+            int unloadedCount = 0;
+
+            // Unload extensions in reverse dependency order
+            foreach (var extension in sortedExtensions)
+            {
+                if (await UnloadExtensionAsync(extension.Id))
+                {
+                    unloadedCount++;
+                }
+            }
+
+            Logs.Info($"Successfully unloaded {unloadedCount} of {sortedExtensions.Count} extensions");
+            return unloadedCount;
+        }
+        catch (Exception ex)
+        {
+            Logs.Error($"Failed to unload extensions: {ex.Message}");
+            return 0;
+        }
     }
 
-    /// <summary>
-    /// Gets an extension by its ID.
-    /// Used to access a specific extension's functionality or check its status.
-    /// </summary>
-    /// <param name="extensionId">The ID of the extension to get</param>
-    /// <returns>The extension if found; otherwise, null</returns>
+    /// <summary>Gets a loaded extension by its ID for direct access to its functionality</summary>
+    /// <param name="extensionId">The ID of the extension to retrieve</param>
+    /// <returns>The loaded extension if found; otherwise, null</returns>
     public Extension? GetExtension(string extensionId)
     {
         if (string.IsNullOrEmpty(extensionId))
         {
-            throw new ArgumentNullException(nameof(extensionId));
+            return null;
         }
 
         _loadedExtensions.TryGetValue(extensionId, out Extension? extension);
         return extension;
     }
 
-    /// <summary>
-    /// Gets all currently loaded extensions.
-    /// Provides a snapshot of all active extensions for management or display.
-    /// </summary>
+    /// <summary>Gets all currently loaded extensions for status reporting and management</summary>
     /// <returns>A collection of all loaded extensions</returns>
-    public IEnumerable<Extension> GetAllLoadedExtensions()
+    public IEnumerable<Extension> GetAllExtensions()
     {
-        return [.. _loadedExtensions.Values];
+        return _loadedExtensions.Values;
     }
 
-    /// <summary>
-    /// Sorts a collection of extensions by dependency order.
-    /// Uses a topological sort to ensure extensions are loaded/unloaded in the correct order,
-    /// respecting dependencies between extensions.
-    /// </summary>
+    /// <summary>Sorts extensions based on their dependencies to ensure proper loading order</summary>
     /// <param name="extensions">The extensions to sort</param>
     /// <returns>A list of extensions sorted by dependency order</returns>
-    private static List<Extension> SortExtensionsByDependencies(IEnumerable<Extension> extensions)
+    private List<Extension> SortExtensionsByDependencies(IEnumerable<Extension> extensions)
     {
-        Dictionary<string, Extension> extensionMap = extensions.ToDictionary(e => e.Id);
-        Dictionary<string, bool> visited = [];
-        Dictionary<string, bool> inProgress = [];
-        List<Extension> sorted = [];
+        // Create a dictionary of extensions by ID for quick lookup
+        Dictionary<string, Extension> extensionsDict = extensions.ToDictionary(e => e.Id);
 
+        // Create a graph of dependencies
+        Dictionary<string, List<string>> dependencyGraph = new();
         foreach (var extension in extensions)
         {
-            if (!visited.ContainsKey(extension.Id))
+            dependencyGraph[extension.Id] = extension.Dependencies.ToList();
+        }
+
+        // Perform a topological sort
+        List<string> sortedIds = TopologicalSort(dependencyGraph);
+
+        // Convert back to Extension objects
+        List<Extension> sortedExtensions = [];
+        foreach (string id in sortedIds)
+        {
+            if (extensionsDict.TryGetValue(id, out Extension? extension))
             {
-                if (!VisitExtension(extension.Id, extensionMap, visited, inProgress, sorted))
-                {
-                    Logs.Error($"Dependency cycle detected involving extension {extension.Id}");
-                }
+                sortedExtensions.Add(extension);
             }
         }
 
-        return sorted;
+        return sortedExtensions;
     }
 
-    /// <summary>
-    /// Helper method for the topological sort algorithm.
-    /// Recursively visits extensions and their dependencies to build the sorted list.
-    /// </summary>
-    /// <param name="id">The ID of the extension to visit</param>
-    /// <param name="extensionMap">Map of extension IDs to extensions</param>
-    /// <param name="visited">Set of visited extensions</param>
-    /// <param name="inProgress">Set of extensions currently being processed (for cycle detection)</param>
-    /// <param name="sorted">Output list of sorted extensions</param>
-    /// <returns>True if sorting was successful; false if a cycle was detected</returns>
-    private static bool VisitExtension(string id, Dictionary<string, Extension> extensionMap, Dictionary<string, bool> visited, Dictionary<string, bool> inProgress, List<Extension> sorted)
+    /// <summary>Performs a topological sort on a dependency graph to determine the correct loading sequence</summary>
+    /// <param name="graph">The dependency graph where keys are node IDs and values are lists of dependencies</param>
+    /// <returns>A list of node IDs in topological order</returns>
+    private List<string> TopologicalSort(Dictionary<string, List<string>> graph)
     {
-        // Check for cycles
-        if (inProgress.ContainsKey(id))
-        {
-            return false; // Cycle detected
-        }
+        List<string> result = [];
+        HashSet<string> visited = [];
+        HashSet<string> temp = [];
 
-        // If already visited, skip
-        if (visited.ContainsKey(id))
+        // Visit all nodes
+        foreach (string node in graph.Keys)
         {
-            return true;
-        }
-
-        // If the extension doesn't exist, skip
-        if (!extensionMap.TryGetValue(id, out Extension? extension))
-        {
-            Logs.Warning($"Dependency {id} not found, skipping");
-            return true;
-        }
-
-        // Mark as in progress for cycle detection
-        inProgress[id] = true;
-
-        // Visit dependencies first
-        foreach (string dependencyId in extension.Dependencies)
-        {
-            if (!VisitExtension(dependencyId, extensionMap, visited, inProgress, sorted))
+            if (!visited.Contains(node) && !temp.Contains(node))
             {
-                return false; // Propagate cycle detection
+                TopologicalSortVisit(node, graph, visited, temp, result);
             }
         }
 
-        // Mark as visited and add to sorted list
-        visited[id] = true;
-        inProgress.Remove(id);
-        sorted.Add(extension);
+        return result;
+    }
 
-        return true;
+    /// <summary>Helper method for the topological sort algorithm to visit nodes in the dependency graph</summary>
+    /// <param name="node">The current node being visited</param>
+    /// <param name="graph">The dependency graph</param>
+    /// <param name="visited">Set of permanently visited nodes</param>
+    /// <param name="temp">Set of temporarily visited nodes (for cycle detection)</param>
+    /// <param name="result">The result list being built</param>
+    private void TopologicalSortVisit(
+        string node,
+        Dictionary<string, List<string>> graph,
+        HashSet<string> visited,
+        HashSet<string> temp,
+        List<string> result)
+    {
+        // Check for cycles
+        if (temp.Contains(node))
+        {
+            throw new InvalidOperationException($"Cyclic dependency detected involving extension {node}");
+        }
+
+        if (!visited.Contains(node))
+        {
+            temp.Add(node);
+
+            // Visit all dependencies
+            if (graph.TryGetValue(node, out List<string>? dependencies))
+            {
+                foreach (string dependency in dependencies)
+                {
+                    if (graph.ContainsKey(dependency)) // Only visit dependencies that exist in the graph
+                    {
+                        TopologicalSortVisit(dependency, graph, visited, temp, result);
+                    }
+                }
+            }
+
+            temp.Remove(node);
+            visited.Add(node);
+            result.Add(node);
+        }
     }
 }

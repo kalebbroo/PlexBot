@@ -1,18 +1,13 @@
-﻿using PlexBot.Utils;
+using PlexBot.Utils;
 
 namespace PlexBot.Main;
 
-/// <summary>
-/// Main entry point for the application.
-/// Configures and starts the host, initializes logging, and handles startup.
-/// </summary>
+/// <summary>Main application class that handles bot initialization, configuration loading, and service startup</summary>
 public class PlexBotMain
 {
-    /// <summary>
-    /// Application entry point.
-    /// </summary>
-    /// <param name="args">Command line arguments</param>
-    /// <returns>A task representing the asynchronous operation</returns>
+    /// <summary>Application entry point. Sets up logging configuration, initializes environment variables, and manages the application lifecycle</summary>
+    /// <param name="args">Command line arguments passed to the application</param>
+    /// <returns>A task representing the asynchronous operation of the entire bot runtime</returns>
     public static async Task Main(string[] args)
     {
         try
@@ -68,12 +63,9 @@ public class PlexBotMain
         }
     }
 
-    /// <summary>
-    /// Creates the host builder for the application.
-    /// Configures services, logging, and DI for the application.
-    /// </summary>
-    /// <param name="args">Command line arguments</param>
-    /// <returns>A configured host builder</returns>
+    /// <summary>Creates and configures the host builder with necessary services and dependency injection for the bot to function</summary>
+    /// <param name="args">Command line arguments to pass to the host builder</param>
+    /// <returns>A configured host builder ready to start all bot services</returns>
     private static IHostBuilder CreateHostBuilder(string[] args) =>
         Host.CreateDefaultBuilder(args)
             .ConfigureServices((hostContext, services) =>

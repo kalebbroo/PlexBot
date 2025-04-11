@@ -1,15 +1,10 @@
-﻿using PlexBot.Core.Exceptions;
+using PlexBot.Core.Exceptions;
 using PlexBot.Utils.Http;
 using PlexBot.Utils;
 
 namespace PlexBot.Services.PlexApi
 {
-    /// <summary>
-    /// Provides core functionality for interacting with the Plex API.
-    /// This service handles the low-level communication with Plex servers,
-    /// including request building, authentication, and error handling.
-    /// It serves as the foundation for more specialized Plex services.
-    /// </summary>
+    /// <summary>Implements low-level communication with Plex Media Server API, handling authentication, request formatting, and error management</summary>
     public class PlexApiService : IPlexApiService
     {
         private readonly HttpClientWrapper _httpClient;
@@ -17,12 +12,9 @@ namespace PlexBot.Services.PlexApi
         private readonly IPlexAuthService _authService;
         private string? _plexToken;
 
-        /// <summary>
-        /// Initializes a new instance of the <see cref="PlexApiService"/> class.
-        /// Sets up the service with necessary configuration values and dependencies.
-        /// </summary>
-        /// <param name="httpClient">HTTP client for making API requests</param>
-        /// <param name="authService">Service for handling Plex authentication</param>
+        /// <summary>Configures the service with required dependencies and validates essential configuration settings</summary>
+        /// <param name="httpClient">HTTP client for making network requests to the Plex server</param>
+        /// <param name="authService">Authentication service that provides valid Plex access tokens</param>
         public PlexApiService(HttpClient httpClient, IPlexAuthService authService)
         {
             _httpClient = new HttpClientWrapper(httpClient, "PlexAPI");
@@ -99,6 +91,7 @@ namespace PlexBot.Services.PlexApi
         /// <inheritdoc />
         public string GetPlaybackUrl(string partKey)
         {
+            // Ensure part key is properly formatted
             if (string.IsNullOrEmpty(partKey))
             {
                 throw new ArgumentException("Part key cannot be null or empty", nameof(partKey));
