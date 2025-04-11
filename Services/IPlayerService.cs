@@ -2,66 +2,47 @@
 
 namespace PlexBot.Services;
 
-/// <summary>
-/// Defines the contract for services that manage audio players.
+/// <summary>Defines the contract for services that manage audio players.
 /// This interface abstracts the playback functionality, handling the creation
 /// and control of audio players for Discord voice channels while hiding the
-/// underlying audio streaming implementation details.
-/// </summary>
+/// underlying audio streaming implementation details.</summary>
 public interface IPlayerService
 {
-    /// <summary>
-    /// Gets or creates a player for a specific guild and interaction.
+    /// <summary>Gets or creates a player for a specific guild and interaction.
     /// This method handles the logic of retrieving an existing player if one
     /// exists for the guild, or creating a new one if needed. It also manages
-    /// connecting to voice channels as needed based on the specified behavior.
-    /// </summary>
+    /// connecting to voice channels as needed based on the specified behavior.</summary>
     /// <param name="interaction">The Discord interaction that triggered this request</param>
     /// <param name="connectToVoiceChannel">
-    /// Whether to automatically connect to the user's voice channel when creating a player
-    /// </param>
+    /// Whether to automatically connect to the user's voice channel when creating a player</param>
     /// <param name="cancellationToken">Optional token to cancel the operation</param>
-    /// <returns>
-    /// A player instance if created successfully; otherwise, null if the
-    /// operation failed (e.g., user not in a voice channel)
-    /// </returns>
+    /// <returns>A player instance if created successfully; otherwise, null if the
+    /// operation failed (e.g., user not in a voice channel)</returns>
     /// <exception cref="PlayerException">Thrown when player creation or retrieval fails</exception>
-    Task<QueuedLavalinkPlayer?> GetPlayerAsync(
-        IDiscordInteraction interaction,
-        bool connectToVoiceChannel = true,
+    Task<QueuedLavalinkPlayer?> GetPlayerAsync(IDiscordInteraction interaction, bool connectToVoiceChannel = true,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Plays a single track in the voice channel.
+    /// <summary>Plays a single track in the voice channel.
     /// Handles all aspects of playing a track, including retrieving the track from its source,
     /// converting it to a format suitable for playback, and starting playback with appropriate
     /// settings. This method will either play the track immediately or add it to the queue
-    /// based on the player's current state.
-    /// </summary>
+    /// based on the player's current state.</summary>
     /// <param name="interaction">The Discord interaction that triggered this request</param>
     /// <param name="track">The track to play</param>
     /// <param name="cancellationToken">Optional token to cancel the operation</param>
     /// <returns>A task representing the asynchronous operation</returns>
     /// <exception cref="PlayerException">Thrown when playback fails</exception>
-    Task PlayTrackAsync(
-        IDiscordInteraction interaction,
-        Track track,
-        CancellationToken cancellationToken = default);
+    Task PlayTrackAsync(IDiscordInteraction interaction, Track track, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Adds multiple tracks to the player's queue.
+    /// <summary>Adds multiple tracks to the player's queue.
     /// Processes a collection of tracks and adds them to the queue in the specified order.
-    /// This is useful for adding entire albums, playlists, or artist discographies to the queue.
-    /// </summary>
+    /// This is useful for adding entire albums, playlists, or artist discographies to the queue.</summary>
     /// <param name="interaction">The Discord interaction that triggered this request</param>
     /// <param name="tracks">The collection of tracks to add to the queue</param>
     /// <param name="cancellationToken">Optional token to cancel the operation</param>
     /// <returns>A task representing the asynchronous operation</returns>
     /// <exception cref="PlayerException">Thrown when the operation fails</exception>
-    Task AddToQueueAsync(
-        IDiscordInteraction interaction,
-        IEnumerable<Track> tracks,
-        CancellationToken cancellationToken = default);
+    Task AddToQueueAsync(IDiscordInteraction interaction, IEnumerable<Track> tracks, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Toggles the playback state between paused and playing.

@@ -1,4 +1,5 @@
-﻿using PlexBot.Core.Models.Extensions;
+﻿using PlexBot.Core.Discord.Events;
+using PlexBot.Core.Models.Extensions;
 using PlexBot.Services;
 using PlexBot.Services.PlexApi;
 using PlexBot.Utils;
@@ -66,7 +67,7 @@ namespace PlexBot.Main
                 }));
 
             // Add event handler
-            services.AddSingleton<EventHandler>();
+            services.AddSingleton<DiscordEventHandler>();
         }
 
         /// <summary>
@@ -96,21 +97,19 @@ namespace PlexBot.Main
         {
             // Add Lavalink services
             services.AddLavalink();
-
             services.ConfigureLavalink(options =>
             {
-                string password = Environment.GetEnvironmentVariable("LAVALINK_SERVER_PASSWORD") ?? "youshallnotpass";
-                string host = Environment.GetEnvironmentVariable("LAVALINK_HOST") ?? "lavalink";
-                string port = Environment.GetEnvironmentVariable("LAVALINK_SERVER_PORT") ?? "2333";
+                string password = EnvConfig.Get("LAVALINK_SERVER_PASSWORD", "youshallnotpass");
+                string host = EnvConfig.Get("LAVALINK_HOST", "lavalink");
+                string port = EnvConfig.Get("SERVER_PORT", "2333"); // Match your .env file
 
                 options.Label = "PlexBot";
                 options.Passphrase = password;
                 options.HttpClientName = host;
-                options.BufferSize = 1024 * 1024 * 4; // 4MB buffer
+                options.BufferSize = 1024 * 1024 * 4;
                 options.BaseAddress = new Uri($"http://{host}:{port}");
                 options.ResumptionOptions = new LavalinkSessionResumptionOptions(TimeSpan.FromSeconds(60));
             });
-
             // Add player service
             services.AddSingleton<IPlayerService, PlayerService>();
         }

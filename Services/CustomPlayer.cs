@@ -54,7 +54,7 @@ public sealed class CustomPlayer : QueuedLavalinkPlayer
                 ?? throw new InvalidOperationException("Track is not a CustomTrackQueueItem");
 
             // Create track information dictionary for the visual player
-            var trackInfo = new Dictionary<string, string>
+            Dictionary<string, string> trackInfo = new()
             {
                 ["Title"] = customTrack.Title ?? "Unknown Title",
                 ["Artist"] = customTrack.Artist ?? "Unknown Artist",
@@ -69,47 +69,82 @@ public sealed class CustomPlayer : QueuedLavalinkPlayer
 
             Logs.Debug($"Now playing: {trackInfo["Title"]} by {trackInfo["Artist"]}");
 
-            // Build the player image
-            using var memoryStream = new MemoryStream();
-            SixLabors.ImageSharp.Image image = await ImageBuilder.BuildPlayerImageAsync(trackInfo);
-            await image.SaveAsync(memoryStream, new PngEncoder());
-            memoryStream.Position = 0;
-
-            // Create the Discord file attachment
-            var fileAttachment = new FileAttachment(memoryStream, "playerImage.png");
-            string fileName = "playerImage.png";
-
-            // Build the player embed
-            EmbedBuilder embed = PlayerEmbedBuilder.BuildPlayerEmbed(trackInfo, $"attachment://{fileName}");
-
-            // Create player control buttons
-            ComponentBuilder components = new ComponentBuilder()
-                .WithButton("Pause", "pause_resume:pause", ButtonStyle.Secondary)
-                .WithButton("Skip", "skip:skip", ButtonStyle.Primary)
-                .WithButton("Queue Options", "queue_options:options:1", ButtonStyle.Success)
-                .WithButton("Repeat", "repeat:select", ButtonStyle.Secondary)
-                .WithButton("Kill", "kill:kill", ButtonStyle.Danger);
-
-            // Find and delete the previous player message if it exists
-            if (_currentPlayerMessage != null)
+            try
             {
+                // Build the player image
+                Logs.Debug("Building player image");
+                using var memoryStream = new MemoryStream();
+                SixLabors.ImageSharp.Image image = await ImageBuilder.BuildPlayerImageAsync(trackInfo);
+                await image.SaveAsync(memoryStream, new PngEncoder());
+                memoryStream.Position = 0;
+
+                // Create the Discord file attachment
+                var fileAttachment = new FileAttachment(memoryStream, "playerImage.png");
+                string fileName = "playerImage.png";
+
+                // Build the player embed
+                EmbedBuilder embed = PlayerEmbedBuilder.BuildPlayerEmbed(trackInfo, $"attachment://{fileName}");
+
+                // Create player control buttons
+                ComponentBuilder components = new ComponentBuilder()
+                    .WithButton("Pause", "pause_resume:pause", ButtonStyle.Secondary)
+                    .WithButton("Skip", "skip:skip", ButtonStyle.Primary)
+                    .WithButton("Queue Options", "queue_options:options:1", ButtonStyle.Success)
+                    .WithButton("Repeat", "repeat:select", ButtonStyle.Secondary)
+                    .WithButton("Kill", "kill:kill", ButtonStyle.Danger);
+
+                // Find and delete the previous player message if it exists
+                if (_currentPlayerMessage != null)
+                {
+                    try
+                    {
+                        await _currentPlayerMessage.DeleteAsync().ConfigureAwait(false);
+                        Logs.Debug("Deleted previous player message");
+                    }
+                    catch (Exception ex)
+                    {
+                        Logs.Warning($"Failed to delete previous player message: {ex.Message}");
+                    }
+                    _currentPlayerMessage = null;
+                }
+
+                // Send the new player message
+                _currentPlayerMessage = await _textChannel.SendFileAsync(
+                    fileAttachment,
+                    embed: embed.Build(),
+                    components: components.Build()).ConfigureAwait(false);
+
+                Logs.Debug("Player message sent successfully");
+            }
+            catch (Exception ex)
+            {
+                Logs.Error($"Error building/sending player image: {ex.Message}");
+
+                // Try to send a simplified player message without the image
                 try
                 {
-                    await _currentPlayerMessage.DeleteAsync().ConfigureAwait(false);
-                    Logs.Debug("Deleted previous player message");
-                }
-                catch (Exception ex)
-                {
-                    Logs.Warning($"Failed to delete previous player message: {ex.Message}");
-                }
-                _currentPlayerMessage = null;
-            }
+                    EmbedBuilder simpleEmbed = new EmbedBuilder()
+                        .WithTitle("Now Playing")
+                        .WithDescription($"{trackInfo["Artist"]} - {trackInfo["Title"]}\n{trackInfo["Album"]}\nDuration: {trackInfo["Duration"]}")
+                        .WithColor(Discord.Color.Blue);
 
-            // Send the new player message
-            _currentPlayerMessage = await _textChannel.SendFileAsync(
-                fileAttachment,
-                embed: embed.Build(),
-                components: components.Build()).ConfigureAwait(false);
+                    ComponentBuilder components = new ComponentBuilder()
+                        .WithButton("Pause", "pause_resume:pause", ButtonStyle.Secondary)
+                        .WithButton("Skip", "skip:skip", ButtonStyle.Primary)
+                        .WithButton("Queue Options", "queue_options:options:1", ButtonStyle.Success)
+                        .WithButton("Kill", "kill:kill", ButtonStyle.Danger);
+
+                    await _textChannel.SendMessageAsync(
+                        embed: simpleEmbed.Build(),
+                        components: components.Build()).ConfigureAwait(false);
+
+                    Logs.Debug("Sent fallback text-only player message");
+                }
+                catch (Exception innerEx)
+                {
+                    Logs.Error($"Failed to send fallback player message: {innerEx.Message}");
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -259,6 +294,8 @@ public sealed record CustomPlayerOptions(ITextChannel? TextChannel) : QueuedLava
     /// Gets or sets whether to delete player messages when they become outdated.
     /// </summary>
     public bool DeleteOutdatedMessages { get; init; } = true;
+
+    public TimeSpan InactivityTimeout { get; init; } = TimeSpan.FromMinutes(20);
 
     /// <summary>
     /// Initializes a new instance of the <see cref="CustomPlayerOptions"/> class.

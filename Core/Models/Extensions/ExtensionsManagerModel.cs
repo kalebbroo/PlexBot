@@ -15,7 +15,7 @@ public class ExtensionManager
     /// Dictionary of all loaded extensions, keyed by their unique ID.
     /// Provides fast lookup of extensions by ID for dependency management.
     /// </summary>
-    private readonly ConcurrentDictionary<string, Extension> _loadedExtensions = new();
+    private readonly ConcurrentDictionary<string, Extension> _loadedExtensions = [];
 
     /// <summary>
     /// Service provider for dependency injection within extensions.
@@ -55,9 +55,9 @@ public class ExtensionManager
     /// and finding types that derive from the Extension base class.
     /// </summary>
     /// <returns>A collection of discovered but not yet loaded extension instances</returns>
-    public async Task<IEnumerable<Extension>> DiscoverExtensionsAsync()
+    public IEnumerable<Extension> DiscoverExtensions()
     {
-        List<Extension> discoveredExtensions = new();
+        List<Extension> discoveredExtensions = [];
 
         try
         {
@@ -92,9 +92,7 @@ public class ExtensionManager
                                 try
                                 {
                                     // Create an instance of the extension
-                                    Extension? extension = Activator.CreateInstance(extensionType) as Extension;
-
-                                    if (extension != null)
+                                    if (Activator.CreateInstance(extensionType) is Extension extension)
                                     {
                                         Logs.Info($"Discovered extension: {extension.Name} v{extension.Version} by {extension.Author}");
                                         discoveredExtensions.Add(extension);
@@ -138,7 +136,7 @@ public class ExtensionManager
         try
         {
             // Discover all available extensions
-            var extensions = await DiscoverExtensionsAsync();
+            var extensions = DiscoverExtensions();
             Logs.Info($"Discovered {extensions.Count()} extensions");
 
             // Sort extensions by dependency order
@@ -188,57 +186,56 @@ public class ExtensionManager
     /// <returns>True if the extension was successfully loaded; otherwise, false</returns>
     public async Task<bool> LoadExtensionAsync(Extension extension)
     {
-        if (extension == null)
+        if (extension != null)
         {
-            throw new ArgumentNullException(nameof(extension));
-        }
-
-        // Check if already loaded
-        if (_loadedExtensions.TryGetValue(extension.Id, out _))
-        {
-            Logs.Warning($"Extension {extension.Name} is already loaded");
-            return false;
-        }
-
-        // Check dependencies
-        foreach (string dependencyId in extension.Dependencies)
-        {
-            if (!_loadedExtensions.ContainsKey(dependencyId))
+            // Check if already loaded
+            if (_loadedExtensions.TryGetValue(extension.Id, out _))
             {
-                Logs.Error($"Cannot load extension {extension.Name}: Missing dependency {dependencyId}");
+                Logs.Warning($"Extension {extension.Name} is already loaded");
                 return false;
             }
-        }
 
-        try
-        {
-            // Initialize the extension
-            if (await extension.InitializeAsync(_serviceProvider))
+            // Check dependencies
+            foreach (string dependencyId in extension.Dependencies)
             {
-                // Add to loaded extensions
-                if (_loadedExtensions.TryAdd(extension.Id, extension))
+                if (!_loadedExtensions.ContainsKey(dependencyId))
                 {
-                    Logs.Info($"Successfully loaded extension: {extension.Name} v{extension.Version}");
-                    return true;
-                }
-                else
-                {
-                    Logs.Error($"Failed to add extension {extension.Name} to loaded extensions dictionary");
-                    await extension.ShutdownAsync();
+                    Logs.Error($"Cannot load extension {extension.Name}: Missing dependency {dependencyId}");
                     return false;
                 }
             }
-            else
+
+            try
             {
-                Logs.Error($"Extension {extension.Name} failed to initialize");
+                // Initialize the extension
+                if (await extension.InitializeAsync(_serviceProvider))
+                {
+                    // Add to loaded extensions
+                    if (_loadedExtensions.TryAdd(extension.Id, extension))
+                    {
+                        Logs.Info($"Successfully loaded extension: {extension.Name} v{extension.Version}");
+                        return true;
+                    }
+                    else
+                    {
+                        Logs.Error($"Failed to add extension {extension.Name} to loaded extensions dictionary");
+                        await extension.ShutdownAsync();
+                        return false;
+                    }
+                }
+                else
+                {
+                    Logs.Error($"Extension {extension.Name} failed to initialize");
+                    return false;
+                }
+            }
+            catch (Exception ex)
+            {
+                Logs.Error($"Exception loading extension {extension.Name}: {ex.Message}");
                 return false;
             }
         }
-        catch (Exception ex)
-        {
-            Logs.Error($"Exception loading extension {extension.Name}: {ex.Message}");
-            return false;
-        }
+        throw new ArgumentNullException(nameof(extension));
     }
 
     /// <summary>
@@ -329,7 +326,7 @@ public class ExtensionManager
     /// <returns>A collection of all loaded extensions</returns>
     public IEnumerable<Extension> GetAllLoadedExtensions()
     {
-        return _loadedExtensions.Values.ToList();
+        return [.. _loadedExtensions.Values];
     }
 
     /// <summary>
@@ -339,12 +336,12 @@ public class ExtensionManager
     /// </summary>
     /// <param name="extensions">The extensions to sort</param>
     /// <returns>A list of extensions sorted by dependency order</returns>
-    private List<Extension> SortExtensionsByDependencies(IEnumerable<Extension> extensions)
+    private static List<Extension> SortExtensionsByDependencies(IEnumerable<Extension> extensions)
     {
         Dictionary<string, Extension> extensionMap = extensions.ToDictionary(e => e.Id);
-        Dictionary<string, bool> visited = new();
-        Dictionary<string, bool> inProgress = new();
-        List<Extension> sorted = new();
+        Dictionary<string, bool> visited = [];
+        Dictionary<string, bool> inProgress = [];
+        List<Extension> sorted = [];
 
         foreach (var extension in extensions)
         {
@@ -370,7 +367,7 @@ public class ExtensionManager
     /// <param name="inProgress">Set of extensions currently being processed (for cycle detection)</param>
     /// <param name="sorted">Output list of sorted extensions</param>
     /// <returns>True if sorting was successful; false if a cycle was detected</returns>
-    private bool VisitExtension(string id, Dictionary<string, Extension> extensionMap, Dictionary<string, bool> visited, Dictionary<string, bool> inProgress, List<Extension> sorted)
+    private static bool VisitExtension(string id, Dictionary<string, Extension> extensionMap, Dictionary<string, bool> visited, Dictionary<string, bool> inProgress, List<Extension> sorted)
     {
         // Check for cycles
         if (inProgress.ContainsKey(id))

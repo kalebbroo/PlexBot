@@ -8,16 +8,13 @@ namespace PlexBot.Core.Discord.Events;
 /// Discord event handlers, including slash commands and interactive components.
 /// </summary>
 /// <remarks>
-/// Initializes a new instance of the <see cref="EventHandler"/> class.
+/// Initializes a new instance of the <see cref="DiscordEventHandler"/> class.
 /// Sets up the event handler with necessary dependencies.
 /// </remarks>
 /// <param name="client">The Discord client</param>
 /// <param name="interactions">The interaction service</param>
 /// <param name="services">The service provider</param>
-public class EventHandler(
-    DiscordSocketClient client,
-    InteractionService interactions,
-    IServiceProvider services)
+public class DiscordEventHandler(DiscordSocketClient client, InteractionService interactions, IServiceProvider services)
 {
     private readonly DiscordSocketClient _client = client ?? throw new ArgumentNullException(nameof(client));
     private readonly InteractionService _interactions = interactions ?? throw new ArgumentNullException(nameof(interactions));
@@ -54,19 +51,48 @@ public class EventHandler(
     {
         try
         {
-            // In development, uncomment this to register commands to a specific test guild
-            // If in production, uncomment this to register commands globally
-            // await _interactions.RegisterCommandsGloballyAsync();
+            // Register modules first
+            await _interactions.AddModulesAsync(Assembly.GetEntryAssembly(), _services);
 
-            // Register commands to all current guilds
-            foreach (var guild in _client.Guilds)
+            // Log discovered modules
+            var modules = _interactions.Modules.ToList();
+            Logs.Info($"Discovered {modules.Count} interaction modules");
+            foreach (ModuleInfo module in modules)
             {
-                await _interactions.RegisterCommandsToGuildAsync(guild.Id);
-                Logs.Info($"Registered commands to guild: {guild.Name} ({guild.Id})");
+                Logs.Info($"Module: {module.Name}, Commands: {module.SlashCommands.Count}");
+                foreach (SlashCommandInfo cmd in module.SlashCommands)
+                {
+                    Logs.Info($"  Command: {cmd.Name}");
+                }
             }
 
-            // Register modules
-            await _interactions.AddModulesAsync(Assembly.GetEntryAssembly(), _services);
+            // In development, use guild commands (faster updates)
+            if (EnvConfig.Get("ENVIRONMENT") == "Development")
+            {
+                // Register to specific test guild if needed
+                // ulong testGuildId = 123456789012345678;
+                // await _interactions.RegisterCommandsToGuildAsync(testGuildId);
+
+                // Or register to all current guilds
+                foreach (SocketGuild guild in _client.Guilds)
+                {
+                    try
+                    {
+                        await _interactions.RegisterCommandsToGuildAsync(guild.Id);
+                        Logs.Info($"Registered commands to guild: {guild.Name} ({guild.Id})");
+                    }
+                    catch (Exception ex)
+                    {
+                        Logs.Error($"Failed to register commands for guild {guild.Name}: {ex.Message}");
+                    }
+                }
+            }
+            else
+            {
+                // In production, use global commands
+                await _interactions.RegisterCommandsGloballyAsync();
+                Logs.Info("Registered commands globally");
+            }
 
             // Set bot status
             await _client.SetGameAsync("/help", type: ActivityType.Listening);
@@ -76,13 +102,12 @@ public class EventHandler(
         catch (Exception ex)
         {
             Logs.Error($"Error in ReadyAsync: {ex.Message}");
+            Logs.Error($"Stack trace: {ex.StackTrace}");
         }
     }
 
-    /// <summary>
-    /// Handles incoming interactions.
-    /// Routes interactions to the appropriate handler based on their type.
-    /// </summary>
+    /// <summary>Handles incoming interactions.
+    /// Routes interactions to the appropriate handler based on their type.</summary>
     /// <param name="interaction">The interaction to handle</param>
     /// <returns>A task representing the asynchronous operation</returns>
     private async Task HandleInteractionAsync(SocketInteraction interaction)
@@ -90,10 +115,10 @@ public class EventHandler(
         try
         {
             // Create an execution context for the interaction
-            var context = new SocketInteractionContext(_client, interaction);
+            SocketInteractionContext context = new(_client, interaction);
 
             // Execute the interaction handler
-            var result = await _interactions.ExecuteCommandAsync(context, _services);
+            IResult result = await _interactions.ExecuteCommandAsync(context, _services);
 
             if (!result.IsSuccess)
             {
