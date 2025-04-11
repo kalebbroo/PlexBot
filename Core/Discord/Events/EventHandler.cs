@@ -1,4 +1,5 @@
 using PlexBot.Utils;
+using PlexBot.Core.Discord.Embeds;
 
 namespace PlexBot.Core.Discord.Events;
 
@@ -110,28 +111,17 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
             {
                 Logs.Warning($"Interaction failed: {result.Error} - {result.ErrorReason}");
 
-                // Handle specific error cases
-                switch (result.Error)
+                // Create a standardized error embed using our utility
+                var errorEmbed = DiscordEmbedBuilder.CommandError(result.Error.Value, result.ErrorReason);
+                
+                // Respond with the error embed
+                if (!interaction.HasResponded)
                 {
-                    case InteractionCommandError.UnmetPrecondition:
-                        await interaction.RespondAsync($"You don't have permission to use this command: {result.ErrorReason}", ephemeral: true);
-                        break;
-
-                    case InteractionCommandError.UnknownCommand:
-                        await interaction.RespondAsync("This command is not recognized. It may have been removed or updated.", ephemeral: true);
-                        break;
-
-                    case InteractionCommandError.BadArgs:
-                        await interaction.RespondAsync("Invalid command arguments. Please check your input and try again.", ephemeral: true);
-                        break;
-
-                    case InteractionCommandError.Exception:
-                        await interaction.RespondAsync("An error occurred while processing your command. Please try again later.", ephemeral: true);
-                        break;
-
-                    default:
-                        await interaction.RespondAsync("An unknown error occurred. Please try again later.", ephemeral: true);
-                        break;
+                    await interaction.RespondAsync(embed: errorEmbed, ephemeral: true);
+                }
+                else
+                {
+                    await interaction.FollowupAsync(embed: errorEmbed, ephemeral: true);
                 }
             }
         }
@@ -139,10 +129,18 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
         {
             Logs.Error($"Error handling interaction: {ex.Message}");
 
+            // Create a standardized error embed for exceptions
+            var exceptionEmbed = DiscordEmbedBuilder.Error("Command Error", 
+                "An unexpected error occurred while processing your command. Please try again later.");
+
             // Try to respond with an error message if we haven't already
             if (!interaction.HasResponded)
             {
-                await interaction.RespondAsync("An error occurred while processing your command. Please try again later.", ephemeral: true);
+                await interaction.RespondAsync(embed: exceptionEmbed, ephemeral: true);
+            }
+            else
+            {
+                await interaction.FollowupAsync(embed: exceptionEmbed, ephemeral: true);
             }
         }
     }

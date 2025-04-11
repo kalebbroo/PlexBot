@@ -100,7 +100,7 @@ public static class ImageBuilder
             }
             // We can't throw here because it would prevent the application from starting,
             // but the image generation functionality won't work
-            Logs.Critical("ImageBuilder failed to initialize properly. Image generation will be unavailable.");
+            Logs.Error("ImageBuilder failed to initialize properly. Image generation will be unavailable.");
         }
     }
 
