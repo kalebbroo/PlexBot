@@ -153,3 +153,4 @@ images/**/*
 # Ignore.cs files in the Plugins folder
 Extensions/**/*.cs
 /Install/Docker/plugins
+Install/Docker/lavalink.application.yml
