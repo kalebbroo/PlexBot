@@ -51,6 +51,10 @@ public class BotHostedService(DiscordSocketClient client, DiscordEventHandler ev
             await _client.LoginAsync(TokenType.Bot, _discordToken);
             await _client.StartAsync();
             Logs.Init("Bot service started");
+            
+            // Initialize static player channel if enabled
+            await InitializeStaticPlayerChannelAsync();
+            
             Logs.Init($"Testing connection to Lavalink server...");
             try
             {
@@ -71,6 +75,63 @@ public class BotHostedService(DiscordSocketClient client, DiscordEventHandler ev
         {
             Logs.Error($"Error starting bot service: {ex.Message}");
             throw;
+        }
+    }
+
+    /// <summary>Initializes the static player channel if enabled in configuration</summary>
+    /// <returns>A task representing the initialization operation</returns>
+    private async Task InitializeStaticPlayerChannelAsync()
+    {
+        bool useStaticChannel = EnvConfig.GetBool("USE_STATIC_PLAYER_CHANNEL", false);
+        string staticChannelIdStr = EnvConfig.Get("STATIC_PLAYER_CHANNEL_ID", "");
+        
+        if (!useStaticChannel || string.IsNullOrEmpty(staticChannelIdStr) || !ulong.TryParse(staticChannelIdStr, out ulong staticChannelId))
+        {
+            Logs.Debug("Static player channel is not configured or invalid, skipping initialization");
+            return;
+        }
+        
+        try
+        {
+            Logs.Init($"Initializing static player channel ({staticChannelId})...");
+            
+            // Wait a moment for the client to be fully ready
+            await Task.Delay(2000);
+            
+            // Get the channel from the client
+            if (_client.GetChannel(staticChannelId) is not ITextChannel textChannel)
+            {
+                Logs.Warning($"Static player channel with ID {staticChannelId} not found or is not a text channel");
+                return;
+            }
+            
+            // Check channel permissions
+            var currentUser = await textChannel.Guild.GetCurrentUserAsync();
+            var permissions = currentUser.GetPermissions(textChannel);
+            
+            if (!permissions.SendMessages || !permissions.EmbedLinks || !permissions.AttachFiles)
+            {
+                Logs.Warning($"Bot lacks required permissions in static player channel {staticChannelId}");
+                return;
+            }
+            
+            // Create a placeholder embed
+            var embed = new EmbedBuilder()
+                .WithTitle("🎵 PlexBot Music Player")
+                .WithDescription("No track is currently playing. Use a `/play` command in any channel to start playing music!")
+                .WithColor(new Discord.Color(138, 43, 226)) // Purple
+                .WithFooter("The player will appear here when music begins playing")
+                .WithCurrentTimestamp()
+                .Build();
+                
+            // Send the placeholder message
+            await textChannel.SendMessageAsync(embed: embed);
+            
+            Logs.Init($"Static player channel initialized successfully");
+        }
+        catch (Exception ex)
+        {
+            Logs.Error($"Failed to initialize static player channel: {ex.Message}");
         }
     }
 

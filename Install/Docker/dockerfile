@@ -19,6 +19,10 @@ RUN apt-get update && apt-get install -y \
     curl \
     unzip \
     git \
+    fontconfig \
+    fonts-dejavu \
+    fonts-liberation \
+    fonts-noto \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy the build output from the build stage
