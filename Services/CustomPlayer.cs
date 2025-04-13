@@ -1,4 +1,4 @@
-using PlexBot.Utils;
+﻿using PlexBot.Utils;
 using SixLabors.ImageSharp.Formats.Png;
 using Discord.WebSocket;
 using PlexBot.Core.Discord.Embeds;
@@ -16,20 +16,17 @@ public sealed class CustomPlayer : QueuedLavalinkPlayer
 
     /// <summary>Constructs the player with specified properties to enable audio playback with enhanced Discord integration for visual feedback</summary>
     /// <param name="properties">Configuration container with player settings, options, and channel information</param>
-    public CustomPlayer(IPlayerProperties<CustomPlayer, CustomPlayerOptions> properties)
-        : base(properties)
+    public CustomPlayer(IPlayerProperties<CustomPlayer, CustomPlayerOptions> properties) : base(properties)
     {
         _textChannel = properties.Options.Value.TextChannel;
         _useVisualPlayer = EnvConfig.GetBool("PLAYER_STYLE_VISUAL", true); // Default to visual player
         _useStaticChannel = EnvConfig.GetBool("USE_STATIC_PLAYER_CHANNEL", false);
-        
         string staticChannelIdStr = EnvConfig.Get("STATIC_PLAYER_CHANNEL_ID", "");
         if (_useStaticChannel && !string.IsNullOrEmpty(staticChannelIdStr) && ulong.TryParse(staticChannelIdStr, out ulong channelId))
         {
             _staticChannelId = channelId;
             Logs.Debug($"Static player channel ID configured: {channelId}");
         }
-
         // Log initialization
         Logs.Debug($"CustomPlayer initialized for guild {GuildId} in channel {_textChannel?.Id}, Visual Player: {_useVisualPlayer}, Static Channel: {_useStaticChannel}");
     }
@@ -44,20 +41,16 @@ public sealed class CustomPlayer : QueuedLavalinkPlayer
         {
             // Call base implementation first
             await base.NotifyTrackStartedAsync(track, cancellationToken).ConfigureAwait(false);
-
             // Get the actual text channel to use (either regular or static channel)
             ITextChannel? targetChannel = await GetTargetTextChannelAsync();
-            
             if (targetChannel == null)
             {
                 Logs.Warning("Cannot display player: No text channel specified");
                 return;
             }
-
             // Get the track information
             CustomTrackQueueItem customTrack = track as CustomTrackQueueItem
                 ?? throw new InvalidOperationException("Track is not a CustomTrackQueueItem");
-
             // Create track information dictionary for the visual player
             Dictionary<string, string> trackInfo = new()
             {
@@ -68,16 +61,17 @@ public sealed class CustomPlayer : QueuedLavalinkPlayer
                 ["Url"] = customTrack.Url ?? "N/A",
                 ["ArtistUrl"] = customTrack.ArtistUrl ?? "N/A",
                 ["ReleaseDate"] = customTrack.ReleaseDate ?? "N/A",
-                ["Artwork"] = customTrack.Artwork ?? "https://via.placeholder.com/150",
-                ["Studio"] = customTrack.Studio ?? "Unknown Studio"
+                ["Artwork"] = customTrack.Artwork ?? "https://via.placeholder.com/150", // TODO: Replace this with an actual placeholder
+                ["Studio"] = customTrack.Studio ?? "Unknown Studio" 
             };
-
-            Logs.Debug($"Now playing: {trackInfo["Title"]} by {trackInfo["Artist"]}");
-
+            foreach (var item in trackInfo) // Log track information for debugging
+            {
+                Logs.Debug($"{item.Key}: {item.Value}");
+            }
             try
             {
                 // Find and delete the previous player message if it exists
-                if (_currentPlayerMessage != null)
+                if (_currentPlayerMessage != null && !_useStaticChannel)
                 {
                     try
                     {
@@ -90,34 +84,35 @@ public sealed class CustomPlayer : QueuedLavalinkPlayer
                     }
                     _currentPlayerMessage = null;
                 }
-
-                // Create player control buttons
-                ComponentBuilder components = new ComponentBuilder()
-                    .WithButton("Pause", "pause_resume:pause", ButtonStyle.Secondary)
-                    .WithButton("Skip", "skip:skip", ButtonStyle.Primary)
-                    .WithButton("Queue Options", "queue_options:options:1", ButtonStyle.Success)
-                    .WithButton("Repeat", "repeat:select", ButtonStyle.Secondary)
-                    .WithButton("Kill", "kill:kill", ButtonStyle.Danger);
-
+                ButtonContext context = new() { Player = this };
+                ComponentBuilder components = DiscordButtonBuilder.Instance.BuildButtons(ButtonFlag.VisualPlayer, context);
                 // Send player message based on style preference
                 if (_useVisualPlayer)
                 {
                     // Visual player style - send as image attachment with buttons below
                     // Build the player image
                     Logs.Debug("Building player image");
-                    using var memoryStream = new MemoryStream();
-                    SixLabors.ImageSharp.Image image = await ImageBuilder.BuildPlayerImageAsync(trackInfo);
+                    using MemoryStream memoryStream = new();
+                    SixLabors.ImageSharp.Image image = await ImageBuilder.BuildPlayerImageAsync(trackInfo, this);
                     await image.SaveAsync(memoryStream, new PngEncoder());
                     memoryStream.Position = 0;
-
                     // Create the Discord file attachment
-                    var fileAttachment = new FileAttachment(memoryStream, "playerImage.png");
-                    
+                    FileAttachment fileAttachment = new(memoryStream, "playerImage.png");
                     // Send the new player message with image only (no embed) and buttons
-                    _currentPlayerMessage = await targetChannel.SendFileAsync(
-                        fileAttachment,
-                        components: components.Build()).ConfigureAwait(false);
-
+                    if (_currentPlayerMessage == null)
+                    {
+                        _currentPlayerMessage = await targetChannel.SendFileAsync(fileAttachment, components: components.Build()).ConfigureAwait(false);
+                    }
+                    // If the message already exists, modify it instead of sending a new one
+                    else
+                    {
+                        await _currentPlayerMessage.ModifyAsync(msg =>
+                        {
+                            msg.Content = "Now Playing:";
+                            msg.Attachments = new List<FileAttachment> { fileAttachment };
+                            msg.Components = components.Build();
+                        }).ConfigureAwait(false);
+                    }
                     Logs.Debug("Visual player message sent successfully");
                 }
                 else
@@ -125,62 +120,21 @@ public sealed class CustomPlayer : QueuedLavalinkPlayer
                     // Classic embed style - send with embed and thumbnail
                     // Build the player embed
                     EmbedBuilder embed = DiscordEmbedBuilder.BuildPlayerEmbed(trackInfo, trackInfo["Artwork"]);
-                    
                     // Send the new player message with embed and buttons
                     _currentPlayerMessage = await targetChannel.SendMessageAsync(
                         embed: embed.Build(),
                         components: components.Build()).ConfigureAwait(false);
-
                     Logs.Debug("Classic embed player message sent successfully");
                 }
             }
             catch (Exception ex)
             {
                 Logs.Error($"Error building/sending player image: {ex.Message}");
-
-                // Try to send a simplified player message without the image
-                try
-                {
-                    EmbedBuilder simpleEmbed = new EmbedBuilder()
-                        .WithTitle("Now Playing")
-                        .WithDescription($"{trackInfo["Artist"]} - {trackInfo["Title"]}\n{trackInfo["Album"]}\nDuration: {trackInfo["Duration"]}")
-                        .WithColor(Discord.Color.Blue);
-
-                    ComponentBuilder components = new ComponentBuilder()
-                        .WithButton("Pause", "pause_resume:pause", ButtonStyle.Secondary)
-                        .WithButton("Skip", "skip:skip", ButtonStyle.Primary)
-                        .WithButton("Queue Options", "queue_options:options:1", ButtonStyle.Success)
-                        .WithButton("Kill", "kill:kill", ButtonStyle.Danger);
-
-                    _currentPlayerMessage = await targetChannel.SendMessageAsync(
-                        embed: simpleEmbed.Build(),
-                        components: components.Build()).ConfigureAwait(false);
-
-                    Logs.Debug("Sent fallback text-only player message");
-                }
-                catch (Exception innerEx)
-                {
-                    Logs.Error($"Failed to send fallback player message: {innerEx.Message}");
-                }
             }
         }
         catch (Exception ex)
         {
             Logs.Error($"Error in NotifyTrackStartedAsync: {ex.Message}");
-
-            // Try to notify the user of the error
-            try
-            {
-                ITextChannel? targetChannel = await GetTargetTextChannelAsync();
-                if (targetChannel != null)
-                {
-                    await targetChannel.SendMessageAsync("An error occurred while displaying the player.").ConfigureAwait(false);
-                }
-            }
-            catch
-            {
-                // Suppress secondary errors
-            }
         }
     }
 
@@ -193,7 +147,6 @@ public sealed class CustomPlayer : QueuedLavalinkPlayer
         {
             return _textChannel;
         }
-
         try
         {
             // Get the guild from the cached guild of the default channel
@@ -203,7 +156,6 @@ public sealed class CustomPlayer : QueuedLavalinkPlayer
                 Logs.Warning("Cannot get static channel: Guild is not available");
                 return _textChannel; // Fall back to default channel
             }
-
             // Get the static channel from the guild
             ITextChannel? staticChannel = await guild.GetTextChannelAsync(_staticChannelId.Value);
             if (staticChannel == null)
@@ -211,7 +163,6 @@ public sealed class CustomPlayer : QueuedLavalinkPlayer
                 Logs.Warning($"Static channel with ID {_staticChannelId.Value} not found, falling back to default channel");
                 return _textChannel;
             }
-
             return staticChannel;
         }
         catch (Exception ex)
@@ -287,64 +238,50 @@ public sealed class CustomPlayer : QueuedLavalinkPlayer
         return default; // No special handling needed
     }
 
-    /// <summary>Updates the player message with new button components, used to refresh the visual player interface</summary>
-    /// <param name="components">The new components to display, containing updated button configurations</param>
-    /// <returns>A task representing the asynchronous operation of updating the player message</returns>
-    public async Task UpdatePlayerComponentsAsync(ComponentBuilder components)
+    ///<summary>Updates the visual player with new button components, optionally recreating the full player image</summary>
+    /// <param name="components">The new components to display</param>
+    /// <param name="recreateImage">Whether to fully recreate the player image (for volume/repeat changes)</param>
+    /// <returns>A task representing the asynchronous operation</returns>
+    public async Task UpdateVisualPlayerAsync(ComponentBuilder components, bool recreateImage = false)
     {
         if (_currentPlayerMessage == null)
         {
             return;
         }
-
         try
         {
-            await _currentPlayerMessage.ModifyAsync(msg =>
+            // If we just need to update buttons, use the simple approach
+            if (!recreateImage)
             {
-                msg.Components = components.Build();
-            }).ConfigureAwait(false);
+                await _currentPlayerMessage.ModifyAsync(msg =>
+                {
+                    msg.Components = components.Build();
+                }).ConfigureAwait(false);
+                Logs.Debug("Updated player buttons successfully");
+                return;
+            }
+            // For visual changes, use the existing track to fully recreate the player
+            if (CurrentItem is CustomTrackQueueItem currentTrack)
+            {
+                // Delete the existing message
+                try
+                {
+                    await _currentPlayerMessage.DeleteAsync().ConfigureAwait(false);
+                    _currentPlayerMessage = null;
+                }
+                catch (Exception ex)
+                {
+                    Logs.Warning($"Failed to delete current player message: {ex.Message}");
+                    // Continue anyway - we'll create a new one
+                }
+                // Use the existing method to create a fresh player with current state
+                await NotifyTrackStartedAsync(currentTrack).ConfigureAwait(false);
+                Logs.Debug("Recreated player message with updated visual state");
+            }
         }
         catch (Exception ex)
         {
-            Logs.Warning($"Failed to update player components: {ex.Message}");
-            
-            // If we fail to update the existing message, try to recreate it if we have a current track
-            if (CurrentItem is CustomTrackQueueItem currentTrack)
-            {
-                try
-                {
-                    // Get the target channel
-                    ITextChannel? targetChannel = await GetTargetTextChannelAsync();
-                    if (targetChannel != null)
-                    {
-                        // Delete the existing message
-                        try
-                        {
-                            await _currentPlayerMessage.DeleteAsync().ConfigureAwait(false);
-                        }
-                        catch
-                        {
-                            // Ignore failures to delete
-                        }
-                        
-                        // Recreate the player with current track
-                        await NotifyTrackStartedAsync(currentTrack).ConfigureAwait(false);
-                        
-                        // Update the components on the new message
-                        if (_currentPlayerMessage != null)
-                        {
-                            await _currentPlayerMessage.ModifyAsync(msg =>
-                            {
-                                msg.Components = components.Build();
-                            }).ConfigureAwait(false);
-                        }
-                    }
-                }
-                catch (Exception innerEx)
-                {
-                    Logs.Error($"Failed to recreate player message: {innerEx.Message}");
-                }
-            }
+            Logs.Error($"Failed to update visual player: {ex.Message}");
         }
     }
 }
@@ -354,7 +291,7 @@ public sealed class CustomPlayer : QueuedLavalinkPlayer
 public sealed record CustomPlayerOptions(ITextChannel? TextChannel) : QueuedLavalinkPlayerOptions
 {
     /// <summary>Gets or sets the default volume level, ranging from 0.0 to 1.0</summary>
-    public float DefaultVolume { get; init; } = 0.5f;
+    public float DefaultVolume { get; init; } = 0.2f;
 
     /// <summary>Gets or sets whether to show track thumbnails in player messages, used for visual feedback</summary>
     public bool ShowThumbnails { get; init; } = true;

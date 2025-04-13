@@ -41,35 +41,17 @@ public class BotHostedService(DiscordSocketClient client, DiscordEventHandler ev
             await lavalinkNode.StartAsync(cancellationToken);
             Logs.Init("Lavalink services initialized");
             // Initialize extension handler
-            string extensionsDir = System.IO.Path.Combine(AppContext.BaseDirectory, "extensions");
+            string extensionsDir = System.IO.Path.Combine(AppContext.BaseDirectory, "Extensions");
             Logs.Info($"Loading extensions from {extensionsDir}");
-            // Load extensions
+            // Load user extensions from the Extensions directory
             int extensionsLoaded = await ExtensionHandler.LoadAllExtensionsAsync(serviceDescriptors, _serviceProvider);
             Logs.Info($"Loaded {extensionsLoaded} extensions");
-            // Connect to Discord
+            // Connect to Discord and start the bot
             Logs.Init("Connecting to Discord");
             await _client.LoginAsync(TokenType.Bot, _discordToken);
             await _client.StartAsync();
             Logs.Init("Bot service started");
-            
-            // Initialize static player channel if enabled
             await InitializeStaticPlayerChannelAsync();
-            
-            Logs.Init($"Testing connection to Lavalink server...");
-            try
-            {
-                // Create a temporary HttpClientWrapper for the Lavalink connection test
-                using var httpClient = new HttpClient();
-                httpClient.Timeout = TimeSpan.FromSeconds(3);
-                HttpClientWrapper httpClientWrapper = new(httpClient, "LavalinkTest");
-                string lavalinkUrl = $"http://{EnvConfig.Get("LAVALINK_HOST")}:{EnvConfig.Get("SERVER_PORT")}/version";
-                string response = await httpClientWrapper.GetAsync<string>(lavalinkUrl);
-                Logs.Init($"Lavalink connection test successful");
-            }
-            catch (Exception ex)
-            {
-                Logs.Error($"Lavalink connection test failed: {ex.Message}");
-            }
         }
         catch (Exception ex)
         {
@@ -84,49 +66,61 @@ public class BotHostedService(DiscordSocketClient client, DiscordEventHandler ev
     {
         bool useStaticChannel = EnvConfig.GetBool("USE_STATIC_PLAYER_CHANNEL", false);
         string staticChannelIdStr = EnvConfig.Get("STATIC_PLAYER_CHANNEL_ID", "");
-        
         if (!useStaticChannel || string.IsNullOrEmpty(staticChannelIdStr) || !ulong.TryParse(staticChannelIdStr, out ulong staticChannelId))
         {
             Logs.Debug("Static player channel is not configured or invalid, skipping initialization");
             return;
         }
-        
         try
         {
             Logs.Init($"Initializing static player channel ({staticChannelId})...");
-            
             // Wait a moment for the client to be fully ready
             await Task.Delay(2000);
-            
             // Get the channel from the client
             if (_client.GetChannel(staticChannelId) is not ITextChannel textChannel)
             {
                 Logs.Warning($"Static player channel with ID {staticChannelId} not found or is not a text channel");
                 return;
             }
-            
             // Check channel permissions
-            var currentUser = await textChannel.Guild.GetCurrentUserAsync();
-            var permissions = currentUser.GetPermissions(textChannel);
-            
+            IGuildUser currentUser = await textChannel.Guild.GetCurrentUserAsync();
+            ChannelPermissions permissions = currentUser.GetPermissions(textChannel);
             if (!permissions.SendMessages || !permissions.EmbedLinks || !permissions.AttachFiles)
             {
                 Logs.Warning($"Bot lacks required permissions in static player channel {staticChannelId}");
                 return;
             }
-            
-            // Create a placeholder embed
-            var embed = new EmbedBuilder()
-                .WithTitle("🎵 PlexBot Music Player")
-                .WithDescription("No track is currently playing. Use a `/play` command in any channel to start playing music!")
-                .WithColor(new Discord.Color(138, 43, 226)) // Purple
-                .WithFooter("The player will appear here when music begins playing")
-                .WithCurrentTimestamp()
-                .Build();
-                
-            // Send the placeholder message
-            await textChannel.SendMessageAsync(embed: embed);
-            
+            IMessage existingMessage = null;
+            var messages = await textChannel.GetMessagesAsync(20).FlattenAsync();
+            foreach (IMessage message in messages)
+            {
+                // Check if message is from the bot and has a player embed
+                if (message.Author.Id == _client.CurrentUser.Id && message.Embeds.Count > 0)
+                {
+                    IEmbed embeds = message.Embeds.First();
+                    existingMessage = message;
+                    Logs.Debug("Found existing player message in static channel");
+                    break;
+                }
+            }
+            // Only create a new placeholder if no existing message was found
+            if (existingMessage == null)
+            {
+                // TODO: Make this look better and more informative. Create button systemn for all the slash commands
+                Embed embed = new EmbedBuilder()
+                    .WithTitle("🎵 PlexBot Music Player")
+                    .WithDescription("No track is currently playing. Use a `/play` command in any channel to start playing music!")
+                    .WithColor(new Discord.Color(138, 43, 226)) // Purple
+                    .WithFooter("The player will appear here when music begins playing")
+                    .WithCurrentTimestamp()
+                    .Build();
+                await textChannel.SendMessageAsync(embed: embed);
+                Logs.Init("Created new placeholder message in static player channel");
+            }
+            else
+            {
+                Logs.Init("Using existing message in static player channel");
+            }
             Logs.Init($"Static player channel initialized successfully");
         }
         catch (Exception ex)
