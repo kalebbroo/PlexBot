@@ -1,5 +1,3 @@
-using Discord;
-using Discord.WebSocket;
 using PlexBot.Services;
 using PlexBot.Utils;
 using System;
@@ -98,25 +96,6 @@ namespace PlexBot.Core.Discord.Embeds
             return embed.Build();
         }
 
-        /// <summary>Creates a music-related embed with standardized formatting</summary>
-        /// <param name="title">The title of the embed</param>
-        /// <param name="description">The main message content</param>
-        /// <param name="thumbnailUrl">Optional URL for a thumbnail image</param>
-        /// <param name="includeTimestamp">Whether to include the current time</param>
-        /// <returns>A configured embed builder</returns>
-        public static Embed Music(string title, string description, string? thumbnailUrl = null, bool includeTimestamp = true)
-        {
-            EmbedBuilder embed = new EmbedBuilder()
-                .WithTitle($"{MusicEmoji} {title}")
-                .WithDescription(description)
-                .WithColor(MusicColor);
-            if (!string.IsNullOrEmpty(thumbnailUrl))
-                embed.WithThumbnailUrl(thumbnailUrl);
-            if (includeTimestamp)
-                embed.WithCurrentTimestamp();
-            return embed.Build();
-        }
-
         /// <summary>Creates a search results embed with standardized formatting</summary>
         /// <param name="query">The search query</param>
         /// <param name="results">The search results description</param>
@@ -131,51 +110,6 @@ namespace PlexBot.Core.Discord.Embeds
                 .WithCurrentTimestamp();
             if (!string.IsNullOrEmpty(thumbnailUrl))
                 embed.WithThumbnailUrl(thumbnailUrl);
-            return embed.Build();
-        }
-
-        /// <summary>Creates a queue display embed with standardized formatting</summary>
-        /// <param name="title">The title of the embed</param>
-        /// <param name="description">The main message content</param>
-        /// <param name="currentTrack">Information about the current track</param>
-        /// <param name="footer">Optional footer text</param>
-        /// <returns>A configured embed builder</returns>
-        public static EmbedBuilder QueueEmbed(string title, string description, string? currentTrack = null, string? footer = null)
-        {
-            EmbedBuilder embed = new EmbedBuilder()
-                .WithTitle($"{QueueEmoji} {title}")
-                .WithDescription(description)
-                .WithColor(MusicColor)
-                .WithCurrentTimestamp();
-            if (!string.IsNullOrEmpty(currentTrack))
-                embed.AddField($"{PlayEmoji} Now Playing", currentTrack, false);
-            if (!string.IsNullOrEmpty(footer))
-                embed.WithFooter(footer);
-            return embed;
-        }
-
-        /// <summary>Creates a now playing embed with standardized formatting</summary>
-        /// <param name="title">The track title</param>
-        /// <param name="artist">The artist name</param>
-        /// <param name="album">The album name</param>
-        /// <param name="duration">The track duration</param>
-        /// <param name="requestedBy">Who requested the track</param>
-        /// <param name="artworkUrl">URL to the track/album artwork</param>
-        /// <returns>A configured embed builder</returns>
-        public static Embed NowPlaying(string title, string artist, string album, string duration, string? requestedBy = null, string? artworkUrl = null)
-        {
-            EmbedBuilder embed = new EmbedBuilder()
-                .WithTitle($"{PlayEmoji} Now Playing")
-                .WithDescription($"**{title}**")
-                .WithColor(MusicColor)
-                .WithCurrentTimestamp();
-            embed.AddField("Artist", artist, true);
-            embed.AddField("Album", album, true);
-            embed.AddField("Duration", duration, true);
-            if (!string.IsNullOrEmpty(requestedBy))
-                embed.AddField("Requested By", requestedBy, true);
-            if (!string.IsNullOrEmpty(artworkUrl))
-                embed.WithThumbnailUrl(artworkUrl);
             return embed.Build();
         }
 
@@ -245,7 +179,6 @@ namespace PlexBot.Core.Discord.Embeds
                     .WithFooter($"{VolumeEmoji} Volume: {volume}%")
                     .WithColor(MusicColor)
                     .WithCurrentTimestamp();
-
                 return embed;
             }
             catch (Exception ex)
@@ -266,11 +199,8 @@ namespace PlexBot.Core.Discord.Embeds
         /// <param name="currentPage">The current page to display</param>
         /// <param name="itemsPerPage">Number of items to show per page</param>
         /// <returns>An EmbedBuilder with the configured embed</returns>
-        public static EmbedBuilder BuildQueueEmbed(
-            IReadOnlyList<CustomTrackQueueItem> queue,
-            CustomTrackQueueItem? currentTrack,
-            int currentPage,
-            int itemsPerPage = 10)
+        public static EmbedBuilder BuildQueueEmbed(IReadOnlyList<CustomTrackQueueItem> queue, CustomTrackQueueItem? currentTrack,
+            int currentPage, int itemsPerPage = 10)
         {
             try
             {
@@ -278,14 +208,12 @@ namespace PlexBot.Core.Discord.Embeds
                 int totalTracks = queue.Count;
                 int totalPages = (totalTracks + itemsPerPage - 1) / itemsPerPage;
                 currentPage = Math.Clamp(currentPage, 1, Math.Max(1, totalPages));
-                
                 // Create the base embed
                 EmbedBuilder embed = new EmbedBuilder()
                     .WithTitle($"{QueueEmoji} Current Music Queue")
                     .WithColor(MusicColor)
                     .WithFooter($"Page {currentPage} of {totalPages} ({totalTracks} Queued Tracks)")
                     .WithCurrentTimestamp();
-                
                 // Add the currently playing track (only on first page)
                 if (currentPage == 1 && currentTrack != null)
                 {
@@ -295,27 +223,23 @@ namespace PlexBot.Core.Discord.Embeds
                         inline: false
                     );
                 }
-                
                 // Add queue items for the current page
                 int startIndex = (currentPage - 1) * itemsPerPage;
                 int endIndex = Math.Min(startIndex + itemsPerPage, totalTracks);
-                
                 for (int i = startIndex; i < endIndex; i++)
                 {
-                    var item = queue[i];
+                    CustomTrackQueueItem item = queue[i];
                     embed.AddField(
                         $"#{i + 1}: {item.Title}",
                         $"Artist: {item.Artist}\nAlbum: {item.Album}\nDuration: {item.Duration}",
                         inline: true
                     );
                 }
-                
                 // If queue is empty, show a message
                 if (totalTracks == 0 && currentTrack == null)
                 {
                     embed.WithDescription("The queue is currently empty.");
                 }
-                
                 return embed;
             }
             catch (Exception ex)
