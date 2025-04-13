@@ -1,3 +1,4 @@
+using PlexBot.Core.Discord.Embeds;
 using PlexBot.Core.Exceptions;
 using PlexBot.Core.Models.Media;
 using PlexBot.Utils;
@@ -153,7 +154,7 @@ public class PlayerService : IPlayerService
                 NoReplace = true // If something's already playing, add to queue instead of replacing
             };
             // Play the track
-            Logs.Info($"Playing track: {track.Title} by {track.Artist} (requested by {interaction.User.Username})");
+            Logs.Debug($"Playing track: {track.Title} by {track.Artist} (requested by {interaction.User.Username})");
             await player.PlayAsync(queueItem, playProperties, cancellationToken);
             await interaction.FollowupAsync($"Playing: {track.Title} by {track.Artist}", ephemeral: true);
         }
@@ -166,7 +167,7 @@ public class PlayerService : IPlayerService
 
     /// <inheritdoc />
     public async Task AddToQueueAsync(IDiscordInteraction interaction, IEnumerable<Track> tracks,
-        CancellationToken cancellationToken = default)
+    CancellationToken cancellationToken = default)
     {
         QueuedLavalinkPlayer? player = await GetPlayerAsync(interaction, true, cancellationToken);
         if (player == null)
@@ -177,114 +178,191 @@ public class PlayerService : IPlayerService
         try
         {
             List<Track> trackList = tracks.ToList();
-            int addedCount = 0;
             int totalCount = trackList.Count;
-            foreach (Track track in trackList)
+            Logs.Debug($"Adding {totalCount} tracks to queue");
+            // Process tracks in smaller batches
+            const int batchSize = 3; // Process just 3 tracks at a time
+            int successCount = 0;
+            bool firstTrackProcessed = false;
+            // Send a preliminary message for long playlists
+            if (totalCount > 10)
             {
-                try
+                await interaction.ModifyOriginalResponseAsync(msg =>
                 {
-                    Logs.Debug($"Loading track for queue: {track.Title} - URL: {track.PlaybackUrl} - Source: {track.SourceSystem}");
-                    LavalinkTrack? lavalinkTrack = null;
-                    // Handle YouTube tracks differently
-                    if (track.SourceSystem.Equals("youtube", StringComparison.OrdinalIgnoreCase))
+                    msg.Embed = DiscordEmbedBuilder.Info("Processing Tracks", $"Processing {totalCount} tracks. This may take a moment...");
+                });
+            }
+            // Keep track of failed tracks for a retry
+            List<Track> failedTracks = [];
+            // Process in batches
+            for (int batchStart = 0; batchStart < totalCount; batchStart += batchSize)
+            {
+                // Get the current batch
+                int currentBatchSize = Math.Min(batchSize, totalCount - batchStart);
+                List<Track> batch = trackList.Skip(batchStart).Take(currentBatchSize).ToList();
+                Logs.Debug($"Processing batch {batchStart / batchSize + 1} of {Math.Ceiling((double)totalCount / batchSize)} ({batch.Count} tracks)");
+                // Process one track at a time within the batch - more reliable than parallel in small batches
+                foreach (Track track in batch)
+                {
+                    try
                     {
-                        // First try direct loading with None search mode
-                        TrackLoadOptions directOptions = new()
+                        Logs.Debug($"Loading track: {track.Title}");
+                        LavalinkTrack? lavalinkTrack;
+                        // Handle YouTube tracks differently
+                        if (track.SourceSystem.Equals("youtube", StringComparison.OrdinalIgnoreCase))
                         {
-                            SearchMode = TrackSearchMode.None
-                        };
-                        lavalinkTrack = await _audioService.Tracks.LoadTrackAsync(
-                            track.PlaybackUrl,
-                            directOptions,
-                            cancellationToken: cancellationToken);
-                        // If direct loading fails, try with YouTube search mode
-                        if (lavalinkTrack == null)
-                        {
-                            Logs.Debug($"Retrying YouTube track with search mode: {track.PlaybackUrl}");
-                            TrackLoadOptions searchOptions = new()
+                            // Same YouTube handling as before
+                            TrackLoadOptions directOptions = new()
                             {
-                                SearchMode = TrackSearchMode.YouTube
+                                SearchMode = TrackSearchMode.None
                             };
                             lavalinkTrack = await _audioService.Tracks.LoadTrackAsync(
                                 track.PlaybackUrl,
-                                searchOptions,
+                                directOptions,
+                                cancellationToken: cancellationToken);
+                            if (lavalinkTrack == null)
+                            {
+                                TrackLoadOptions searchOptions = new()
+                                {
+                                    SearchMode = TrackSearchMode.YouTube
+                                };
+                                lavalinkTrack = await _audioService.Tracks.LoadTrackAsync(
+                                    track.PlaybackUrl,
+                                    searchOptions,
+                                    cancellationToken: cancellationToken);
+                            }
+                        }
+                        else
+                        {
+                            // For Plex tracks
+                            TrackLoadOptions loadOptions = new()
+                            {
+                                SearchMode = TrackSearchMode.None
+                            };
+                            lavalinkTrack = await _audioService.Tracks.LoadTrackAsync(
+                                track.PlaybackUrl,
+                                loadOptions,
                                 cancellationToken: cancellationToken);
                         }
+                        if (lavalinkTrack == null)
+                        {
+                            Logs.Warning($"Failed to load track: {track.Title} - will retry later");
+                            failedTracks.Add(track);
+                            continue;
+                        }
+                        Logs.Debug($"Successfully loaded track: {track.Title ?? lavalinkTrack.Title}");
+                        // Create queue item
+                        CustomTrackQueueItem queueItem = new()
+                        {
+                            // Prioritize Plex metadata over Lavalink metadata
+                            Title = track.Title ?? lavalinkTrack.Title ?? "Unknown Title",
+                            Artist = track.Artist ?? lavalinkTrack.Author ?? "Unknown Artist",
+                            Album = track.Album,
+                            ReleaseDate = track.ReleaseDate,
+                            Artwork = track.ArtworkUrl ?? lavalinkTrack.ArtworkUri?.ToString() ?? "",
+                            Url = track.PlaybackUrl,
+                            ArtistUrl = track.ArtistUrl,
+                            Duration = track.DurationDisplay,
+                            Studio = track.Studio,
+                            RequestedBy = interaction.User.Username,
+                            Reference = new TrackReference(lavalinkTrack)
+                        };
+                        // Play first track or add to queue
+                        if (!firstTrackProcessed && player.State != PlayerState.Playing && player.State != PlayerState.Paused)
+                        {
+                            Logs.Debug($"Playing first track: {queueItem.Title} by {queueItem.Artist}");
+                            await player.PlayAsync(queueItem, cancellationToken: cancellationToken);
+                            firstTrackProcessed = true;
+                        }
+                        else
+                        {
+                            await player.Queue.AddAsync(queueItem, cancellationToken);
+                        }
+                        successCount++;
                     }
-                    else
+                    catch (Exception ex)
                     {
-                        // For Plex tracks - USE THE EXACT SAME CODE AS THE ORIGINAL
+                        Logs.Error($"Error processing track {track.Title}: {ex.Message}");
+                        failedTracks.Add(track);
+                    }
+                    // Small delay between individual tracks for stability
+                    await Task.Delay(100, cancellationToken);
+                }
+                // Longer delay between batches
+                if (batchStart + batchSize < totalCount)
+                {
+                    await Task.Delay(300, cancellationToken); // 300ms pause between batches
+                }
+            }
+            // Try to recover failed tracks (one retry attempt)
+            if (failedTracks.Count > 0 && successCount > 0)  // Only retry if we had some successes
+            {
+                Logs.Debug($"Attempting to recover {failedTracks.Count} failed tracks");
+
+                foreach (Track track in failedTracks)
+                {
+                    try
+                    {
+                        // Wait a bit longer before retry
+                        await Task.Delay(500, cancellationToken);
+                        Logs.Debug($"Retrying track: {track.Title}");
                         TrackLoadOptions loadOptions = new()
                         {
-                            SearchMode = TrackSearchMode.None
+                            SearchMode = track.SourceSystem.Equals("youtube", StringComparison.OrdinalIgnoreCase)
+                                ? TrackSearchMode.YouTube
+                                : TrackSearchMode.None
                         };
-                        lavalinkTrack = await _audioService.Tracks.LoadTrackAsync(
+                        LavalinkTrack? lavalinkTrack = await _audioService.Tracks.LoadTrackAsync(
                             track.PlaybackUrl,
                             loadOptions,
                             cancellationToken: cancellationToken);
-                    }
-                    if (lavalinkTrack == null)
-                    {
-                        Logs.Warning($"Failed to load track for queue: {track.Title} from URL: {track.PlaybackUrl}");
-                        continue;
-                    }
-                    Logs.Debug($"Successfully loaded track: {lavalinkTrack.Title} by {lavalinkTrack.Author}");
-                    // Create custom queue item with rich metadata
-                    CustomTrackQueueItem queueItem = new()
-                    {
-                        Title = lavalinkTrack.Title ?? track.Title,
-                        Artist = lavalinkTrack.Author ?? track.Artist,
-                        Album = track.Album,
-                        ReleaseDate = track.ReleaseDate,
-                        Artwork = lavalinkTrack.ArtworkUri?.ToString() ?? track.ArtworkUrl,
-                        Url = track.PlaybackUrl,
-                        ArtistUrl = track.ArtistUrl,
-                        Duration = track.DurationDisplay,
-                        Studio = track.Studio,
-                        RequestedBy = interaction.User.Username,
-                        Reference = new TrackReference(lavalinkTrack)
-                    };
-                    // Add to queue or play if first track
-                    if (player.State != PlayerState.Playing && player.State != PlayerState.Paused && addedCount == 0)
-                    {
-                        // Play the first track immediately
-                        await player.PlayAsync(queueItem, cancellationToken: cancellationToken);
-                    }
-                    else
-                    {
-                        // Add to queue
+                        if (lavalinkTrack == null)
+                        {
+                            Logs.Warning($"Failed to load track on retry: {track.Title}");
+                            continue;
+                        }
+                        // Create queue item and add to queue
+                        CustomTrackQueueItem queueItem = new()
+                        {
+                            // Prioritize Plex metadata over Lavalink metadata
+                            Title = track.Title ?? lavalinkTrack.Title ?? "Unknown Title",
+                            Artist = track.Artist ?? lavalinkTrack.Author ?? "Unknown Artist",
+                            Album = track.Album,
+                            ReleaseDate = track.ReleaseDate,
+                            Artwork = track.ArtworkUrl ?? lavalinkTrack.ArtworkUri?.ToString() ?? "",
+                            Url = track.PlaybackUrl,
+                            ArtistUrl = track.ArtistUrl,
+                            Duration = track.DurationDisplay,
+                            Studio = track.Studio,
+                            RequestedBy = interaction.User.Username,
+                            Reference = new TrackReference(lavalinkTrack)
+                        };
                         await player.Queue.AddAsync(queueItem, cancellationToken);
+                        successCount++;
+                        // Pause between retries
+                        await Task.Delay(300, cancellationToken);
                     }
-                    addedCount++;
-                }
-                catch (Exception ex)
-                {
-                    // Check if this is a login-required error TODO: Dont use string comparison
-                    bool requiresLogin = ex.Message.Contains("login", StringComparison.OrdinalIgnoreCase);
-
-                    if (track.SourceSystem.Equals("youtube", StringComparison.OrdinalIgnoreCase) && requiresLogin)
+                    catch (Exception ex)
                     {
-                        Logs.Warning($"YouTube login required for track: {track.Title}");
-                        throw new PlayerException($"Video requires login: {track.Title}", "Play", true);
-                    }
-                    else
-                    {
-                        Logs.Error($"Error playing track: {ex.Message}");
-                        throw new PlayerException($"Failed to play track: {ex.Message}", "Play", ex);
+                        Logs.Error($"Error retrying track {track.Title}: {ex.Message}");
                     }
                 }
             }
-            Logs.Info($"Added {addedCount} of {totalCount} tracks to queue");
-            if (addedCount > 0)
+            // Final message
+            if (successCount > 0)
             {
-                string message = addedCount == 1
-                    ? $"Added '{trackList[0].Title}' to the queue"
-                    : $"Added {addedCount} tracks to the queue";
-                await interaction.FollowupAsync(message, ephemeral: true);
+                string message = $"Added {successCount} of {totalCount} tracks to the queue";
+                await interaction.ModifyOriginalResponseAsync(msg =>
+                {
+                    msg.Embed = DiscordEmbedBuilder.Success("Tracks Added", message);
+                });
             }
             else
             {
-                await interaction.FollowupAsync("Failed to add any tracks to queue.", ephemeral: true);
+                await interaction.ModifyOriginalResponseAsync(msg =>
+                {
+                    msg.Embed = DiscordEmbedBuilder.Error("Failed to Add Tracks", "No tracks were added to the queue.");
+                });
             }
         }
         catch (Exception ex)
@@ -295,9 +373,8 @@ public class PlayerService : IPlayerService
     }
 
     /// <inheritdoc />
-    public async Task<string> TogglePauseResumeAsync(
-        IDiscordInteraction interaction,
-        CancellationToken cancellationToken = default)
+    public async Task<string> TogglePauseResumeAsync(IDiscordInteraction interaction,
+    CancellationToken cancellationToken = default)
     {
         QueuedLavalinkPlayer? player = await GetPlayerAsync(interaction, false, cancellationToken);
         if (player == null)
@@ -307,47 +384,36 @@ public class PlayerService : IPlayerService
         }
         try
         {
+            string result;
+            // Toggle state based on current state
             if (player.State == PlayerState.Paused)
             {
-                // Resume playback
                 await player.ResumeAsync(cancellationToken);
-                Logs.Info($"Playback resumed by {interaction.User.Username}");
-                // Update player UI if it's our custom player
-                if (player is CustomPlayer customPlayer)
-                {
-                    ComponentBuilder components = new ComponentBuilder()
-                        .WithButton("Pause", "pause_resume:pause", ButtonStyle.Secondary)
-                        .WithButton("Skip", "skip:skip", ButtonStyle.Primary)
-                        .WithButton("Queue Options", "queue_options:options:1", ButtonStyle.Success)
-                        .WithButton("Repeat", "repeat:select", ButtonStyle.Secondary)
-                        .WithButton("Kill", "kill:kill", ButtonStyle.Danger);
-                    await customPlayer.UpdatePlayerComponentsAsync(components);
-                }
-                return "Resumed";
+                Logs.Debug($"Playback resumed by {interaction.User.Username}");
+                result = "Resumed";
             }
             else if (player.State == PlayerState.Playing)
             {
-                // Pause playback
                 await player.PauseAsync(cancellationToken);
-                Logs.Info($"Playback paused by {interaction.User.Username}");
-                // Update player UI if it's our custom player
-                if (player is CustomPlayer customPlayer)
-                {
-                    ComponentBuilder components = new ComponentBuilder()
-                        .WithButton("Resume", "pause_resume:resume", ButtonStyle.Success)
-                        .WithButton("Skip", "skip:skip", ButtonStyle.Primary)
-                        .WithButton("Queue Options", "queue_options:options:1", ButtonStyle.Success)
-                        .WithButton("Repeat", "repeat:select", ButtonStyle.Secondary)
-                        .WithButton("Kill", "kill:kill", ButtonStyle.Danger);
-                    await customPlayer.UpdatePlayerComponentsAsync(components);
-                }
-                return "Paused";
+                Logs.Debug($"Playback paused by {interaction.User.Username}");
+                result = "Paused";
             }
             else
             {
-                // Not playing or paused
                 throw new PlayerException("No track is currently playing", "Pause");
             }
+            // Update player UI if it's our custom player
+            if (player is CustomPlayer customPlayer)
+            {
+                ButtonContext context = new()
+                {
+                    Player = customPlayer,
+                    Interaction = interaction
+                };
+                ComponentBuilder components = DiscordButtonBuilder.Instance.BuildButtons(ButtonFlag.VisualPlayer, context);
+                await customPlayer.UpdateVisualPlayerAsync(components);
+            }
+            return result;
         }
         catch (Exception ex) when (ex is not PlayerException)
         {
@@ -379,7 +445,7 @@ public class PlayerService : IPlayerService
             }
             // Skip the current track - default to 1 track to fix argument type error
             await player.SkipAsync(1, cancellationToken);
-            Logs.Info($"Track skipped by {interaction.User.Username}");
+            Logs.Debug($"Track skipped by {interaction.User.Username}");
             await interaction.FollowupAsync($"Skipped {trackTitle}.", ephemeral: true);
         }
         catch (Exception ex) when (ex is not PlayerException)
@@ -410,8 +476,18 @@ public class PlayerService : IPlayerService
                 TrackRepeatMode.Queue => "Now repeating the entire queue",
                 _ => "Unknown repeat mode"
             };
-            Logs.Info($"Repeat mode set to {repeatMode} by {interaction.User.Username}");
-            await interaction.FollowupAsync(modeDescription, ephemeral: true);
+            if (player is CustomPlayer customPlayer)
+            {
+                // Update player UI if it's our custom player
+                ButtonContext context = new()
+                {
+                    Player = customPlayer,
+                    Interaction = interaction
+                };
+                ComponentBuilder components = DiscordButtonBuilder.Instance.BuildButtons(ButtonFlag.VisualPlayer, context);
+                await customPlayer.UpdateVisualPlayerAsync(components, true); // Update Visual Player image
+            }
+            Logs.Debug($"Repeat mode set to {repeatMode} by {interaction.User.Username}");
         }
         catch (Exception ex)
         {
@@ -440,13 +516,11 @@ public class PlayerService : IPlayerService
             if (disconnect)
             {
                 await player.DisconnectAsync(cancellationToken);
-                Logs.Info($"Player stopped and disconnected by {interaction.User.Username}");
-                await interaction.FollowupAsync("Playback stopped and bot disconnected from voice channel.", ephemeral: true);
+                Logs.Debug($"Player stopped and disconnected by {interaction.User.Username}");
             }
             else
             {
-                Logs.Info($"Player stopped by {interaction.User.Username}");
-                await interaction.FollowupAsync("Playback stopped and queue cleared.", ephemeral: true);
+                Logs.Debug($"Player stopped by {interaction.User.Username}");
             }
         }
         catch (Exception ex)

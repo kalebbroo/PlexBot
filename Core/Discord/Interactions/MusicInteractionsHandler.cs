@@ -5,6 +5,7 @@ using PlexBot.Services;
 using PlexBot.Utils;
 using Discord.WebSocket;
 using PlexBot.Core.Discord.Embeds;
+using Microsoft.VisualBasic;
 
 namespace PlexBot.Core.Discord.Interactions;
 
@@ -141,25 +142,28 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
             await FollowupAsync(embed: DiscordEmbedBuilder.Error("Cooldown", "Please wait a moment before clicking again."), ephemeral: true);
             return;
         }
+        SocketInteraction interaction = Context.Interaction;
         try
         {
             // Get the player
-            if (await _playerService.GetPlayerAsync(Context.Interaction, false) is not CustomPlayer player)
+            if (await _playerService.GetPlayerAsync(interaction, false) is not CustomPlayer player)
             {
                 await FollowupAsync(embed: DiscordEmbedBuilder.Error("No Player", "No active player found."), ephemeral: true);
                 return;
             }
+            ButtonContext context = new()
+            {
+                Player = player,
+                Interaction = interaction
+            };
             int currentPage = int.TryParse(pageStr, out int page) ? page : 1;
             switch (action.ToLowerInvariant())
             {
                 case "options":
                     // Show queue option buttons
-                    ComponentBuilder optionsComponents = new ComponentBuilder()
-                        .WithButton("View Queue", $"queue_options:view:{currentPage}", ButtonStyle.Success)
-                        .WithButton("Shuffle", $"queue_options:shuffle:{currentPage}", ButtonStyle.Primary)
-                        .WithButton("Clear", $"queue_options:clear:{currentPage}", ButtonStyle.Danger)
-                        .WithButton("Back", $"queue_options:back:{currentPage}", ButtonStyle.Secondary);
-                    await player.UpdatePlayerComponentsAsync(optionsComponents);
+                    context.CustomData["currentPage"] = currentPage;
+                    ComponentBuilder optionsComponents = DiscordButtonBuilder.Instance.BuildButtons(ButtonFlag.QueueOptions, context);
+                    await player.UpdateVisualPlayerAsync(optionsComponents);
                     break;
                 case "view":
                     // Show the queue
@@ -168,24 +172,15 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
                 case "shuffle":
                     // Shuffle the queue
                     await player.Queue.ShuffleAsync();
-                    await FollowupAsync(embed: DiscordEmbedBuilder.Music("Queue Shuffled", "The queue has been shuffled successfully."), ephemeral: true);
                     break;
                 case "clear":
                     // Clear the queue
                     await player.Queue.ClearAsync();
-                    await FollowupAsync(embed: DiscordEmbedBuilder.Music("Queue Cleared", "The queue has been cleared successfully."), ephemeral: true);
                     break;
                 case "back":
                     // Restore default player buttons
-                    ComponentBuilder defaultComponents = new ComponentBuilder()
-                        .WithButton(player.State == PlayerState.Playing ? "Pause" : "Resume",
-                                    player.State == PlayerState.Playing ? "pause_resume:pause" : "pause_resume:resume",
-                                    player.State == PlayerState.Playing ? ButtonStyle.Secondary : ButtonStyle.Success)
-                        .WithButton("Skip", "skip:skip", ButtonStyle.Primary)
-                        .WithButton("Queue Options", "queue_options:options:1", ButtonStyle.Success)
-                        .WithButton("Repeat", "repeat:select", ButtonStyle.Secondary)
-                        .WithButton("Kill", "kill:kill", ButtonStyle.Danger);
-                    await player.UpdatePlayerComponentsAsync(defaultComponents);
+                    ComponentBuilder defaultComponents = DiscordButtonBuilder.Instance.BuildButtons(ButtonFlag.VisualPlayer, context);
+                    await player.UpdateVisualPlayerAsync(defaultComponents);
                     break;
                 default:
                     await FollowupAsync(embed: DiscordEmbedBuilder.Error("Unknown Action", $"Unrecognized queue action: {action}"), ephemeral: true);
@@ -224,7 +219,7 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
                 .AddOption("Repeat Queue", "queue", "Repeat the entire queue");
             ComponentBuilder components = new ComponentBuilder()
                 .WithSelectMenu(selectMenu);
-            await FollowupAsync(embed: DiscordEmbedBuilder.Info("Repeat Mode", "Select a repeat mode:"), components: components.Build(), ephemeral: true);
+            await FollowupAsync(embed: DiscordEmbedBuilder.Info("Repeat Options", "Select a repeat mode:"), components: components.Build(), ephemeral: true);
         }
         catch (Exception ex)
         {
@@ -264,7 +259,6 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
                 TrackRepeatMode.Queue => "Repeating the entire queue",
                 _ => "Unknown repeat mode"
             };
-            await FollowupAsync(embed: DiscordEmbedBuilder.Music("Repeat Mode", $"Repeat mode set to: {modeDescription}"), ephemeral: true);
         }
         catch (Exception ex)
         {
@@ -313,8 +307,7 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
                 return;
             }
             // Play the track
-            await _playerService.PlayTrackAsync(Context.Interaction, track);
-            await FollowupAsync(embed: DiscordEmbedBuilder.Music("Now Playing", $"Playing '{track.Title}' by {track.Artist}"), ephemeral: true);
+            await _playerService.AddToQueueAsync(Context.Interaction, [track]);
         }
         catch (Exception ex)
         {
@@ -340,7 +333,6 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
             }
             // Add tracks to queue
             await _playerService.AddToQueueAsync(Context.Interaction, tracks);
-            await FollowupAsync(embed: DiscordEmbedBuilder.Music("Album Added", $"Playing {tracks.Count} tracks from '{tracks[0].Album}' by {tracks[0].Artist}"), ephemeral: true);
         }
         catch (Exception ex)
         {
@@ -378,7 +370,6 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
             }
             // Add all tracks to queue
             await _playerService.AddToQueueAsync(Context.Interaction, allTracks);
-            await FollowupAsync(embed: DiscordEmbedBuilder.Music("Artist Added", $"Playing {allTracks.Count} tracks by {allTracks[0].Artist}"), ephemeral: true);
         }
         catch (Exception ex)
         {
