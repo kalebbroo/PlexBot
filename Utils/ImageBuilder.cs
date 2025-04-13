@@ -1,8 +1,11 @@
-using PlexBot.Utils.Http;
+﻿using PlexBot.Utils.Http;
+using PlexBot.Services;
 
+using Path = System.IO.Path;
 using Color = SixLabors.ImageSharp.Color;
 using Image = SixLabors.ImageSharp.Image;
 using Font = SixLabors.Fonts.Font;
+using FontFamily = SixLabors.Fonts.FontFamily;
 
 namespace PlexBot.Utils;
 
@@ -10,16 +13,34 @@ namespace PlexBot.Utils;
 public static class ImageBuilder
 {
     private static readonly HttpClientWrapper? _httpClient;
+    private static readonly FontFamily? _fontFamily;
+    private static readonly FontCollection _fontCollection = new();
+    private static readonly Dictionary<string, Image<Rgba32>> _iconCache = [];
+
+
+    // These paths cover both standard Linux/Docker locations and system-specific ones
+    private static readonly string[] _fontPaths =
+    [
+        // Linux/Docker font paths (based on apt-get packages)
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",           // fonts-dejavu
+        "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",       // fonts-noto
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",    // fonts-noto-cjk
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf", // fonts-liberation
+        // Additional CJK fonts
+        "/usr/share/fonts/opentype/ipafont-gothic/ipag.ttf",         // fonts-ipafont-gothic
+        "/usr/share/fonts/opentype/ipafont-mincho/ipam.ttf",         // fonts-ipafont-mincho
+        // App-bundled font option
+        System.IO.Path.Combine(AppContext.BaseDirectory, "fonts/NotoSans-Regular.ttf")
+    ];
 
     static ImageBuilder()
     {
         try
         {
             Logs.Debug("ImageBuilder initialization started");
-            // Step 1: Initialize HttpClientWrapper
+            // Initialize HttpClientWrapper
             try
             {
-                // Create a standard HttpClient for the wrapper
                 HttpClient client = new();
                 _httpClient = new HttpClientWrapper(client, "ImageBuilder");
                 Logs.Debug("HttpClientWrapper initialized successfully");
@@ -27,27 +48,90 @@ public static class ImageBuilder
             catch (Exception ex)
             {
                 Logs.Error($"Failed to initialize HttpClientWrapper: {ex.Message}");
-                // Rethrow to stop initialization if we can't have an HttpClient
                 throw new InvalidOperationException("Failed to initialize essential HttpClientWrapper", ex);
             }
-            
-            Logs.Debug("ImageBuilder initialized successfully");
+            // Initialize font system
+            try
+            {
+                Logs.Debug("Attempting to find usable fonts...");
+                List<string> loadedFonts = [];
+                // Try to find an appropriate font
+                bool foundFont = false;
+                foreach (string fontPath in _fontPaths)
+                {
+                    if (File.Exists(fontPath))
+                    {
+                        try
+                        {
+                            // Attempt to load the font
+                            _fontCollection.Add(fontPath);
+                            loadedFonts.Add(System.IO.Path.GetFileName(fontPath));
+                            foundFont = true;
+                            Logs.Debug($"Successfully loaded font: {fontPath}");
+                        }
+                        catch (Exception ex)
+                        {
+                            Logs.Warning($"Failed to load font {fontPath}: {ex.Message}");
+                        }
+                    }
+                }
+                if (foundFont)
+                {
+                    // Try to find a good CJK-compatible font first
+                    string[] cjkFontNames = ["Noto", "CJK", "Gothic", "Mincho", "Apple"];
+                    foreach (var family in _fontCollection.Families)
+                    {
+                        if (cjkFontNames.Any(cjk => family.Name.Contains(cjk, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            _fontFamily = family;
+                            Logs.Debug($"Selected CJK-compatible font: {family.Name}");
+                            break;
+                        }
+                    }
+                    // If no CJK font found, use any available font
+                    if (_fontFamily == null && _fontCollection.Families.Any())
+                    {
+
+                        if (_fontFamily == null && _fontCollection.Families.Any())
+                        {
+                            _fontFamily = _fontCollection.Families.First();
+                            Logs.Debug($"Selected font: {_fontFamily.Value.Name}");
+                        }
+                    }
+                }
+                Logs.Info($"ImageBuilder initialized with {loadedFonts.Count} fonts: {string.Join(", ", loadedFonts)}");
+            }
+            catch (Exception ex)
+            {
+                Logs.Warning($"Font initialization error: {ex.Message}. Will use system default fonts.");
+            }
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // We can't throw here because it would prevent the application from starting,
-            // but the image generation functionality won't work
-            Logs.Error("ImageBuilder failed to initialize properly. Image generation will be unavailable.");
+            Logs.Error($"ImageBuilder failed to initialize properly: {ex.Message}");
+            // We won't rethrow since we don't want to prevent the application from starting
         }
     }
 
     /// <summary>Creates a visually appealing player image by downloading album art and overlaying track details for Discord display</summary>
     /// <param name="track">Dictionary containing track information</param>
+    /// <param name="player">Optional player object to get current state (volume and repeat mode)</param>
     /// <returns>The generated image</returns>
-    public static async Task<Image> BuildPlayerImageAsync(Dictionary<string, string> track)
+    public static async Task<Image> BuildPlayerImageAsync(Dictionary<string, string> track, CustomPlayer player = null)
     {
         try
         {
+            // Extract player state if available
+            int volumePercent = 50; // Default value
+            string repeatMode = "none"; // Default value
+            if (player != null)
+            {
+                // Get volume (convert from 0.0-1.0 to 0-100%)
+                volumePercent = (int)(player.Volume * 100);
+                // Get repeat mode (convert TrackRepeatMode enum to string)
+                repeatMode = player.RepeatMode.ToString().ToLower();
+                Logs.Debug($"Using player state - Volume: {volumePercent}%, Repeat: {repeatMode}");
+            }
             // Get the album artwork URL
             string artworkUrl = track.GetValueOrDefault("Artwork", "");
             if (string.IsNullOrEmpty(artworkUrl) || artworkUrl == "N/A")
@@ -55,14 +139,14 @@ public static class ImageBuilder
                 // Use a placeholder image if no artwork is available
                 artworkUrl = "https://t3.ftcdn.net/jpg/06/04/96/54/360_F_604965492_lCfxDUwNF1YiogR3SN0lbmbdvFnfDCHa.jpg";
             }
-            Image<Rgba32> image;
+            Image<Rgba32> albumArt;
             try
             {
                 // Use HttpClientWrapper to download the image
-                string tempFilePath = System.IO.Path.GetTempFileName();
+                string tempFilePath = Path.GetTempFileName();
                 await _httpClient.DownloadFileAsync(artworkUrl, tempFilePath);
                 // Load the image from the temp file
-                image = Image.Load<Rgba32>(tempFilePath);
+                albumArt = Image.Load<Rgba32>(tempFilePath);
                 // Delete the temp file
                 try { File.Delete(tempFilePath); } catch { /* Ignore cleanup errors */ }
             }
@@ -70,112 +154,316 @@ public static class ImageBuilder
             {
                 Logs.Error($"Failed to download artwork from {artworkUrl}: {ex.Message}");
                 // Create a blank image if download fails
-                image = new Image<Rgba32>(800, 400, Color.DarkGray);
+                albumArt = new Image<Rgba32>(400, 400, Color.DarkGray);
             }
+            // Final image dimensions
+            int width = 800;
+            int height = 400;
+            // Create our canvas
+            Image<Rgba32> canvas = new(width, height, Color.Black);
             try
             {
-                // Resize if necessary to ensure we have proper dimensions
-                if (image.Width != image.Height)
+                // Create a blurred copy of the album art for background
+                Image<Rgba32> backgroundArt = albumArt.Clone();
+                backgroundArt.Mutate(ctx =>
                 {
-                    // Crop to square from center
-                    int size = Math.Min(image.Width, image.Height);
-                    int x = (image.Width - size) / 2;
-                    int y = (image.Height - size) / 2;
-                    image.Mutate(ctx => ctx.Crop(new Rectangle(x, y, size, size)));
-                }
-                // Resize to target dimensions
-                image.Mutate(ctx => ctx.Resize(800, 400));
-                // Add semi-transparent overlay for better text visibility
-                image.Mutate(ctx =>
-                {
-                    // Simplified overlay approach
-                    ctx.Fill(Color.FromRgba(0, 0, 0, 150), new RectangleF(0, 0, 800, 400));
-                    
-                    // Simple font handling - just create a font when needed
-                    Font font;
-                    try
-                    {
-                        // Get any available system font - super simple
-                        IReadOnlySystemFontCollection systemFontCollection = SystemFonts.Collection;
-                        var fontFamilies = systemFontCollection.Families.ToList();
-                        
-                        if (fontFamilies.Count > 0)
-                        {
-                            // Use the first system font available
-                            font = fontFamilies[0].CreateFont(36);
-                        }
-                        else
-                        {
-                            Logs.Error("No system fonts available - cannot draw text");
-                            return; // Skip text drawing
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Logs.Error($"Font error: {ex.Message}");
-                        return; // Skip text drawing if font creation fails
-                    }
-                    
-                    // Add track information with the font we just created
-                    float y = 20;
-                    ctx.DrawText(track.GetValueOrDefault("Artist", "Unknown Artist"), font, Color.White, new PointF(20, y));
-                    y += 50;
-                    ctx.DrawText(track.GetValueOrDefault("Title", "Unknown Title"), font, Color.White, new PointF(20, y));
-                    y += 50;
-                    ctx.DrawText(track.GetValueOrDefault("Album", "Unknown Album"), font, Color.White, new PointF(20, y));
-                    y += 50;
-                    ctx.DrawText(track.GetValueOrDefault("Studio", "Unknown Studio"), font, Color.White, new PointF(20, y));
-                    y += 50;
-                    ctx.DrawText("Duration: " + track.GetValueOrDefault("Duration", "0:00"), font, Color.White, new PointF(20, y));
+                    // Resize to fill the background
+                    ctx.Resize(new Size(width + 100, height + 100));
+                    // Blur the image
+                    ctx.GaussianBlur(10f);
                 });
-                // Apply rounded corners - This was a bitch to get right
+                // Draw blurred background
+                canvas.Mutate(ctx => ctx.DrawImage(backgroundArt, new Point(-50, -50), 1f));
+                // Add a semi-transparent overlay for better text contrast and darkening
+                canvas.Mutate(ctx =>
+                {
+                    // Create a darker overlay
+                    ctx.Fill(new Rgba32(0, 0, 0, 180), new RectangleF(0, 0, width, height));
+                    // Add gradient effect
+                    ctx.Fill(new LinearGradientBrush(
+                        new PointF(0, 0),
+                        new PointF(width, height),
+                        GradientRepetitionMode.None,
+                        new ColorStop(0f, new Rgba32(0, 0, 0, 50)),
+                        new ColorStop(1f, new Rgba32(0, 0, 0, 100))
+                    ), new RectangleF(0, 0, width, height));
+                });
+                // Create a clean version of album art for display
+                Image<Rgba32> displayArt = albumArt.Clone();
+                displayArt.Mutate(ctx =>
+                {
+                    // Make it square if it's not already
+                    if (displayArt.Width != displayArt.Height)
+                    {
+                        int size = Math.Min(displayArt.Width, displayArt.Height);
+                        ctx.Crop(new Rectangle(
+                            (displayArt.Width - size) / 2,
+                            (displayArt.Height - size) / 2,
+                            size, size));
+                    }
+
+                    // Resize to fit our layout
+                    ctx.Resize(new Size(280, 280));
+                });
+                // Draw album art on left side
+                canvas.Mutate(ctx => ctx.DrawImage(displayArt, new Point(40, 60), 1f));
+                // Add text information
                 try
                 {
-                    IPath roundedRectPath = CreateRoundedRectanglePath(new RectangleF(0, 0, 800, 400), 20);
-                    image.Mutate(ctx =>
+                    // Get the font for our text
+                    Font titleFont, artistFont, infoFont, smallInfoFont;
+                    if (_fontFamily != null)
                     {
-                        ctx.SetGraphicsOptions(new GraphicsOptions { AlphaCompositionMode = PixelAlphaCompositionMode.DestIn });
-                        ctx.Fill(Color.Black, roundedRectPath);
+                        // Create fonts of different sizes from our loaded font
+                        titleFont = _fontFamily.Value.CreateFont(40, FontStyle.Bold);
+                        artistFont = _fontFamily.Value.CreateFont(32);
+                        infoFont = _fontFamily.Value.CreateFont(20);
+                        smallInfoFont = _fontFamily.Value.CreateFont(16);
+                    }
+                    else
+                    {
+                        // Emergency fallback - use any available system font
+                        FontFamily fallbackFamily = SystemFonts.Collection.Families.FirstOrDefault();
+                        if (fallbackFamily == null)
+                        {
+                            throw new Exception("No fonts available!");
+                        }
+                        titleFont = fallbackFamily.CreateFont(40, FontStyle.Bold);
+                        artistFont = fallbackFamily.CreateFont(32);
+                        infoFont = fallbackFamily.CreateFont(20);
+                        smallInfoFont = fallbackFamily.CreateFont(16);
+                    }
+                    // Helper function to truncate text
+                    static string TruncateText(string text, Font font, int maxWidth)
+                    {
+                        if (string.IsNullOrEmpty(text)) return text;
+                        FontRectangle size = TextMeasurer.MeasureSize(text, new TextOptions(font));
+                        if (size.Width <= maxWidth) return text;
+                        // Truncate and add ellipsis
+                        for (int i = text.Length - 1; i >= 0; i--)
+                        {
+                            string truncated = text[..i] + "...";
+                            size = TextMeasurer.MeasureSize(truncated, new TextOptions(font));
+                            if (size.Width <= maxWidth) return truncated;
+                        }
+                        return "...";
+                    }
+                    int textX = 360;  // Start text after the album art
+                    int maxWidth = 400; // Maximum width for text
+                    // Draw track information
+                    canvas.Mutate(ctx =>
+                    {
+                        // Title
+                        string title = track.GetValueOrDefault("Title", "Unknown Title");
+                        string truncatedTitle = TruncateText(title, titleFont, maxWidth);
+                        ctx.DrawText(truncatedTitle, titleFont, Color.White, new PointF(textX, 70));
+                        // Artist
+                        string artist = track.GetValueOrDefault("Artist", "Unknown Artist");
+                        string truncatedArtist = TruncateText(artist, artistFont, maxWidth);
+                        ctx.DrawText(truncatedArtist, artistFont, new Rgba32(220, 220, 220, 255), new PointF(textX, 130));
+                        // Album
+                        string album = track.GetValueOrDefault("Album", "Unknown Album");
+                        string truncatedAlbum = TruncateText(album, infoFont, maxWidth);
+                        ctx.DrawText(truncatedAlbum, infoFont, new Rgba32(180, 180, 180, 255), new PointF(textX, 190));
+                        // Load and draw the time icon
+                        Image timeIcon = GetIcon("time.png");
+                        ctx.DrawImage(timeIcon, new Point(textX, 230), 1.0f);
+                        // Calculate spacing based on icon size
+                        int timeIconWidth = timeIcon.Width;
+                        int durationTextX = textX + timeIconWidth + 8; // 8px spacing between icon and text
+                        // Draw duration text
+                        string duration = track.GetValueOrDefault("Duration", "00:00");
+                        ctx.DrawText(duration, infoFont, new Rgba32(180, 180, 180, 255), new PointF(durationTextX, 230));
+                        // Volume indicator with actual value from player
+                        int volumeIndicatorY = 280;
+                        DrawVolumeIndicator(ctx, textX, volumeIndicatorY, 200, 8, volumePercent, infoFont, smallInfoFont);
+                        // Repeat mode indicator with actual mode from player
+                        int repeatY = 320;
+                        DrawRepeatIndicator(ctx, textX, repeatY, repeatMode, infoFont, smallInfoFont);
+                        // Additional info/credit
+                        if (!string.IsNullOrEmpty(track.GetValueOrDefault("Studio", "")))
+                        {
+                            string label = "Record Label: " + track.GetValueOrDefault("Studio", "Unknown");
+                            string truncatedLabel = TruncateText(label, smallInfoFont, maxWidth);
+                            ctx.DrawText(truncatedLabel, smallInfoFont, new Rgba32(150, 150, 150, 255), new PointF(textX, 360));
+                        }
+                    });
+                }
+                catch (Exception ex)
+                {
+                    Logs.Error($"Error adding text: {ex.Message}");
+                }
+                // Apply rounded corners
+                try
+                {
+                    // Create a simple mask using multiple filled circles and rectangles
+                    Image<Rgba32> mask = new(width, height, Color.Transparent);
+                    mask.Mutate(ctx =>
+                    {
+                        // Fill the center
+                        ctx.Fill(Color.White, new Rectangle(12, 0, width - 24, height));
+                        ctx.Fill(Color.White, new Rectangle(0, 12, width, height - 24));
+                        // Add the rounded corners with circles
+                        int radius = 24; // Slightly larger radius for smoother corners
+                        ctx.Fill(Color.White, new EllipsePolygon(radius, radius, radius));
+                        ctx.Fill(Color.White, new EllipsePolygon(width - radius, radius, radius));
+                        ctx.Fill(Color.White, new EllipsePolygon(radius, height - radius, radius));
+                        ctx.Fill(Color.White, new EllipsePolygon(width - radius, height - radius, radius));
+                    });
+                    // Apply the mask
+                    canvas.Mutate(ctx =>
+                    {
+                        ctx.SetGraphicsOptions(new GraphicsOptions
+                        {
+                            AlphaCompositionMode = PixelAlphaCompositionMode.DestIn
+                        });
+                        ctx.DrawImage(mask, new Point(0, 0), 1f);
                     });
                 }
                 catch (Exception ex)
                 {
                     Logs.Warning($"Failed to apply rounded corners: {ex.Message}");
-                    // Continue without rounded corners.....
                 }
-                return image;
+                return canvas;
             }
             catch (Exception ex)
             {
                 Logs.Error($"Failed to process image: {ex.Message}");
-                return image; // Return unprocessed image
+                return new Image<Rgba32>(width, height, Color.Black); // Return simple fallback
             }
         }
         catch (Exception ex)
         {
             Logs.Error($"Failed to build player image: {ex.Message}");
             // Create and return a fallback image
-            Image<Rgba32> fallbackImage = new(800, 400, Color.DarkGray);
-            return fallbackImage;
+            return new Image<Rgba32>(800, 400, Color.Black);
         }
     }
 
-    /// <summary>Creates a rounded rectangle path for image clipping.
-    /// Used to apply rounded corners to the player image.</summary>
-    /// <param name="rect">The rectangle to round</param>
-    /// <param name="cornerRadius">The radius of the rounded corners</param>
-    /// <returns>A path representing a rounded rectangle</returns>
-    private static IPath CreateRoundedRectanglePath(RectangleF rect, float cornerRadius)
+    // Helper method to draw a rounded rectangle
+    private static void DrawRoundedRectangle(IImageProcessingContext ctx, float x, float y, float width, float height, float radius, Color color, bool fill = true)
     {
-        // Create a path builder for the rounded rectangle
-        PathBuilder pathBuilder = new();
-        pathBuilder.StartFigure();
-        // Define the corners
-        pathBuilder.AddArc(new(rect.Left, rect.Top), cornerRadius, cornerRadius, 0, 0, 90);
-        pathBuilder.AddArc(new(rect.Right - cornerRadius * 2, rect.Top), cornerRadius, cornerRadius, 90, 0, 90);
-        pathBuilder.AddArc(new(rect.Right - cornerRadius * 2, rect.Bottom - cornerRadius * 2), cornerRadius, cornerRadius, 180, 0, 90);
-        pathBuilder.AddArc(new(rect.Left, rect.Bottom - cornerRadius * 2), cornerRadius, cornerRadius, 270, 0, 90);
-        pathBuilder.CloseAllFigures();
-        return pathBuilder.Build();
+        // Make sure radius isn't too large for the rectangle
+        radius = Math.Min(radius, Math.Min(width / 2, height / 2));
+        IPath path = new PathBuilder()
+            .AddArc(new PointF(x + radius, y + radius), radius, radius, 0, 180, 90) // Top-left corner
+            .AddLine(x + radius, y, x + width - radius, y) // Top edge
+            .AddArc(new PointF(x + width - radius, y + radius), radius, radius, 0, 270, 90) // Top-right corner
+            .AddLine(x + width, y + radius, x + width, y + height - radius) // Right edge
+            .AddArc(new PointF(x + width - radius, y + height - radius), radius, radius, 0, 0, 90) // Bottom-right corner
+            .AddLine(x + width - radius, y + height, x + radius, y + height) // Bottom edge
+            .AddArc(new PointF(x + radius, y + height - radius), radius, radius, 0, 90, 90) // Bottom-left corner
+            .AddLine(x, y + height - radius, x, y + radius) // Left edge
+            .CloseFigure()
+            .Build();
+        // Fill or draw the rectangle
+        if (fill)
+        {
+            ctx.Fill(color, path);
+        }
+        else
+        {
+            ctx.Draw(color, 1f, path);
+        }
+    }
+
+    private static Image<Rgba32> GetIcon(string iconName)
+    {
+        // Check if the icon is already cached
+        if (_iconCache.TryGetValue(iconName, out Image<Rgba32> cachedIcon))
+        {
+            return cachedIcon;
+        }
+        // Define possible paths where the icon might be located
+        string[] possiblePaths =
+        [
+            Path.Combine("/app/Images/Icons", iconName),
+            Path.Combine(AppContext.BaseDirectory, "Images/Icons", iconName),
+            Path.Combine(Directory.GetCurrentDirectory(), "Images/Icons", iconName)
+        ];
+        foreach (string path in possiblePaths)
+        {
+            if (File.Exists(path))
+            {
+                try
+                {
+                    Logs.Debug($"Loading icon from {path}");
+                    Image<Rgba32> icon = Image.Load<Rgba32>(path);
+                    _iconCache[iconName] = icon;
+                    return icon;
+                }
+                catch (Exception ex)
+                {
+                    Logs.Error($"Failed to load icon from {path}: {ex.Message}");
+                    // Continue to the next path
+                }
+            }
+            else
+            {
+                Logs.Debug($"Icon path not found: {path}");
+            }
+        }
+        // If we get here, we couldn't load the icon
+        Logs.Error($"Could not find icon file: {iconName}");
+        // Return a blank image
+        return new Image<Rgba32>(24, 24, Color.Transparent);
+    }
+
+    private static void DrawVolumeIndicator(IImageProcessingContext ctx, int x, int y, int width, int height, int volumePercent, Font labelFont, Font valueFont)
+    {
+        // Ensure volume is between 0-100
+        volumePercent = Math.Clamp(volumePercent, 0, 100);
+        // Load and draw the volume icon
+        Image<Rgba32> icon = GetIcon("audio.png");
+        ctx.DrawImage(icon, new Point(x, y), 1.0f);
+        // Calculate spacing based on icon size
+        int iconWidth = icon.Width;
+        int textX = x + iconWidth + 8; // 8px spacing between icon and text
+        // Draw volume label
+        ctx.DrawText("Volume", labelFont, Color.White, new PointF(textX, y));
+        // Draw the value text
+        ctx.DrawText($"{volumePercent}%", valueFont, Color.White, new PointF(x + width + 10, y + 4));
+        // Background track - with rounded corners
+        int cornerRadius = height; // Make it fully rounded at the ends
+        DrawRoundedRectangle(ctx, x, y + icon.Height + 6, width, height, cornerRadius, new Rgba32(80, 80, 80, 200), true);
+        // Active volume level - with rounded corners
+        float fillWidth = (width * volumePercent) / 100f;
+        if (fillWidth > 0)
+        {
+            // Only draw if we have a non-zero width
+            DrawRoundedRectangle(ctx, x, y + icon.Height + 6, (int)fillWidth, height, cornerRadius, new Rgba32(65, 105, 225, 255), true);
+        }
+    }
+
+    private static void DrawRepeatIndicator(IImageProcessingContext ctx, int x, int y, string repeatMode, Font labelFont, Font valueFont)
+    {
+        Color indicatorColor = new Rgba32(120, 120, 120, 255);
+        string displayText = "Off";
+        int yOffset = 10; // Offset for the text position to give more padding between volume bar and repeat indicator
+        // Determine the proper display based on repeat mode
+        switch (repeatMode.ToLower())
+        {
+            case "track":
+                displayText = "Track";
+                indicatorColor = new Rgba32(65, 105, 225, 255);
+                break;
+            case "queue":
+                displayText = "Queue";
+                indicatorColor = new Rgba32(65, 105, 225, 255);
+                break;
+            case "none":
+            default:
+                // Default values already set
+                break;
+        }
+        // Load and draw the repeat icon
+        Image<Rgba32> icon = GetIcon("repeat.png");
+        ctx.DrawImage(icon, new Point(x, y + yOffset), 1.0f);
+        // Calculate spacing based on icon size
+        int iconWidth = icon.Width;
+        int textX = x + iconWidth + 8; // 8px spacing between icon and text
+        ctx.DrawText(" Repeat", labelFont, Color.White, new PointF(textX, y + yOffset));
+        // Draw mode text (position relative to the label)
+        ctx.DrawText(displayText, valueFont, indicatorColor, new PointF(textX + 100, y + yOffset + 4));
     }
 }
