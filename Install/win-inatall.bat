@@ -29,8 +29,8 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b 1
 )
 
-REM Create plugins directory
-if not exist "%DOCKER_DIR%\plugins" mkdir "%DOCKER_DIR%\plugins"
+REM Create extensions directory if it doesn't exist
+if not exist "%DOCKER_DIR%\Extensions" mkdir "%DOCKER_DIR%\Extensions"
 
 REM Check if we have a lavalink config file, create if not
 if not exist "%DOCKER_DIR%\lavalink.application.yml" (
@@ -104,11 +104,18 @@ echo.
 REM Navigate to the Docker directory and run docker-compose
 cd "%DOCKER_DIR%"
 
-REM Stop and remove existing containers for a clean start
-docker-compose down
+REM Stop and remove existing containers, networks, and volumes
+docker-compose down --volumes --remove-orphans
+
+REM Remove any existing images
+docker rmi -f plexbot:latest
+docker rmi -f ghcr.io/lavalink-devs/lavalink:4
+
+REM Clear build cache
+docker builder prune -f
 
 REM Build and start the containers
-docker-compose up -d --build
+docker-compose -p plexbot up -d --build
 
 echo.
 echo PlexBot installation completed successfully!
