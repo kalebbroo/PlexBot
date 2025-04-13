@@ -1,9 +1,11 @@
 version: '3.9'
+name: PlexBot
 
 services:
   # PlexBot Service
   plexbot:
     container_name: PlexBot
+    image: ghcr.io/plexbot/plexbot:latest
     build:
       context: ../..  # This points to the project root from Docker folder
       dockerfile: Install/Docker/dockerfile
@@ -15,6 +17,7 @@ services:
       - ../../data:/app/data
       - ../../logs:/app/logs
       - ../../.env:/app/.env  # Mount directly to app root
+      - ../../Images:/app/Images
     environment:
       - DOTNET_ENVIRONMENT=Production
     env_file:
@@ -44,5 +47,5 @@ services:
 
 networks:
   plexbot-network:
-    name: discord-plexbot-network
+    name: plexbot-network
     driver: bridge
