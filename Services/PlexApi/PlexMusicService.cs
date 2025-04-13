@@ -134,6 +134,11 @@ public class PlexMusicService(IPlexApiService plexApiService) : IPlexMusicServic
                 {
                     continue;
                 }
+                // Log the raw metadata we're getting from Plex
+                string title = item["title"]?.ToString() ?? "Unknown Title";
+                string artist = item["grandparentTitle"]?.ToString() ?? "Unknown Artist";
+                string album = item["parentTitle"]?.ToString() ?? "Unknown Album";
+                Logs.Debug($"Raw Plex metadata - Title: '{title}', Artist: '{artist}', Album: '{album}'");
                 // Get the playback URL
                 string partKey = item.SelectToken("Media[0].Part[0].key")?.ToString() ?? "";
                 string playableUrl = _plexApiService.GetPlaybackUrl(partKey);
@@ -141,9 +146,9 @@ public class PlexMusicService(IPlexApiService plexApiService) : IPlexMusicServic
                 Track track = new()
                 {
                     Id = item["ratingKey"]?.ToString() ?? Guid.NewGuid().ToString(),
-                    Title = item["title"]?.ToString() ?? "Unknown Title",
-                    Artist = item["grandparentTitle"]?.ToString() ?? "Unknown Artist",
-                    Album = item["parentTitle"]?.ToString() ?? "Unknown Album",
+                    Title = title,
+                    Artist = artist,
+                    Album = album,
                     ReleaseDate = item["originallyAvailableAt"]?.ToString() ?? "N/A",
                     ArtworkUrl = FormatArtworkUrl(item["thumb"]?.ToString()),
                     PlaybackUrl = playableUrl,
