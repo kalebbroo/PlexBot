@@ -209,18 +209,21 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
     string playlist, [Summary("shuffle", "Shuffle the playlist")] bool shuffle = false)
     {
         await RespondAsync(embed: DiscordEmbedBuilder.Info("Loading", "Loading playlist..."), ephemeral: true); // Respond to acknowledge the command
+        IUserMessage ackMessage = await GetOriginalResponseAsync();
         try
         {
-            Logs.Info($"Loading playlist: {playlist}, shuffle: {shuffle}");
+            Logs.Debug($"Loading playlist: {playlist}, shuffle: {shuffle}");
             if (string.IsNullOrWhiteSpace(playlist))
             {
-                await FollowupAsync(embed: DiscordEmbedBuilder.Error("Invalid Playlist", "Please select a playlist."), ephemeral: true);
+                await ackMessage.ModifyAsync(msg => msg.Embed = DiscordEmbedBuilder.Error("Invalid Playlist", "Please select a playlist."));
+                //await FollowupAsync(embed: DiscordEmbedBuilder.Error("Invalid Playlist", "Please select a playlist."), ephemeral: true);
                 return;
             }
             Playlist playlistDetails = await _plexMusicService.GetPlaylistDetailsAsync(playlist);
             if (playlistDetails.Tracks.Count == 0)
             {
-                await FollowupAsync(embed: DiscordEmbedBuilder.Info("Empty Playlist", $"Playlist '{playlistDetails.Title}' is empty."), ephemeral: true);
+                await ackMessage.ModifyAsync(msg => msg.Embed = DiscordEmbedBuilder.Info("Empty Playlist", $"Playlist '{playlistDetails.Title}' is empty."));
+                //await FollowupAsync(embed: DiscordEmbedBuilder.Info("Empty Playlist", $"Playlist '{playlistDetails.Title}' is empty."), ephemeral: true);
                 return;
             }
             // Get a list of tracks from the playlist to add to the queue
@@ -235,7 +238,8 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         catch (Exception ex)
         {
             Logs.Error($"Error in playlist command: {ex.Message}");
-            await FollowupAsync(embed: DiscordEmbedBuilder.Error("Playlist Error", "An error occurred while loading the playlist. Please try again later."), ephemeral: true);
+            await ackMessage.ModifyAsync(msg => msg.Embed = DiscordEmbedBuilder.Error("Playlist Error", "An error occurred while loading the playlist. Please try again later."));
+            //await FollowupAsync(embed: DiscordEmbedBuilder.Error("Playlist Error", "An error occurred while loading the playlist. Please try again later."), ephemeral: true);
         }
     }
 
@@ -268,18 +272,16 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
             SearchResults results = await _plexMusicService.SearchLibraryAsync(query);
             if (!results.HasResults)
             {
-                await FollowupAsync(embed: DiscordEmbedBuilder.Info("No Results", $"No results found for '{query}'."), ephemeral: true);
+                await FollowupAsync(embed: DiscordEmbedBuilder.Error("No Results", $"No results found for '{query}'."), ephemeral: true);
                 return;
             }
             // If we found tracks, play the first one
             if (results.Tracks.Count != 0)
             {
                 Track track = results.Tracks.First();
-                await _playerService.PlayTrackAsync(Context.Interaction, track);
-                await FollowupAsync(embed: DiscordEmbedBuilder.Music("Now Playing", $"Playing '{track.Title}' by {track.Artist}"));
+                await _playerService.AddToQueueAsync(Context.Interaction, [track]);
                 return;
             }
-
             // If we found albums but no tracks, play the first album
             if (results.Albums.Count != 0)
             {
@@ -288,7 +290,6 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
                 if (tracks.Count != 0)
                 {
                     await _playerService.AddToQueueAsync(Context.Interaction, tracks);
-                    await FollowupAsync(embed: DiscordEmbedBuilder.Music("Album Added", $"Playing album '{album.Title}' by {album.Artist}"));
                     return;
                 }
             }
@@ -306,7 +307,6 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
                 if (allTracks.Count != 0)
                 {
                     await _playerService.AddToQueueAsync(Context.Interaction, allTracks);
-                    await FollowupAsync(embed: DiscordEmbedBuilder.Music("Artist Added", $"Playing {allTracks.Count} tracks by {artist.Name}"));
                     return;
                 }
             }
