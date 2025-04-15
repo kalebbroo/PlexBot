@@ -1,11 +1,11 @@
 ﻿using PlexBot.Utils.Http;
-using PlexBot.Services;
 
 using Path = System.IO.Path;
 using Color = SixLabors.ImageSharp.Color;
 using Image = SixLabors.ImageSharp.Image;
 using Font = SixLabors.Fonts.Font;
 using FontFamily = SixLabors.Fonts.FontFamily;
+using PlexBot.Services.LavaLink;
 
 namespace PlexBot.Utils;
 
@@ -30,7 +30,7 @@ public static class ImageBuilder
         "/usr/share/fonts/opentype/ipafont-gothic/ipag.ttf",         // fonts-ipafont-gothic
         "/usr/share/fonts/opentype/ipafont-mincho/ipam.ttf",         // fonts-ipafont-mincho
         // App-bundled font option
-        System.IO.Path.Combine(AppContext.BaseDirectory, "fonts/NotoSans-Regular.ttf")
+        Path.Combine(AppContext.BaseDirectory, "fonts/NotoSans-Regular.ttf")
     ];
 
     static ImageBuilder()
@@ -117,27 +117,24 @@ public static class ImageBuilder
     /// <param name="track">Dictionary containing track information</param>
     /// <param name="player">Optional player object to get current state (volume and repeat mode)</param>
     /// <returns>The generated image</returns>
-    public static async Task<Image> BuildPlayerImageAsync(Dictionary<string, string> track, CustomPlayer player = null)
+    /// <summary>Creates a visually appealing player image by downloading album art and overlaying track details</summary>
+    public static async Task<Image> BuildPlayerImageAsync(CustomTrackQueueItem track, CustomLavaLinkPlayer player = null)
     {
         try
         {
-            // Extract player state if available
-            int volumePercent = 50; // Default value
+            int volumePercent = 20; // Default value
             string repeatMode = "none"; // Default value
             if (player != null)
             {
-                // Get volume (convert from 0.0-1.0 to 0-100%)
                 volumePercent = (int)(player.Volume * 100);
-                // Get repeat mode (convert TrackRepeatMode enum to string)
                 repeatMode = player.RepeatMode.ToString().ToLower();
                 Logs.Debug($"Using player state - Volume: {volumePercent}%, Repeat: {repeatMode}");
             }
             // Get the album artwork URL
-            string artworkUrl = track.GetValueOrDefault("Artwork", "");
+            string artworkUrl = track.Artwork ?? "";
             if (string.IsNullOrEmpty(artworkUrl) || artworkUrl == "N/A")
             {
-                // Use a placeholder image if no artwork is available
-                artworkUrl = "https://t3.ftcdn.net/jpg/06/04/96/54/360_F_604965492_lCfxDUwNF1YiogR3SN0lbmbdvFnfDCHa.jpg";
+                artworkUrl = "https://via.placeholder.com/150"; // TODO: Add a real placeholder image
             }
             Image<Rgba32> albumArt;
             try
@@ -254,15 +251,15 @@ public static class ImageBuilder
                     canvas.Mutate(ctx =>
                     {
                         // Title
-                        string title = track.GetValueOrDefault("Title", "Unknown Title");
+                        string title = track.Title ?? "Unknown Title";
                         string truncatedTitle = TruncateText(title, titleFont, maxWidth);
                         ctx.DrawText(truncatedTitle, titleFont, Color.White, new PointF(textX, 70));
                         // Artist
-                        string artist = track.GetValueOrDefault("Artist", "Unknown Artist");
+                        string artist = track.Artist ?? "Unknown Artist";
                         string truncatedArtist = TruncateText(artist, artistFont, maxWidth);
                         ctx.DrawText(truncatedArtist, artistFont, new Rgba32(220, 220, 220, 255), new PointF(textX, 130));
                         // Album
-                        string album = track.GetValueOrDefault("Album", "Unknown Album");
+                        string album = track.Album ?? "Unknown Album";
                         string truncatedAlbum = TruncateText(album, infoFont, maxWidth);
                         ctx.DrawText(truncatedAlbum, infoFont, new Rgba32(180, 180, 180, 255), new PointF(textX, 190));
                         // Load and draw the time icon
@@ -272,7 +269,7 @@ public static class ImageBuilder
                         int timeIconWidth = timeIcon.Width;
                         int durationTextX = textX + timeIconWidth + 8; // 8px spacing between icon and text
                         // Draw duration text
-                        string duration = track.GetValueOrDefault("Duration", "00:00");
+                        string duration = track.Duration ?? "00:00";
                         ctx.DrawText(duration, infoFont, new Rgba32(180, 180, 180, 255), new PointF(durationTextX, 230));
                         // Volume indicator with actual value from player
                         int volumeIndicatorY = 280;
@@ -281,11 +278,11 @@ public static class ImageBuilder
                         int repeatY = 320;
                         DrawRepeatIndicator(ctx, textX, repeatY, repeatMode, infoFont, smallInfoFont);
                         // Additional info/credit
-                        if (!string.IsNullOrEmpty(track.GetValueOrDefault("Studio", "")))
+                        if (!string.IsNullOrEmpty(track.Studio))
                         {
-                            string label = "Record Label: " + track.GetValueOrDefault("Studio", "Unknown");
-                            string truncatedLabel = TruncateText(label, smallInfoFont, maxWidth);
-                            ctx.DrawText(truncatedLabel, smallInfoFont, new Rgba32(150, 150, 150, 255), new PointF(textX, 360));
+                            string credit = "Requested by: " + track.RequestedBy;
+                            string truncatedCredit = TruncateText(credit, smallInfoFont, maxWidth);
+                            ctx.DrawText(truncatedCredit, smallInfoFont, new Rgba32(150, 150, 150, 255), new PointF(textX - 200, 365)); // Changed from 340
                         }
                     });
                 }

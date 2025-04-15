@@ -6,6 +6,7 @@ using PlexBot.Services;
 using PlexBot.Utils;
 
 using Color = Discord.Color;
+using PlexBot.Core.Models.Players;
 
 namespace PlexBot.Core.Discord.Commands;
 
@@ -13,7 +14,7 @@ namespace PlexBot.Core.Discord.Commands;
 /// <param name="plexMusicService">Service that interfaces with Plex API to search and retrieve media from the library</param>
 /// <param name="playerService">Service that manages audio player lifecycle and provides playback controls</param>
 /// <param name="audioService">Lavalink audio service that handles the actual streaming and playback</param>
-public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService playerService, IAudioService audioService) 
+public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService playerService, IAudioService audioService)
     : InteractionModuleBase<SocketInteractionContext>
 {
     private readonly IPlexMusicService _plexMusicService = plexMusicService ?? throw new ArgumentNullException(nameof(plexMusicService));
@@ -124,10 +125,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
                 .WithMaxValues(1);
             foreach (Track track in results.Tracks.Take(25))
             {
-                trackMenu.AddOption(
-                    track.Title,
-                    track.SourceKey,
-                    $"Track by {track.Artist}");
+                trackMenu.AddOption(track.Title, track.SourceKey, $"Track by {track.Artist}");
             }
             if (builder.ActionRows.Count < 5)
             {
@@ -136,10 +134,8 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         }
         // Build the response
         string summary = $"Found {results.Artists.Count} artists, {results.Albums.Count} albums, and {results.Tracks.Count} tracks";
-        await FollowupAsync(
-            embed: DiscordEmbedBuilder.Info("Search Results", $"Search results for '{query}':\n{summary}"),
-            components: builder.Build(),
-            ephemeral: true);
+        await FollowupAsync(embed: DiscordEmbedBuilder.Info("Search Results", $"Search results for '{query}':\n{summary}"),
+            components: builder.Build(), ephemeral: true);
     }
 
     /// <summary>Searches YouTube for tracks matching the query and presents results in an interactive select menu for quick playback</summary>
@@ -206,7 +202,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
     [SlashCommand("playlist", "Play a Plex playlist")]
     public async Task PlaylistCommand([Summary("playlist", "The playlist to play")]
     [Autocomplete(typeof(PlaylistAutocompleteHandler))]
-    string playlist, [Summary("shuffle", "Shuffle the playlist")] bool shuffle = false)
+    string playlist, [Summary("shuffle", "Shuffle the playlist")] bool shuffle = true)
     {
         await RespondAsync(embed: DiscordEmbedBuilder.Info("Loading", "Loading playlist..."), ephemeral: true); // Respond to acknowledge the command
         IUserMessage ackMessage = await GetOriginalResponseAsync();
@@ -216,14 +212,12 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
             if (string.IsNullOrWhiteSpace(playlist))
             {
                 await ackMessage.ModifyAsync(msg => msg.Embed = DiscordEmbedBuilder.Error("Invalid Playlist", "Please select a playlist."));
-                //await FollowupAsync(embed: DiscordEmbedBuilder.Error("Invalid Playlist", "Please select a playlist."), ephemeral: true);
                 return;
             }
             Playlist playlistDetails = await _plexMusicService.GetPlaylistDetailsAsync(playlist);
             if (playlistDetails.Tracks.Count == 0)
             {
                 await ackMessage.ModifyAsync(msg => msg.Embed = DiscordEmbedBuilder.Info("Empty Playlist", $"Playlist '{playlistDetails.Title}' is empty."));
-                //await FollowupAsync(embed: DiscordEmbedBuilder.Info("Empty Playlist", $"Playlist '{playlistDetails.Title}' is empty."), ephemeral: true);
                 return;
             }
             // Get a list of tracks from the playlist to add to the queue
@@ -239,7 +233,6 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         {
             Logs.Error($"Error in playlist command: {ex.Message}");
             await ackMessage.ModifyAsync(msg => msg.Embed = DiscordEmbedBuilder.Error("Playlist Error", "An error occurred while loading the playlist. Please try again later."));
-            //await FollowupAsync(embed: DiscordEmbedBuilder.Error("Playlist Error", "An error occurred while loading the playlist. Please try again later."), ephemeral: true);
         }
     }
 

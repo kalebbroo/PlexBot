@@ -5,7 +5,7 @@ namespace PlexBot.Utils;
 /// <summary>Centralizes configuration management by providing access to environment variables and .env files with strong typing support</summary>
 public static class EnvConfig
 {
-    private static readonly Dictionary<string, string> _envVariables = new();
+    private static readonly Dictionary<string, string> _envVariables = [];
     private static bool _initialized = false;
 
     /// <summary>Loads configuration values from both .env files and system environment variables, with system variables taking precedence</summary>
@@ -122,14 +122,14 @@ public static class EnvConfig
                 continue;
             }
 
-            string key = trimmedLine.Substring(0, equalSignIndex).Trim();
-            string value = trimmedLine.Substring(equalSignIndex + 1).Trim();
+            string key = trimmedLine[..equalSignIndex].Trim();
+            string value = trimmedLine[(equalSignIndex + 1)..].Trim();
 
             // Remove quotes if present
             if ((value.StartsWith("\"") && value.EndsWith("\"")) ||
                 (value.StartsWith("'") && value.EndsWith("'")))
             {
-                value = value.Substring(1, value.Length - 2);
+                value = value[1..^1];
             }
 
             _envVariables[key] = value;

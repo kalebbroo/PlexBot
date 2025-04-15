@@ -6,6 +6,7 @@ using PlexBot.Utils;
 using Discord.WebSocket;
 using PlexBot.Core.Discord.Embeds;
 using Microsoft.VisualBasic;
+using PlexBot.Services.LavaLink;
 
 namespace PlexBot.Core.Discord.Interactions;
 
@@ -18,7 +19,7 @@ namespace PlexBot.Core.Discord.Interactions;
 /// <param name="playerService">Service for managing audio playback</param>
 /// <param name="audioService">Service for managing audio playback</param>
 public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayerService playerService, 
-    IAudioService audioService) : InteractionModuleBase<SocketInteractionContext>
+    IAudioService audioService, VisualPlayer visualPlayer) : InteractionModuleBase<SocketInteractionContext>
 {
     private readonly IPlexMusicService _plexMusicService = plexMusicService ?? throw new ArgumentNullException(nameof(plexMusicService));
     private readonly IPlayerService _playerService = playerService ?? throw new ArgumentNullException(nameof(playerService));
@@ -146,7 +147,7 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
         try
         {
             // Get the player
-            if (await _playerService.GetPlayerAsync(interaction, false) is not CustomPlayer player)
+            if (await _playerService.GetPlayerAsync(interaction, false) is not CustomLavaLinkPlayer player)
             {
                 await FollowupAsync(embed: DiscordEmbedBuilder.Error("No Player", "No active player found."), ephemeral: true);
                 return;
@@ -163,7 +164,7 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
                     // Show queue option buttons
                     context.CustomData["currentPage"] = currentPage;
                     ComponentBuilder optionsComponents = DiscordButtonBuilder.Instance.BuildButtons(ButtonFlag.QueueOptions, context);
-                    await player.UpdateVisualPlayerAsync(optionsComponents);
+                    await visualPlayer.AddOrUpdateVisualPlayerAsync(optionsComponents);
                     break;
                 case "view":
                     // Show the queue
@@ -180,7 +181,7 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
                 case "back":
                     // Restore default player buttons
                     ComponentBuilder defaultComponents = DiscordButtonBuilder.Instance.BuildButtons(ButtonFlag.VisualPlayer, context);
-                    await player.UpdateVisualPlayerAsync(defaultComponents);
+                    await visualPlayer.AddOrUpdateVisualPlayerAsync(defaultComponents);
                     break;
                 default:
                     await FollowupAsync(embed: DiscordEmbedBuilder.Error("Unknown Action", $"Unrecognized queue action: {action}"), ephemeral: true);
@@ -441,7 +442,7 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
     /// <param name="player">The player to show the queue for</param>
     /// <param name="page">The page number to show</param>
     /// <returns>A task representing the asynchronous operation</returns>
-    private async Task ShowQueueAsync(CustomPlayer player, int page)
+    private async Task ShowQueueAsync(CustomLavaLinkPlayer player, int page)
     {
         try
         {

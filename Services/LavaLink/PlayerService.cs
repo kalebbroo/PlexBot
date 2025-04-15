@@ -1,28 +1,18 @@
 using PlexBot.Core.Discord.Embeds;
 using PlexBot.Core.Exceptions;
 using PlexBot.Core.Models.Media;
+using PlexBot.Core.Models.Players;
 using PlexBot.Utils;
 
-namespace PlexBot.Services;
+namespace PlexBot.Services.LavaLink;
 
 /// <summary>Comprehensive service that manages audio playback in Discord voice channels, handling player lifecycle, track queueing, and providing rich metadata integration with Plex</summary>
-public class PlayerService : IPlayerService
+/// <remarks>Constructs the player service with necessary dependencies and loads configuration from environment variables to ensure consistent playback settings</remarks>
+/// <param name="audioService">The Lavalink audio service that provides the underlying audio streaming capabilities</param>
+public class PlayerService(VisualPlayerStateManager stateManager, IAudioService audioService, VisualPlayer visualPlayer, IServiceProvider serviceProvider) 
+    : IPlayerService
 {
-    private readonly IAudioService _audioService;
-    private readonly float _defaultVolume;
-    private readonly TimeSpan _inactivityTimeout;
-
-    /// <summary>Constructs the player service with necessary dependencies and loads configuration from environment variables to ensure consistent playback settings</summary>
-    /// <param name="audioService">The Lavalink audio service that provides the underlying audio streaming capabilities</param>
-    public PlayerService(IAudioService audioService)
-    {
-        _audioService = audioService ?? throw new ArgumentNullException(nameof(audioService));
-        // Get configuration from environment variables
-        _defaultVolume = (float)(EnvConfig.GetDouble("PLAYER_DEFAULT_VOLUME", 50.0) / 100.0f);
-        _defaultVolume = Math.Clamp(_defaultVolume, 0.0f, 1.0f);
-        _inactivityTimeout = TimeSpan.FromMinutes(EnvConfig.GetDouble("PLAYER_INACTIVITY_TIMEOUT", 2.0));
-        Logs.Init($"PlayerService initialized with default volume: {_defaultVolume * 100:F0}% and inactivity timeout: {_inactivityTimeout.TotalMinutes} minutes");
-    }
+    private readonly TimeSpan _inactivityTimeout = TimeSpan.FromMinutes(EnvConfig.GetDouble("PLAYER_INACTIVITY_TIMEOUT", 2.0));
 
     /// <inheritdoc />
     public async Task<QueuedLavalinkPlayer?> GetPlayerAsync(IDiscordInteraction interaction, bool connectToVoiceChannel = true,
@@ -43,12 +33,12 @@ public class PlayerService : IPlayerService
             PlayerChannelBehavior channelBehavior = connectToVoiceChannel ? PlayerChannelBehavior.Join : PlayerChannelBehavior.None;
             PlayerRetrieveOptions retrieveOptions = new(channelBehavior);
             // Create player factory
-            static ValueTask<CustomPlayer> CreatePlayerAsync(
-                IPlayerProperties<CustomPlayer, CustomPlayerOptions> properties,
-                CancellationToken token = default)
+            ValueTask<CustomLavaLinkPlayer> CreatePlayerAsync(IPlayerProperties<CustomLavaLinkPlayer, CustomPlayerOptions> properties,
+                IServiceProvider serviceProvider, CancellationToken token = default)
             {
-                return ValueTask.FromResult(new CustomPlayer(properties));
+                return ValueTask.FromResult(new CustomLavaLinkPlayer(properties, serviceProvider));
             }
+            float defaultVolume = 0.2f;
             // Create player options
             CustomPlayerOptions playerOptions = new()
             {
@@ -59,20 +49,15 @@ public class PlayerService : IPlayerService
                     ? socketInteraction.Channel as ITextChannel
                     : null,
                 InactivityTimeout = _inactivityTimeout,
-                DefaultVolume = _defaultVolume
+                DefaultVolume = defaultVolume,
             };
             // Wrap options for DI
             var optionsWrapper = Options.Create(playerOptions);
             // Retrieve or create the player
-            PlayerResult<CustomPlayer> result = await _audioService.Players
-                .RetrieveAsync<CustomPlayer, CustomPlayerOptions>(
-                    guildId,
-                    voiceChannelId,
-                    CreatePlayerAsync,
-                    optionsWrapper,
-                    retrieveOptions,
-                    cancellationToken)
-                .ConfigureAwait(false);
+            PlayerResult<CustomLavaLinkPlayer> result = await audioService.Players
+            .RetrieveAsync<CustomLavaLinkPlayer, CustomPlayerOptions>(guildId, voiceChannelId,
+                (properties, token) => ValueTask.FromResult(new CustomLavaLinkPlayer(properties, serviceProvider)),
+                optionsWrapper, retrieveOptions, cancellationToken).ConfigureAwait(false);
             // Handle retrieval failures
             if (!result.IsSuccess)
             {
@@ -88,8 +73,8 @@ public class PlayerService : IPlayerService
             // Set volume if it's a new player
             if (result.Status == PlayerRetrieveStatus.Success)
             {
-                await result.Player.SetVolumeAsync(_defaultVolume, cancellationToken);
-                Logs.Debug($"Created new player for guild {guildId} with volume {_defaultVolume * 100:F0}%");
+                await result.Player.SetVolumeAsync(defaultVolume, cancellationToken);
+                Logs.Debug($"Created new player for guild {guildId} with volume {defaultVolume * 100:F0}%");
             }
             return result.Player;
         }
@@ -123,7 +108,7 @@ public class PlayerService : IPlayerService
             {
                 SearchMode = TrackSearchMode.None
             };
-            LavalinkTrack? lavalinkTrack = await _audioService.Tracks.LoadTrackAsync(
+            LavalinkTrack? lavalinkTrack = await audioService.Tracks.LoadTrackAsync(
                 track.PlaybackUrl,
                 loadOptions,
                 cancellationToken: cancellationToken);
@@ -177,6 +162,8 @@ public class PlayerService : IPlayerService
         }
         try
         {
+            ITextChannel? channel = interaction.GetOriginalResponseAsync().Result.Channel as ITextChannel;
+            stateManager.CurrentPlayerChannel = channel ?? throw new InvalidOperationException("CurrentPlayerChannel is not set");
             List<Track> trackList = tracks.ToList();
             int totalCount = trackList.Count;
             Logs.Debug($"Adding {totalCount} tracks to queue");
@@ -216,7 +203,7 @@ public class PlayerService : IPlayerService
                             {
                                 SearchMode = TrackSearchMode.None
                             };
-                            lavalinkTrack = await _audioService.Tracks.LoadTrackAsync(
+                            lavalinkTrack = await audioService.Tracks.LoadTrackAsync(
                                 track.PlaybackUrl,
                                 directOptions,
                                 cancellationToken: cancellationToken);
@@ -226,7 +213,7 @@ public class PlayerService : IPlayerService
                                 {
                                     SearchMode = TrackSearchMode.YouTube
                                 };
-                                lavalinkTrack = await _audioService.Tracks.LoadTrackAsync(
+                                lavalinkTrack = await audioService.Tracks.LoadTrackAsync(
                                     track.PlaybackUrl,
                                     searchOptions,
                                     cancellationToken: cancellationToken);
@@ -239,7 +226,7 @@ public class PlayerService : IPlayerService
                             {
                                 SearchMode = TrackSearchMode.None
                             };
-                            lavalinkTrack = await _audioService.Tracks.LoadTrackAsync(
+                            lavalinkTrack = await audioService.Tracks.LoadTrackAsync(
                                 track.PlaybackUrl,
                                 loadOptions,
                                 cancellationToken: cancellationToken);
@@ -312,7 +299,7 @@ public class PlayerService : IPlayerService
                                 ? TrackSearchMode.YouTube
                                 : TrackSearchMode.None
                         };
-                        LavalinkTrack? lavalinkTrack = await _audioService.Tracks.LoadTrackAsync(
+                        LavalinkTrack? lavalinkTrack = await audioService.Tracks.LoadTrackAsync(
                             track.PlaybackUrl,
                             loadOptions,
                             cancellationToken: cancellationToken);
@@ -403,7 +390,7 @@ public class PlayerService : IPlayerService
                 throw new PlayerException("No track is currently playing", "Pause");
             }
             // Update player UI if it's our custom player
-            if (player is CustomPlayer customPlayer)
+            if (player is CustomLavaLinkPlayer customPlayer)
             {
                 ButtonContext context = new()
                 {
@@ -411,7 +398,7 @@ public class PlayerService : IPlayerService
                     Interaction = interaction
                 };
                 ComponentBuilder components = DiscordButtonBuilder.Instance.BuildButtons(ButtonFlag.VisualPlayer, context);
-                await customPlayer.UpdateVisualPlayerAsync(components);
+                await visualPlayer.AddOrUpdateVisualPlayerAsync(components);
             }
             return result;
         }
@@ -439,7 +426,7 @@ public class PlayerService : IPlayerService
             }
             // Get current track info for the message
             string trackTitle = "the current track";
-            if (player is CustomPlayer customPlayer && customPlayer.CurrentItem is CustomTrackQueueItem currentTrack)
+            if (player is CustomLavaLinkPlayer customPlayer && customPlayer.CurrentItem is CustomTrackQueueItem currentTrack)
             {
                 trackTitle = currentTrack.Title ?? "the current track";
             }
@@ -476,7 +463,7 @@ public class PlayerService : IPlayerService
                 TrackRepeatMode.Queue => "Now repeating the entire queue",
                 _ => "Unknown repeat mode"
             };
-            if (player is CustomPlayer customPlayer)
+            if (player is CustomLavaLinkPlayer customPlayer)
             {
                 // Update player UI if it's our custom player
                 ButtonContext context = new()
@@ -485,7 +472,7 @@ public class PlayerService : IPlayerService
                     Interaction = interaction
                 };
                 ComponentBuilder components = DiscordButtonBuilder.Instance.BuildButtons(ButtonFlag.VisualPlayer, context);
-                await customPlayer.UpdateVisualPlayerAsync(components, true); // Update Visual Player image
+                await visualPlayer.AddOrUpdateVisualPlayerAsync(components, true); // Update Visual Player image
             }
             Logs.Debug($"Repeat mode set to {repeatMode} by {interaction.User.Username}");
         }

@@ -1,8 +1,8 @@
 namespace PlexBot.Core.Models.Players;
 
 /// <summary>Represents configuration options for a music player with customizable settings that control player behavior</summary>
-/// <param name="TextChannel">The Discord text channel where player messages, status updates, and notifications will be sent</param>
-public record PlayerOptions(ITextChannel? TextChannel) : QueuedLavalinkPlayerOptions
+/// <param name="CurrentPlayerChannel">The Discord text channel initially specified for player messages</param>
+public record PlayerOptions(ITextChannel? CurrentPlayerChannel) : QueuedLavalinkPlayerOptions
 {
     /// <summary>Initial volume level (0.0 to 1.0) used when the player starts playback</summary>
     public float DefaultVolume { get; set; } = 0.5f;
@@ -49,15 +49,23 @@ public record PlayerOptions(ITextChannel? TextChannel) : QueuedLavalinkPlayerOpt
         UsePremiumFeatures = false;
         DefaultRepeatMode = TrackRepeatMode.None;
     }
+}
 
-    /// <summary>Creates a new PlayerOptions instance with a specified Discord text channel for convenience</summary>
-    /// <param name="textChannel">The Discord text channel for player messages</param>
-    /// <returns>A configured PlayerOptions instance</returns>
-    public static PlayerOptions CreateDefault(ITextChannel textChannel)
-    {
-        return new PlayerOptions
-        {
-            TextChannel = textChannel
-        };
-    }
+/// <summary>Manages runtime state for the Visual Player across the application</summary>
+public class VisualPlayerStateManager
+{
+    /// <summary>Current active channel for player messages</summary>
+    public ITextChannel? CurrentPlayerChannel { get; set; }
+
+    /// <summary>Current active player message in the channel</summary>
+    public IUserMessage? CurrentPlayerMessage { get; set; }
+
+    /// <summary>Controls whether to use visual album art display vs text-only player</summary>
+    public bool UseVisualPlayer { get; set; } = true;
+
+    /// <summary>Controls whether to use a dedicated channel for player messages</summary>
+    public bool UseStaticChannel { get; set; } = false;
+
+    /// <summary>Optional channel ID to use as static player channel</summary>
+    public ulong? StaticChannelId { get; set; } = null;
 }

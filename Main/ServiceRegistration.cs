@@ -1,6 +1,9 @@
+using PlexBot.Core.Discord.Embeds;
 using PlexBot.Core.Discord.Events;
 using PlexBot.Core.Models.Extensions;
+using PlexBot.Core.Models.Players;
 using PlexBot.Services;
+using PlexBot.Services.LavaLink;
 using PlexBot.Services.PlexApi;
 using PlexBot.Utils;
 
@@ -32,7 +35,6 @@ namespace PlexBot.Main
             AddExtensionServices(services);
 
             Logs.Init("Services registered");
-
             return services;
         }
 
@@ -57,9 +59,8 @@ namespace PlexBot.Main
                     DefaultRunMode = RunMode.Async,
                     LogLevel = LogSeverity.Info
                 }));
-
-            // Add event handler
             services.AddSingleton<DiscordEventHandler>();
+            services.AddSingleton<VisualPlayer>();
         }
 
         /// <summary>Registers Plex API services for authentication, data retrieval, and music functionality</summary>
@@ -98,8 +99,24 @@ namespace PlexBot.Main
                 options.BaseAddress = new Uri($"http://{host}:{port}");
                 options.ResumptionOptions = new LavalinkSessionResumptionOptions(TimeSpan.FromSeconds(60));
             });
+            // Register options
+            services.Configure<PlayerOptions>(options => {
+                options.DefaultVolume = 0.2f;
+                options.DisconnectAfterPlayback = false;
+                options.InactivityTimeout = TimeSpan.FromMinutes(20);
+                options.AnnounceNowPlaying = true;
+                options.ShowThumbnails = true;
+                options.DeleteOutdatedMessages = true;
+                options.MaxQueueItemsToShow = 10;
+                options.UsePremiumFeatures = false;
+                options.DefaultRepeatMode = TrackRepeatMode.None;
+            });
             // Add player service
             services.AddSingleton<IPlayerService, PlayerService>();
+            // Register the state manager as a singleton
+            services.AddSingleton<VisualPlayerStateManager>();
+            // Add caching for better performance with Lavalink
+            services.AddMemoryCache();
         }
 
         /// <summary>Sets up the extension system for plugin management and dynamic feature loading</summary>
@@ -107,7 +124,7 @@ namespace PlexBot.Main
         private static void AddExtensionServices(IServiceCollection services)
         {
             // Get extensions directory
-            string extensionsDir = System.IO.Path.Combine(AppContext.BaseDirectory, "extensions");
+            string extensionsDir = System.IO.Path.Combine(AppContext.BaseDirectory, "Extensions");
 
             // Add extension manager
             services.AddSingleton(provider => new ExtensionManager(provider, extensionsDir));

@@ -1,6 +1,6 @@
 ﻿using Discord;
 using Discord.WebSocket;
-using PlexBot.Services;
+using PlexBot.Services.LavaLink;
 using PlexBot.Utils;
 using System;
 using System.Collections.Generic;
@@ -84,9 +84,10 @@ namespace PlexBot.Core.Discord.Embeds
     /// <summary>Context object for button creation that contains information needed for dynamic buttons</summary>
     public class ButtonContext
     {
-        public CustomPlayer Player { get; set; }
-        public IDiscordInteraction Interaction { get; set; }
-        public Dictionary<string, object> CustomData { get; set; } = new();
+        public VisualPlayer VisualPlayer;
+        public CustomLavaLinkPlayer Player;
+        public IDiscordInteraction Interaction;
+        public Dictionary<string, object> CustomData = [];
     }
 
     /// <summary>Delegate for creating button builders with context</summary>
@@ -98,7 +99,7 @@ namespace PlexBot.Core.Discord.Embeds
         private static readonly Lazy<DiscordButtonBuilder> _instance = new(() => new DiscordButtonBuilder());
         public static DiscordButtonBuilder Instance => _instance.Value;
 
-        private readonly Dictionary<string, (ButtonFlag Flags, int Priority, ButtonFactory Factory)> _buttonFactories = new();
+        private readonly Dictionary<string, (ButtonFlag Flags, int Priority, ButtonFactory Factory)> _buttonFactories = [];
 
         private DiscordButtonBuilder()
         {
@@ -235,7 +236,7 @@ namespace PlexBot.Core.Discord.Embeds
         public ComponentBuilder BuildButtons(ButtonFlag flags, ButtonContext context = null)
         {
             context ??= new ButtonContext();
-            var components = new ComponentBuilder();
+            ComponentBuilder components = new();
             try
             {
                 // Get button factories that match the flags
@@ -261,7 +262,7 @@ namespace PlexBot.Core.Discord.Embeds
                     }
                     try
                     {
-                        var button = factory.Value.Factory(context);
+                        ButtonBuilder button = factory.Value.Factory(context);
                         components.WithButton(button, rowCount);
                         buttonCount++;
                     }
