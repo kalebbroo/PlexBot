@@ -198,7 +198,6 @@ public static class ImageBuilder
                             (displayArt.Height - size) / 2,
                             size, size));
                     }
-
                     // Resize to fit our layout
                     ctx.Resize(new Size(280, 280));
                 });

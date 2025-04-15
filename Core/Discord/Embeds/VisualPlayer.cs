@@ -46,7 +46,7 @@ public class VisualPlayer(VisualPlayerStateManager stateManager, IOptions<Player
             {
                 try
                 {
-                    if (stateManager.UseVisualPlayer)
+                    if (stateManager.UseModernPlayer)
                     {
                         using MemoryStream memoryStream = new();
                         SixLabors.ImageSharp.Image image = await ImageBuilder.BuildPlayerImageAsync(currentTrack, player);
@@ -89,7 +89,7 @@ public class VisualPlayer(VisualPlayerStateManager stateManager, IOptions<Player
             }
             else
             {
-                if (stateManager.UseVisualPlayer)
+                if (stateManager.UseModernPlayer)
                 {
                     using MemoryStream memoryStream = new();
                     SixLabors.ImageSharp.Image image = await ImageBuilder.BuildPlayerImageAsync(currentTrack, player);
