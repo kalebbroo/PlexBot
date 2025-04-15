@@ -1,3 +1,5 @@
+using PlexBot.Utils;
+
 namespace PlexBot.Core.Models.Players;
 
 /// <summary>Represents configuration options for a music player with customizable settings that control player behavior</summary>
@@ -61,11 +63,11 @@ public class VisualPlayerStateManager
     public IUserMessage? CurrentPlayerMessage { get; set; }
 
     /// <summary>Controls whether to use visual album art display vs text-only player</summary>
-    public bool UseVisualPlayer { get; set; } = true;
+    public bool UseModernPlayer { get; set; } = EnvConfig.GetBool("USE_MODERN_PLAYER", true);
 
     /// <summary>Controls whether to use a dedicated channel for player messages</summary>
-    public bool UseStaticChannel { get; set; } = false;
+    public bool UseStaticChannel { get; set; } = EnvConfig.GetBool("USE_STATIC_PLAYER_CHANNEL", false);
 
     /// <summary>Optional channel ID to use as static player channel</summary>
-    public ulong? StaticChannelId { get; set; } = null;
+    public ulong? StaticChannelId { get; set; } = EnvConfig.GetLong("STATIC_PLAYER_CHANNEL_ID", 0);
 }

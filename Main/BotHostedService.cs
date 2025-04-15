@@ -99,6 +99,7 @@ public class BotHostedService(DiscordSocketClient client, DiscordEventHandler ev
                 try
                 {
                     await message.DeleteAsync();
+                    Logs.Debug($"\n\nDeleted message: {message.Id}\n\n");
                     await Task.Delay(100);
                 }
                 catch (Exception ex)
@@ -120,7 +121,7 @@ public class BotHostedService(DiscordSocketClient client, DiscordEventHandler ev
             // TODO: Send the initial player message with a placeholder image
             IUserMessage initPlayer = await textChannel.SendMessageAsync("test", components: components.Build());
             stateManager.CurrentPlayerMessage = initPlayer;
-
+            Logs.Debug($"\n\nStatic player channel initialized with message ID {initPlayer.Id}\n\n");
             Logs.Init($"Static player channel initialized successfully");
         }
         catch (Exception ex)

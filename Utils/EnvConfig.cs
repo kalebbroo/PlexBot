@@ -136,14 +136,14 @@ public static class EnvConfig
         }
     }
 
-    /// <summary>Gets a configuration value as a long integer.</summary>
+    /// <summary>Gets a configuration value as a ulong integer.</summary>
     /// <param name="key">The configuration key to look up</param>
     /// <param name="defaultValue">The default value to return if the key is not found or cannot be parsed</param>
     /// <returns>The configuration value as a long integer</returns>
-    public static long GetLong(string key, long defaultValue = 0)
+    public static ulong GetLong(string key, long defaultValue = 0)
     {
         string value = Get(key);
-        return long.TryParse(value, out long result) ? result : defaultValue;
+        return ulong.TryParse(value, out ulong result) ? result : (ulong)defaultValue;
     }
 
     /// <summary>Gets a configuration value as a double.</summary>
