@@ -1,4 +1,4 @@
-using PlexBot.Services;
+using PlexBot.Services.LavaLink;
 using PlexBot.Utils;
 using System;
 using System.Collections.Generic;
@@ -161,16 +161,16 @@ namespace PlexBot.Core.Discord.Embeds
         /// <param name="track">Dictionary containing track information</param>
         /// <param name="imageUrl">URL to the player image (usually an attachment)</param>
         /// <returns>An EmbedBuilder with the configured embed</returns>
-        public static EmbedBuilder BuildPlayerEmbed(Dictionary<string, string> track, string imageUrl)
+        public static EmbedBuilder BuildPlayerEmbed(CustomTrackQueueItem track, string imageUrl)
         {
             try
             {
                 // Get volume from environment
                 string volume = Environment.GetEnvironmentVariable("VOLUME") ?? "100";
                 // Build description with track info
-                string description = $"{track.GetValueOrDefault("Artist", "Unknown Artist")} - {track.GetValueOrDefault("Title", "Unknown Title")}\n" +
-                                    $"{track.GetValueOrDefault("Album", "Unknown Album")} - {track.GetValueOrDefault("Studio", "Unknown Studio")}\n\n" +
-                                    $"Duration: {track.GetValueOrDefault("Duration", "0:00")}";
+                string description = $"{track.Artist ?? "Unknown Artist"} - {track.Title ?? "Unknown Title"}\n" +
+                                    $"{track.Album ?? "Unknown Album"} - {track.Studio ?? "Unknown Studio"}\n\n" +
+                                    $"Duration: {track.Duration ?? "0:00"}";
                 // Create the embed
                 EmbedBuilder embed = new EmbedBuilder()
                     .WithTitle($"{PlayEmoji} Now Playing")

@@ -35,18 +35,14 @@ public interface IPlayerService
     /// <param name="cancellationToken">Optional token to cancel the operation</param>
     /// <returns>A user-friendly status message indicating the new state ("Paused" or "Resumed") for display in Discord</returns>
     /// <exception cref="PlayerException">Thrown when the player cannot toggle state due to connection issues or invalid player state</exception>
-    Task<string> TogglePauseResumeAsync(
-        IDiscordInteraction interaction,
-        CancellationToken cancellationToken = default);
+    Task<string> TogglePauseResumeAsync(IDiscordInteraction interaction, CancellationToken cancellationToken = default);
 
     /// <summary>Advances playback to the next track in queue, overriding any active repeat settings to force progression</summary>
     /// <param name="interaction">The Discord interaction containing guild context to identify the correct player</param>
     /// <param name="cancellationToken">Optional token to cancel the operation</param>
     /// <returns>A task that completes when the current track has been stopped and the next track has started (if available)</returns>
     /// <exception cref="PlayerException">Thrown when skipping fails due to player state issues or connection problems</exception>
-    Task SkipTrackAsync(
-        IDiscordInteraction interaction,
-        CancellationToken cancellationToken = default);
+    Task SkipTrackAsync(IDiscordInteraction interaction, CancellationToken cancellationToken = default);
 
     /// <summary>Configures how playback should continue when tracks end, supporting single-track loops, queue loops, or no repetition</summary>
     /// <param name="interaction">The Discord interaction containing guild context to identify the correct player</param>
@@ -54,10 +50,7 @@ public interface IPlayerService
     /// <param name="cancellationToken">Optional token to cancel the operation</param>
     /// <returns>A task that completes when the repeat mode has been updated in the player</returns>
     /// <exception cref="PlayerException">Thrown when the operation fails due to player state or connection issues</exception>
-    Task SetRepeatModeAsync(
-        IDiscordInteraction interaction,
-        TrackRepeatMode repeatMode,
-        CancellationToken cancellationToken = default);
+    Task SetRepeatModeAsync(IDiscordInteraction interaction, TrackRepeatMode repeatMode, CancellationToken cancellationToken = default);
 
     /// <summary>Terminates all playback activity, clearing the queue and optionally disconnecting from voice to free up resources</summary>
     /// <param name="interaction">The Discord interaction containing guild context to identify the correct player</param>
@@ -65,8 +58,5 @@ public interface IPlayerService
     /// <param name="cancellationToken">Optional token to cancel the operation</param>
     /// <returns>A task that completes when playback has been stopped and the queue cleared</returns>
     /// <exception cref="PlayerException">Thrown when the stop operation fails due to connection issues</exception>
-    Task StopAsync(
-        IDiscordInteraction interaction,
-        bool disconnect = false,
-        CancellationToken cancellationToken = default);
+    Task StopAsync(IDiscordInteraction interaction, bool disconnect = false, CancellationToken cancellationToken = default);
 }

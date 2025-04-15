@@ -1,6 +1,9 @@
+using PlexBot.Core.Discord.Embeds;
 using PlexBot.Core.Discord.Events;
 using PlexBot.Core.Extensions;
 using PlexBot.Core.Models.Extensions;
+using PlexBot.Core.Models.Players;
+using PlexBot.Services.LavaLink;
 using PlexBot.Utils;
 using PlexBot.Utils.Http;
 
@@ -18,10 +21,7 @@ namespace PlexBot.Main;
 public class BotHostedService(DiscordSocketClient client, DiscordEventHandler eventHandler, ExtensionManager extensionManager,
     IServiceProvider serviceProvider) : IHostedService
 {
-    private readonly DiscordSocketClient _client = client ?? throw new ArgumentNullException(nameof(client));
-    private readonly DiscordEventHandler _eventHandler = eventHandler ?? throw new ArgumentNullException(nameof(eventHandler));
-    private readonly ExtensionManager _extensionManager = extensionManager ?? throw new ArgumentNullException(nameof(extensionManager));
-    private readonly IServiceProvider _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
+    private static readonly DiscordButtonBuilder _buttonBuilder = DiscordButtonBuilder.Instance;
     private readonly string _discordToken = EnvConfig.Get("DISCORD_TOKEN")
             ?? throw new InvalidOperationException("DISCORD_TOKEN environment variable is not set");
 
@@ -34,22 +34,22 @@ public class BotHostedService(DiscordSocketClient client, DiscordEventHandler ev
         {
             Logs.Init("Starting bot service");
             // Initialize event handlers
-            await _eventHandler.InitializeAsync();
+            await eventHandler.InitializeAsync();
             ServiceCollection serviceDescriptors = new();
-            // Initialize Lavalink services - ADD THIS PART
-            IAudioService lavalinkNode = _serviceProvider.GetRequiredService<IAudioService>();
+            // Initialize Lavalink services
+            IAudioService lavalinkNode = serviceProvider.GetRequiredService<IAudioService>();
             await lavalinkNode.StartAsync(cancellationToken);
             Logs.Init("Lavalink services initialized");
             // Initialize extension handler
             string extensionsDir = System.IO.Path.Combine(AppContext.BaseDirectory, "Extensions");
             Logs.Info($"Loading extensions from {extensionsDir}");
             // Load user extensions from the Extensions directory
-            int extensionsLoaded = await ExtensionHandler.LoadAllExtensionsAsync(serviceDescriptors, _serviceProvider);
+            int extensionsLoaded = await ExtensionHandler.LoadAllExtensionsAsync(serviceDescriptors, serviceProvider);
             Logs.Info($"Loaded {extensionsLoaded} extensions");
             // Connect to Discord and start the bot
             Logs.Init("Connecting to Discord");
-            await _client.LoginAsync(TokenType.Bot, _discordToken);
-            await _client.StartAsync();
+            await client.LoginAsync(TokenType.Bot, _discordToken);
+            await client.StartAsync();
             Logs.Init("Bot service started");
             await InitializeStaticPlayerChannelAsync();
         }
@@ -64,25 +64,25 @@ public class BotHostedService(DiscordSocketClient client, DiscordEventHandler ev
     /// <returns>A task representing the initialization operation</returns>
     private async Task InitializeStaticPlayerChannelAsync()
     {
-        bool useStaticChannel = EnvConfig.GetBool("USE_STATIC_PLAYER_CHANNEL", false);
-        string staticChannelIdStr = EnvConfig.Get("STATIC_PLAYER_CHANNEL_ID", "");
-        if (!useStaticChannel || string.IsNullOrEmpty(staticChannelIdStr) || !ulong.TryParse(staticChannelIdStr, out ulong staticChannelId))
+        VisualPlayerStateManager stateManager = serviceProvider.GetRequiredService<VisualPlayerStateManager>();
+        // Early return if static channel is not configured
+        if (!stateManager.UseStaticChannel || !stateManager.StaticChannelId.HasValue)
         {
             Logs.Debug("Static player channel is not configured or invalid, skipping initialization");
             return;
         }
         try
         {
+            ulong staticChannelId = stateManager.StaticChannelId.Value;
             Logs.Init($"Initializing static player channel ({staticChannelId})...");
             // Wait a moment for the client to be fully ready
             await Task.Delay(2000);
             // Get the channel from the client
-            if (_client.GetChannel(staticChannelId) is not ITextChannel textChannel)
+            if (client.GetChannel(staticChannelId) is not ITextChannel textChannel)
             {
                 Logs.Warning($"Static player channel with ID {staticChannelId} not found or is not a text channel");
                 return;
             }
-            // Check channel permissions
             IGuildUser currentUser = await textChannel.Guild.GetCurrentUserAsync();
             ChannelPermissions permissions = currentUser.GetPermissions(textChannel);
             if (!permissions.SendMessages || !permissions.EmbedLinks || !permissions.AttachFiles)
@@ -90,37 +90,37 @@ public class BotHostedService(DiscordSocketClient client, DiscordEventHandler ev
                 Logs.Warning($"Bot lacks required permissions in static player channel {staticChannelId}");
                 return;
             }
-            IMessage existingMessage = null;
-            var messages = await textChannel.GetMessagesAsync(20).FlattenAsync();
-            foreach (IMessage message in messages)
+            stateManager.CurrentPlayerChannel = textChannel; // Set the current player channel
+            Logs.Info("Cleaning up static player channel...");
+            var messages = await textChannel.GetMessagesAsync(50).FlattenAsync();
+            List<IMessage> botMessages = messages.Where(m => m.Author.Id == client.CurrentUser.Id).ToList();
+            foreach (IMessage message in botMessages)
             {
-                // Check if message is from the bot and has a player embed
-                if (message.Author.Id == _client.CurrentUser.Id && message.Embeds.Count > 0)
+                try
                 {
-                    IEmbed embeds = message.Embeds.First();
-                    existingMessage = message;
-                    Logs.Debug("Found existing player message in static channel");
-                    break;
+                    await message.DeleteAsync();
+                    await Task.Delay(100);
+                }
+                catch (Exception ex)
+                {
+                    Logs.Warning($"Failed to delete message: {ex.Message}");
                 }
             }
-            // Only create a new placeholder if no existing message was found
-            if (existingMessage == null)
-            {
-                // TODO: Make this look better and more informative. Create button systemn for all the slash commands
-                Embed embed = new EmbedBuilder()
-                    .WithTitle("🎵 PlexBot Music Player")
-                    .WithDescription("No track is currently playing. Use a `/play` command in any channel to start playing music!")
-                    .WithColor(new Discord.Color(138, 43, 226)) // Purple
-                    .WithFooter("The player will appear here when music begins playing")
-                    .WithCurrentTimestamp()
-                    .Build();
-                await textChannel.SendMessageAsync(embed: embed);
-                Logs.Init("Created new placeholder message in static player channel");
-            }
-            else
-            {
-                Logs.Init("Using existing message in static player channel");
-            }
+            // TODO: Create a dynamic embed system that can be overridden by extensions
+            Embed embed = new EmbedBuilder()
+                .WithTitle("🎵 PlexBot Music Player")
+                .WithDescription("No track is currently playing. Use a `/play` command in any channel to start playing music!")
+                .WithColor(new Discord.Color(138, 43, 226))
+                .WithFooter("The player will appear here when music begins playing")
+                .WithCurrentTimestamp()
+                .Build();
+            IUserMessage infoMessage = await textChannel.SendMessageAsync(embed: embed);
+            ButtonContext context = new() { CustomData = new Dictionary<string, object> { { "message", infoMessage } } };
+            ComponentBuilder components = _buttonBuilder.BuildButtons(ButtonFlag.VisualPlayer, context);
+            // TODO: Send the initial player message with a placeholder image
+            IUserMessage initPlayer = await textChannel.SendMessageAsync("test", components: components.Build());
+            stateManager.CurrentPlayerMessage = initPlayer;
+
             Logs.Init($"Static player channel initialized successfully");
         }
         catch (Exception ex)
@@ -138,10 +138,10 @@ public class BotHostedService(DiscordSocketClient client, DiscordEventHandler ev
         {
             Logs.Info("Stopping bot service");
             // Disconnect from Discord
-            await _client.StopAsync();
-            await _client.LogoutAsync();
+            await client.StopAsync();
+            await client.LogoutAsync();
             // Unload extensions
-            await _extensionManager.UnloadAllExtensionsAsync();
+            await extensionManager.UnloadAllExtensionsAsync();
             Logs.Info("Bot service stopped");
         }
         catch (Exception ex)
