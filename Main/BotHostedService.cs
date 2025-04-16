@@ -3,7 +3,6 @@ using PlexBot.Core.Discord.Events;
 using PlexBot.Core.Extensions;
 using PlexBot.Core.Models.Extensions;
 using PlexBot.Core.Models.Players;
-using PlexBot.Services.LavaLink;
 using PlexBot.Utils;
 using PlexBot.Utils.Http;
 

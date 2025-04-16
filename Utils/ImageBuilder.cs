@@ -5,7 +5,7 @@ using Color = SixLabors.ImageSharp.Color;
 using Image = SixLabors.ImageSharp.Image;
 using Font = SixLabors.Fonts.Font;
 using FontFamily = SixLabors.Fonts.FontFamily;
-using PlexBot.Services.LavaLink;
+using PlexBot.Core.Services.LavaLink;
 
 namespace PlexBot.Utils;
 

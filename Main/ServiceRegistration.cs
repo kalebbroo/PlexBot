@@ -2,9 +2,9 @@ using PlexBot.Core.Discord.Embeds;
 using PlexBot.Core.Discord.Events;
 using PlexBot.Core.Models.Extensions;
 using PlexBot.Core.Models.Players;
-using PlexBot.Services;
-using PlexBot.Services.LavaLink;
-using PlexBot.Services.PlexApi;
+using PlexBot.Core.Services;
+using PlexBot.Core.Services.LavaLink;
+using PlexBot.Core.Services.PlexApi;
 using PlexBot.Utils;
 
 namespace PlexBot.Main

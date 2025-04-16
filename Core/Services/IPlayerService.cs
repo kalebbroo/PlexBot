@@ -1,6 +1,6 @@
 using PlexBot.Core.Models.Media;
 
-namespace PlexBot.Services;
+namespace PlexBot.Core.Services;
 
 /// <summary>Defines an interface for audio playback that abstracts the complexities of Discord voice integration and audio streaming</summary>
 public interface IPlayerService

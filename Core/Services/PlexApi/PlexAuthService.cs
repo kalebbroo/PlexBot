@@ -1,8 +1,9 @@
 using PlexBot.Core.Exceptions;
 using PlexBot.Utils.Http;
 using PlexBot.Utils;
+using PlexBot.Core.Services;
 
-namespace PlexBot.Services.PlexApi;
+namespace PlexBot.Core.Services.PlexApi;
 
 /// <summary>Manages the Plex authentication lifecycle, providing secure token-based API access while abstracting the complex OAuth flow</summary>
 public class PlexAuthService : IPlexAuthService

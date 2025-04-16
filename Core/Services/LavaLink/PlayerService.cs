@@ -2,14 +2,15 @@ using PlexBot.Core.Discord.Embeds;
 using PlexBot.Core.Exceptions;
 using PlexBot.Core.Models.Media;
 using PlexBot.Core.Models.Players;
+using PlexBot.Core.Services;
 using PlexBot.Utils;
 
-namespace PlexBot.Services.LavaLink;
+namespace PlexBot.Core.Services.LavaLink;
 
 /// <summary>Comprehensive service that manages audio playback in Discord voice channels, handling player lifecycle, track queueing, and providing rich metadata integration with Plex</summary>
 /// <remarks>Constructs the player service with necessary dependencies and loads configuration from environment variables to ensure consistent playback settings</remarks>
 /// <param name="audioService">The Lavalink audio service that provides the underlying audio streaming capabilities</param>
-public class PlayerService(VisualPlayerStateManager stateManager, IAudioService audioService, VisualPlayer visualPlayer, IServiceProvider serviceProvider) 
+public class PlayerService(VisualPlayerStateManager stateManager, IAudioService audioService, VisualPlayer visualPlayer, IServiceProvider serviceProvider)
     : IPlayerService
 {
     private readonly TimeSpan _inactivityTimeout = TimeSpan.FromMinutes(EnvConfig.GetDouble("PLAYER_INACTIVITY_TIMEOUT", 2.0));

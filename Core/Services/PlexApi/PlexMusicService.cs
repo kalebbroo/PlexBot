@@ -1,9 +1,10 @@
 using PlexBot.Core.Exceptions;
 using PlexBot.Core.Models;
 using PlexBot.Core.Models.Media;
+using PlexBot.Core.Services;
 using PlexBot.Utils;
 
-namespace PlexBot.Services.PlexApi;
+namespace PlexBot.Core.Services.PlexApi;
 
 /// <summary>Provides a specialized interface for interacting with music content in Plex libraries, handling the unique metadata and hierarchical structure of music media</summary>
 /// <remarks>Creates a new service instance that builds upon the core Plex API service to provide music-specific functionality and optimizations</remarks>

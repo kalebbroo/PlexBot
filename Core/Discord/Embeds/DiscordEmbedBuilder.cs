@@ -1,4 +1,4 @@
-using PlexBot.Services.LavaLink;
+using PlexBot.Core.Services.LavaLink;
 using PlexBot.Utils;
 using System;
 using System.Collections.Generic;

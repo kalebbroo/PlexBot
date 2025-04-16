@@ -7,7 +7,7 @@ using PlexBot.Core.Models.Players;
 using Microsoft.VisualBasic;
 using System;
 
-namespace PlexBot.Services.LavaLink;
+namespace PlexBot.Core.Services.LavaLink;
 
 /// <summary>Enhanced Lavalink player implementation that integrates with Discord to provide rich visual UI, track metadata, and interactive controls</summary>
 /// <remarks>Constructs the player with specified properties to enable audio playback with enhanced Discord integration for visual feedback</remarks>
