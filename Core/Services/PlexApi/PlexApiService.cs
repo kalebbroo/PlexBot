@@ -1,8 +1,9 @@
 using PlexBot.Core.Exceptions;
 using PlexBot.Utils.Http;
 using PlexBot.Utils;
+using PlexBot.Core.Services;
 
-namespace PlexBot.Services.PlexApi
+namespace PlexBot.Core.Services.PlexApi
 {
     /// <summary>Implements low-level communication with Plex Media Server API, handling authentication, request formatting, and error management</summary>
     public class PlexApiService : IPlexApiService

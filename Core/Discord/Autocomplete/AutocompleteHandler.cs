@@ -1,5 +1,5 @@
 ﻿using PlexBot.Core.Models.Media;
-using PlexBot.Services;
+using PlexBot.Core.Services;
 using PlexBot.Utils;
 
 namespace PlexBot.Core.Discord.Autocomplete;

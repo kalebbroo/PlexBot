@@ -2,11 +2,11 @@ using PlexBot.Core.Models;
 using PlexBot.Core.Models.Media;
 using PlexBot.Core.Discord.Autocomplete;
 using PlexBot.Core.Discord.Embeds;
-using PlexBot.Services;
 using PlexBot.Utils;
 
 using Color = Discord.Color;
 using PlexBot.Core.Models.Players;
+using PlexBot.Core.Services;
 
 namespace PlexBot.Core.Discord.Commands;
 

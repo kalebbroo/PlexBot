@@ -1,7 +1,7 @@
 using PlexBot.Core.Models;
 using PlexBot.Core.Models.Media;
 
-namespace PlexBot.Services;
+namespace PlexBot.Core.Services;
 
 /// <summary>Defines a music-specific interface for interacting with Plex libraries, abstracting the complexities of metadata retrieval and search</summary>
 public interface IPlexMusicService

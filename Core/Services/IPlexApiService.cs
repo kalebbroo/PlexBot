@@ -1,4 +1,4 @@
-namespace PlexBot.Services;
+namespace PlexBot.Core.Services;
 
 /// <summary>Defines the contract for services that communicate with Plex Media Server through its REST API, abstracting authentication and error handling</summary>
 public interface IPlexApiService

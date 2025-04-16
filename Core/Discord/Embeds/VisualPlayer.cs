@@ -6,8 +6,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Lavalink4NET.DiscordNet;
 using PlexBot.Core.Models.Players;
-using PlexBot.Services;
-using PlexBot.Services.LavaLink;
+using PlexBot.Core.Services.LavaLink;
 using PlexBot.Utils;
 using SixLabors.ImageSharp.Formats.Png;
 

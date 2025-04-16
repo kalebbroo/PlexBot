@@ -1,4 +1,4 @@
-namespace PlexBot.Services.LavaLink;
+namespace PlexBot.Core.Services.LavaLink;
 
 /// <summary>Enhanced track queue item that extends the standard Lavalink interface with rich Plex metadata for improved display and user experience</summary>
 public class CustomTrackQueueItem : ITrackQueueItem

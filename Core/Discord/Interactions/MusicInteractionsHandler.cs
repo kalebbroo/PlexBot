@@ -1,12 +1,12 @@
 using System.Collections.Concurrent;
 using Lavalink4NET;
 using PlexBot.Core.Models.Media;
-using PlexBot.Services;
 using PlexBot.Utils;
 using Discord.WebSocket;
 using PlexBot.Core.Discord.Embeds;
 using Microsoft.VisualBasic;
-using PlexBot.Services.LavaLink;
+using PlexBot.Core.Services;
+using PlexBot.Core.Services.LavaLink;
 
 namespace PlexBot.Core.Discord.Interactions;
 
