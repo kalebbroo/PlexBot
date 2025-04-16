@@ -1,0 +1,51 @@
+version: '3.9'
+name: PlexBot
+
+services:
+  # PlexBot Service
+  plexbot:
+    container_name: PlexBot
+    image: ghcr.io/plexbot/plexbot:latest
+    build:
+      context: ../..  # This points to the project root from Docker folder
+      dockerfile: Install/Docker/dockerfile
+    restart: unless-stopped
+    depends_on:
+      - lavalink
+    volumes:
+      - ../..:/source  # Mount project root as /source
+      - ../../data:/app/data
+      - ../../logs:/app/logs
+      - ../../.env:/app/.env  # Mount directly to app root
+      - ../../Images:/app/Images
+    environment:
+      - DOTNET_ENVIRONMENT=Production
+    env_file:
+      - ../../.env
+    networks:
+      - plexbot-network
+
+  # Lavalink Service
+  lavalink:
+    container_name: LavaLink
+    image: ghcr.io/lavalink-devs/lavalink:4
+    restart: unless-stopped
+    env_file:
+      - ../../.env
+    environment:
+      # These can override what's in the .env file if needed
+      - SERVER_PORT=${SERVER_PORT:-2333}
+      - SERVER_ADDRESS=${SERVER_ADDRESS:-0.0.0.0}
+      - LAVALINK_SERVER_PASSWORD=${LAVALINK_SERVER_PASSWORD:-youshallnotpass}
+    volumes:
+      - ./lavalink.application.yml:/opt/Lavalink/application.yml
+      - ./plugins:/opt/Lavalink/plugins
+    ports:
+      - "${SERVER_PORT:-2333}:${SERVER_PORT:-2333}"
+    networks:
+      - plexbot-network
+
+networks:
+  plexbot-network:
+    name: plexbot-network
+    driver: bridge

@@ -1,0 +1,44 @@
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+
+WORKDIR /source
+
+# Copy the project files
+COPY . .
+
+# Restore dependencies and build the project
+RUN dotnet restore
+RUN dotnet publish -c Release -o /app/publish
+
+# Runtime image using Alpine
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS runtime
+
+WORKDIR /app
+
+# Install additional dependencies and fonts for proper CJK and emoji support
+# Catering to the weebs and non english speakers
+RUN apt-get update && apt-get install -y \
+    curl \
+    unzip \
+    git \
+    fontconfig \
+    fonts-dejavu \
+    fonts-liberation \
+    fonts-noto \
+    fonts-noto-cjk \
+    fonts-noto-color-emoji \
+    fonts-ipafont-gothic \
+    fonts-ipafont-mincho \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy the build output from the build stage
+COPY --from=build /app/publish .
+COPY Images /app/Images
+
+# Copy startup script directly into the container
+COPY Install/Docker/startup.sh /app/
+
+# Add permissions
+RUN chmod +x /app/startup.sh
+
+# Explicitly run the script using bash
+ENTRYPOINT ["/app/startup.sh"]

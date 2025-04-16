@@ -1,16 +1,156 @@
-# Ignore a specific file
-#configs.py
-#config.py
-#config.py.
+# Built application files
+*.exe
+*.dll
+*.winmd
+*.pdb
+*.appx
+*.appxbundle
+*.ilk
+*.lib
+*.obj
+*.pch
+*.exp
+*.app
+*.ipa
+*.apk
+*.xap
 
-# Ignore all .log files
-*.log
+# Packaged application data
+/AppPackages/
+/BundleArtifacts/
+/PublishProfiles/
+/Package.StoreAssociation.xml
+**/Package.StoreAssociation.xml
+**/[Aa]pp[Ss]ecrets.*
+/AppxManifest.xml
+**/AppxManifest.xml
+**/[Aa]pp[Ss]ecrets.*
+/appsettings.json
+**/appsettings.json
 
-# Ignore all .tmp files in any directory
-**/*.tmp
+# Others
+[Bb]in/
+[Oo]bj/
+[Ll]ogs/
+/logs/
+[Tt]est[Rr]esults/
 
-# Ignore all files inside __pycache__ directories at any level
-**/__pycache__/
+# Visual Studio files
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
 
-# Ignore IDE folders and files
-/.idea
+# Rider files
+.idea/
+
+# Others
+*.swp
+*.swo
+*~
+*.dbmdl
+*.db_schema
+*.jfm
+*.tlog
+*.tlog.*
+*.bak.*
+*.bak
+*.cache
+*.ext
+*.ncb
+*.ops
+*.sbr
+*.ilk
+*.aps
+*.pch
+*.vspscc
+*.vssscc
+*.scc
+*.suo
+*.user
+*.userprefs
+*.usertasks
+*.sln.ide/
+*.suo.ide/
+*.ldb
+*.mdf
+*.ldf
+*.ndf
+*.bak
+*.BAK
+*.tmp
+*.TMP
+*.temp
+*.Temp
+*.o
+*.obj
+*.pyc
+*.pyo
+*.pdb
+*.idb
+*.pch
+*.ilk
+*.exp
+*.map
+*.bsc
+*.res
+*.sbr
+*.lib
+*.dll
+*.exe
+*.com
+*.sys
+*.drv
+*.bin
+*.rtp
+*.swp
+*.swo
+*.old
+*.olb
+*.ocs
+*.ori
+*.ncb
+*.plg
+*.bpl
+*.dsk
+*.dep
+*.suo
+*.obj
+*.ilk
+*.aps
+*.mdb
+*.ipch
+*.opensdf
+*.sdf
+*.cachefile
+*.db
+*.jfm
+*.etl
+*.stackdump
+
+# Dependency directories
+packages/
+node_modules/
+
+# Output of the MSBuild script
+msbuild.log
+msbuild.err
+msbuild.wrn
+
+# .NET Core
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# ASP.NET Scaffolding
+ScaffoldingReadMe.txt
+
+# .env file
+.env
+# sub folders inside of the images folder
+images/**/*
+# Ignore.cs files in the Plugins folder
+Extensions/**/*.cs
+/Install/Docker/plugins
+Install/Docker/lavalink.application.yml
