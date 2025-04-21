@@ -64,8 +64,8 @@ plugins:
     allowDirectVideoIds: true
     allowDirectPlaylistIds: true
     clients:
-      - WEB
-      - WEBEMBEDDED
+      - TVHTML5EMBEDDED
+      - TV 
     oauth:
       enabled: true
       refreshToken: ""
