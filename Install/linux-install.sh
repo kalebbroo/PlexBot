@@ -55,7 +55,7 @@ lavalink:
     soundcloudSearchEnabled: true
     gc-warnings: true
   plugins:
-    - dependency: "dev.lavalink.youtube:youtube-plugin:1.12.0"
+    - dependency: "dev.lavalink.youtube:youtube-plugin:1.13.1"
       snapshot: false
 plugins:
   youtube:
