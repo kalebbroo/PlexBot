@@ -59,7 +59,7 @@ if not exist "%DOCKER_DIR%\lavalink.application.yml" (
         echo     soundcloudSearchEnabled: true
         echo     gc-warnings: true
         echo   plugins:
-        echo     - dependency: "dev.lavalink.youtube:youtube-plugin:1.12.0"
+        echo     - dependency: "dev.lavalink.youtube:youtube-plugin:1.13.1"
         echo       snapshot: false
         echo plugins:
         echo   youtube:
