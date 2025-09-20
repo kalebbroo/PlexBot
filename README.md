@@ -139,6 +139,7 @@ PlexBot’s [Extensions system](./Docs/Extensions/CreatingExtensions.md) lets yo
 - [Troubleshooting Guide](./Docs/Guides/Troubleshooting.md)
 - [Player UI Guide](./Docs/Guides/Player-UI-Guide.md)
 - [Command Reference](./Docs/Guides/Commands.md)
+- [Discord Dev Server](https://discord.com/invite/5m4Wyu52Ek )
 
 ---
 
