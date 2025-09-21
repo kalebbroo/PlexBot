@@ -1,16 +1,12 @@
-# ![PlexBot Logo](./Docs/plexbot-logo.png)
-
-# PlexBot <sup><kbd>Alpha 0.5</kbd></sup>
-
-> **Play your Plex music in Discord with style.**
-
+# ![PlexBot Banner](./Images/PlexBotBanner.png)
+> **Play your Plex music in Discord with style.** <sup><kbd>Alpha 0.5</kbd></sup>
 ---
 
 <!-- PLACEHOLDER: Add screenshots of the Modern Visual Player and Classic Player Embed below -->
 
 | Modern Visual Player | Classic Player Embed |
 |:-------------------:|:-------------------:|
-| ![Modern Player Screenshot](./Docs/screenshots/modern-player.png) | ![Classic Player Screenshot](./Docs/screenshots/classic-player.png) |
+| ![Modern Player Screenshot](./Images/ModernPlayer.JPG) | ![Classic Player Screenshot](./Images/ClassicPlayer.JPG) |
 
 ---
 
