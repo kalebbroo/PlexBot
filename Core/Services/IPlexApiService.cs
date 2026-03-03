@@ -20,4 +20,9 @@ public interface IPlexApiService
     /// <param name="path">The search path component that defines the query parameters and search scope</param>
     /// <returns>A complete, authenticated URL ready for HTTP requests to search Plex content</returns>
     string GetSearchUrl(string path);
+
+    /// <summary>Builds a fully authenticated URL for artwork/thumbnail images from Plex</summary>
+    /// <param name="artworkPath">The relative artwork path from Plex metadata (e.g., /library/metadata/123/thumb/456)</param>
+    /// <returns>A complete, authenticated URL for the artwork image, or empty string if path is null/empty</returns>
+    string GetArtworkUrl(string? artworkPath);
 }

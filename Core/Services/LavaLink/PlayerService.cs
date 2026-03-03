@@ -10,7 +10,7 @@ namespace PlexBot.Core.Services.LavaLink;
 /// <summary>Comprehensive service that manages audio playback in Discord voice channels, handling player lifecycle, track queueing, and providing rich metadata integration with Plex</summary>
 /// <remarks>Constructs the player service with necessary dependencies and loads configuration from environment variables to ensure consistent playback settings</remarks>
 /// <param name="audioService">The Lavalink audio service that provides the underlying audio streaming capabilities</param>
-public class PlayerService(VisualPlayerStateManager stateManager, IAudioService audioService, VisualPlayer visualPlayer, IServiceProvider serviceProvider)
+public class PlayerService(VisualPlayerStateManager stateManager, IAudioService audioService, VisualPlayer visualPlayer, IServiceProvider serviceProvider, DiscordButtonBuilder buttonBuilder)
     : IPlayerService
 {
     private readonly TimeSpan _inactivityTimeout = TimeSpan.FromMinutes(EnvConfig.GetDouble("PLAYER_INACTIVITY_TIMEOUT", 2.0));
@@ -163,7 +163,8 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
         }
         try
         {
-            ITextChannel? channel = interaction.GetOriginalResponseAsync().Result.Channel as ITextChannel;
+            IUserMessage response = await interaction.GetOriginalResponseAsync();
+            ITextChannel? channel = response.Channel as ITextChannel;
             stateManager.CurrentPlayerChannel = channel ?? throw new InvalidOperationException("CurrentPlayerChannel is not set");
             List<Track> trackList = tracks.ToList();
             int totalCount = trackList.Count;
@@ -177,7 +178,9 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
             {
                 await interaction.ModifyOriginalResponseAsync(msg =>
                 {
-                    msg.Embed = DiscordEmbedBuilder.Info("Processing Tracks", $"Processing {totalCount} tracks. This may take a moment...");
+                    msg.Components = ComponentV2Builder.Info("Processing Tracks", $"Processing {totalCount} tracks. This may take a moment...");
+                    msg.Embed = null;
+                    msg.Flags = MessageFlags.ComponentsV2;
                 });
             }
             // Keep track of failed tracks for a retry
@@ -342,14 +345,18 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
                 string message = $"Added {successCount} of {totalCount} tracks to the queue";
                 await interaction.ModifyOriginalResponseAsync(msg =>
                 {
-                    msg.Embed = DiscordEmbedBuilder.Success("Tracks Added", message);
+                    msg.Components = ComponentV2Builder.Success("Tracks Added", message);
+                    msg.Embed = null;
+                    msg.Flags = MessageFlags.ComponentsV2;
                 });
             }
             else
             {
                 await interaction.ModifyOriginalResponseAsync(msg =>
                 {
-                    msg.Embed = DiscordEmbedBuilder.Error("Failed to Add Tracks", "No tracks were added to the queue.");
+                    msg.Components = ComponentV2Builder.Error("Failed to Add Tracks", "No tracks were added to the queue.");
+                    msg.Embed = null;
+                    msg.Flags = MessageFlags.ComponentsV2;
                 });
             }
         }
@@ -398,7 +405,7 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
                     Player = customPlayer,
                     Interaction = interaction
                 };
-                ComponentBuilder components = DiscordButtonBuilder.Instance.BuildButtons(ButtonFlag.VisualPlayer, context);
+                ComponentBuilder components = buttonBuilder.BuildButtons(ButtonFlag.VisualPlayer, context);
                 await visualPlayer.AddOrUpdateVisualPlayerAsync(components);
             }
             return result;
@@ -472,7 +479,7 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
                     Player = customPlayer,
                     Interaction = interaction
                 };
-                ComponentBuilder components = DiscordButtonBuilder.Instance.BuildButtons(ButtonFlag.VisualPlayer, context);
+                ComponentBuilder components = buttonBuilder.BuildButtons(ButtonFlag.VisualPlayer, context);
                 await visualPlayer.AddOrUpdateVisualPlayerAsync(components, true); // Update Visual Player image
             }
             Logs.Debug($"Repeat mode set to {repeatMode} by {interaction.User.Username}");

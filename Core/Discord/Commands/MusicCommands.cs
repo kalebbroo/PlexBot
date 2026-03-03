@@ -4,7 +4,6 @@ using PlexBot.Core.Discord.Autocomplete;
 using PlexBot.Core.Discord.Embeds;
 using PlexBot.Utils;
 
-using Color = Discord.Color;
 using PlexBot.Core.Models.Players;
 using PlexBot.Core.Services;
 
@@ -17,9 +16,6 @@ namespace PlexBot.Core.Discord.Commands;
 public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService playerService, IAudioService audioService)
     : InteractionModuleBase<SocketInteractionContext>
 {
-    private readonly IPlexMusicService _plexMusicService = plexMusicService ?? throw new ArgumentNullException(nameof(plexMusicService));
-    private readonly IPlayerService _playerService = playerService ?? throw new ArgumentNullException(nameof(playerService));
-    private readonly IAudioService _audioService = audioService ?? throw new ArgumentNullException(nameof(audioService));
 
     /// <summary>Searches media libraries and displays interactive results that users can directly queue from the search results</summary>
     /// <param name="query">The search text to find matching media across available sources</param>
@@ -39,7 +35,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
             Logs.Debug($"Searching for '{query}' in {source}");
             if (string.IsNullOrWhiteSpace(query))
             {
-                await FollowupAsync(embed: DiscordEmbedBuilder.Error("Invalid Query", "Please enter a search query."), ephemeral: true);
+                await FollowupAsync(components: ComponentV2Builder.Error("Invalid Query", "Please enter a search query."), ephemeral: true);
                 return;
             }
             // Normalize source to lowercase
@@ -54,14 +50,14 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
                     await HandleYouTubeSearch(query);
                     break;
                 default:
-                    await FollowupAsync(embed: DiscordEmbedBuilder.Error("Not Implemented", $"Search in {source} is not yet implemented."), ephemeral: true);
+                    await FollowupAsync(components: ComponentV2Builder.Error("Not Implemented", $"Search in {source} is not yet implemented."), ephemeral: true);
                     break;
             }
         }
         catch (Exception ex)
         {
             Logs.Error($"Error in search command: {ex.Message}");
-            await FollowupAsync(embed: DiscordEmbedBuilder.Error("Search Error", "An error occurred while searching. Please try again later."), ephemeral: true);
+            await FollowupAsync(components: ComponentV2Builder.Error("Search Error", "An error occurred while searching. Please try again later."), ephemeral: true);
         }
     }
 
@@ -69,10 +65,10 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
     private async Task HandlePlexSearch(string query)
     {
         // Perform the search
-        SearchResults results = await _plexMusicService.SearchLibraryAsync(query);
+        SearchResults results = await plexMusicService.SearchLibraryAsync(query);
         if (!results.HasResults)
         {
-            await FollowupAsync(embed: DiscordEmbedBuilder.Info("No Results", $"No results found for '{query}' in Plex."), ephemeral: true);
+            await FollowupAsync(components: ComponentV2Builder.Info("No Results", $"No results found for '{query}' in Plex."), ephemeral: true);
             return;
         }
         Logs.Debug($"Found {results.Artists.Count} artists, {results.Albums.Count} albums, {results.Tracks.Count} tracks");
@@ -134,8 +130,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         }
         // Build the response
         string summary = $"Found {results.Artists.Count} artists, {results.Albums.Count} albums, and {results.Tracks.Count} tracks";
-        await FollowupAsync(embed: DiscordEmbedBuilder.Info("Search Results", $"Search results for '{query}':\n{summary}"),
-            components: builder.Build(), ephemeral: true);
+        await FollowupAsync(components: ComponentV2Builder.BuildSearchResults(query, summary, builder), ephemeral: true);
     }
 
     /// <summary>Searches YouTube for tracks matching the query and presents results in an interactive select menu for quick playback</summary>
@@ -144,12 +139,12 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         try
         {
             Logs.Debug($"Searching YouTube for: {query}");
-            TrackLoadResult searchResults = await _audioService.Tracks.LoadTracksAsync(
+            TrackLoadResult searchResults = await audioService.Tracks.LoadTracksAsync(
                 query, TrackSearchMode.YouTube, cancellationToken: CancellationToken.None);
             List<LavalinkTrack> tracks = [.. searchResults.Tracks];
             if (tracks.Count == 0)
             {
-                await FollowupAsync(embed: DiscordEmbedBuilder.Info("No Results", $"No results found for '{query}' on YouTube."), ephemeral: true);
+                await FollowupAsync(components: ComponentV2Builder.Info("No Results", $"No results found for '{query}' on YouTube."), ephemeral: true);
                 return;
             }
             Logs.Debug($"Found {tracks.Count} YouTube results");
@@ -176,13 +171,14 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
             // Build and send component
             ComponentBuilder builder = new ComponentBuilder().WithSelectMenu(selectMenu);
             await FollowupAsync(
-                embed: DiscordEmbedBuilder.Info("YouTube Results", $"Found {Math.Min(tracks.Count, 25)} results on YouTube for '{query}'"),
-                components: builder.Build(), ephemeral: true);
+                components: ComponentV2Builder.BuildSearchResults(query,
+                    $"Found {Math.Min(tracks.Count, 25)} results on YouTube", builder),
+                ephemeral: true);
         }
         catch (Exception ex)
         {
             Logs.Error($"Error searching YouTube: {ex.Message}");
-            await FollowupAsync(embed: DiscordEmbedBuilder.Error("YouTube Search Error", "An error occurred while searching YouTube. Please try again later."), ephemeral: true);
+            await FollowupAsync(components: ComponentV2Builder.Error("YouTube Search Error", "An error occurred while searching YouTube. Please try again later."), ephemeral: true);
         }
     }
 
@@ -204,20 +200,20 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
     [Autocomplete(typeof(PlaylistAutocompleteHandler))]
     string playlist, [Summary("shuffle", "Shuffle the playlist")] bool shuffle = true)
     {
-        await RespondAsync(embed: DiscordEmbedBuilder.Info("Loading", "Loading playlist..."), ephemeral: true); // Respond to acknowledge the command
+        await RespondAsync(components: ComponentV2Builder.Info("Loading", "Loading playlist..."), ephemeral: true); // Respond to acknowledge the command
         IUserMessage ackMessage = await GetOriginalResponseAsync();
         try
         {
             Logs.Debug($"Loading playlist: {playlist}, shuffle: {shuffle}");
             if (string.IsNullOrWhiteSpace(playlist))
             {
-                await ackMessage.ModifyAsync(msg => msg.Embed = DiscordEmbedBuilder.Error("Invalid Playlist", "Please select a playlist."));
+                await ackMessage.ModifyAsync(msg => { msg.Components = ComponentV2Builder.Error("Invalid Playlist", "Please select a playlist."); msg.Embed = null; msg.Flags = MessageFlags.ComponentsV2; });
                 return;
             }
-            Playlist playlistDetails = await _plexMusicService.GetPlaylistDetailsAsync(playlist);
+            Playlist playlistDetails = await plexMusicService.GetPlaylistDetailsAsync(playlist);
             if (playlistDetails.Tracks.Count == 0)
             {
-                await ackMessage.ModifyAsync(msg => msg.Embed = DiscordEmbedBuilder.Info("Empty Playlist", $"Playlist '{playlistDetails.Title}' is empty."));
+                await ackMessage.ModifyAsync(msg => { msg.Components = ComponentV2Builder.Info("Empty Playlist", $"Playlist '{playlistDetails.Title}' is empty."); msg.Embed = null; msg.Flags = MessageFlags.ComponentsV2; });
                 return;
             }
             // Get a list of tracks from the playlist to add to the queue
@@ -227,12 +223,12 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
                 Random rng = new();
                 tracks = [.. tracks.OrderBy(x => rng.Next())];
             }
-            await _playerService.AddToQueueAsync(Context.Interaction, tracks);
+            await playerService.AddToQueueAsync(Context.Interaction, tracks);
         }
         catch (Exception ex)
         {
             Logs.Error($"Error in playlist command: {ex.Message}");
-            await ackMessage.ModifyAsync(msg => msg.Embed = DiscordEmbedBuilder.Error("Playlist Error", "An error occurred while loading the playlist. Please try again later."));
+            await ackMessage.ModifyAsync(msg => { msg.Components = ComponentV2Builder.Error("Playlist Error", "An error occurred while loading the playlist. Please try again later."); msg.Embed = null; msg.Flags = MessageFlags.ComponentsV2; });
         }
     }
 
@@ -251,7 +247,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
             Logs.Info($"Play command: {query}");
             if (string.IsNullOrWhiteSpace(query))
             {
-                await FollowupAsync(embed: DiscordEmbedBuilder.Error("Invalid Query", "Please enter a URL or search term."), ephemeral: true);
+                await FollowupAsync(components: ComponentV2Builder.Error("Invalid Query", "Please enter a URL or search term."), ephemeral: true);
                 return;
             }
             // Check if the query is a URL
@@ -259,30 +255,30 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
             if (isUrl)
             {
                 // URL handling would go here, but for now we'll treat it as a search
-                await FollowupAsync(embed: DiscordEmbedBuilder.Info("URL Playback", "Direct URL playback is not yet implemented. Treating as a search query."), ephemeral: true);
+                await FollowupAsync(components: ComponentV2Builder.Info("URL Playback", "Direct URL playback is not yet implemented. Treating as a search query."), ephemeral: true);
             }
             // Search for the track
-            SearchResults results = await _plexMusicService.SearchLibraryAsync(query);
+            SearchResults results = await plexMusicService.SearchLibraryAsync(query);
             if (!results.HasResults)
             {
-                await FollowupAsync(embed: DiscordEmbedBuilder.Error("No Results", $"No results found for '{query}'."), ephemeral: true);
+                await FollowupAsync(components: ComponentV2Builder.Error("No Results", $"No results found for '{query}'."), ephemeral: true);
                 return;
             }
             // If we found tracks, play the first one
             if (results.Tracks.Count != 0)
             {
                 Track track = results.Tracks.First();
-                await _playerService.AddToQueueAsync(Context.Interaction, [track]);
+                await playerService.AddToQueueAsync(Context.Interaction, [track]);
                 return;
             }
             // If we found albums but no tracks, play the first album
             if (results.Albums.Count != 0)
             {
                 Album album = results.Albums.First();
-                List<Track> tracks = await _plexMusicService.GetTracksAsync(album.SourceKey);
+                List<Track> tracks = await plexMusicService.GetTracksAsync(album.SourceKey);
                 if (tracks.Count != 0)
                 {
-                    await _playerService.AddToQueueAsync(Context.Interaction, tracks);
+                    await playerService.AddToQueueAsync(Context.Interaction, tracks);
                     return;
                 }
             }
@@ -290,26 +286,26 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
             if (results.Artists.Count != 0)
             {
                 Artist artist = results.Artists.First();
-                List<Album> albums = await _plexMusicService.GetAlbumsAsync(artist.SourceKey);
+                List<Album> albums = await plexMusicService.GetAlbumsAsync(artist.SourceKey);
                 List<Track> allTracks = [];
                 foreach (var album in albums)
                 {
-                    List<Track> tracks = await _plexMusicService.GetTracksAsync(album.SourceKey);
+                    List<Track> tracks = await plexMusicService.GetTracksAsync(album.SourceKey);
                     allTracks.AddRange(tracks);
                 }
                 if (allTracks.Count != 0)
                 {
-                    await _playerService.AddToQueueAsync(Context.Interaction, allTracks);
+                    await playerService.AddToQueueAsync(Context.Interaction, allTracks);
                     return;
                 }
             }
             // If we get here, we found results but couldn't play anything
-            await FollowupAsync(embed: DiscordEmbedBuilder.Error("Playback Error", "Found results, but couldn't play any tracks."), ephemeral: true);
+            await FollowupAsync(components: ComponentV2Builder.Error("Playback Error", "Found results, but couldn't play any tracks."), ephemeral: true);
         }
         catch (Exception ex)
         {
             Logs.Error($"Error in play command: {ex.Message}");
-            await FollowupAsync(embed: DiscordEmbedBuilder.Error("Playback Error", "An error occurred while playing. Please try again later."), ephemeral: true);
+            await FollowupAsync(components: ComponentV2Builder.Error("Playback Error", "An error occurred while playing. Please try again later."), ephemeral: true);
         }
     }
 
@@ -321,40 +317,12 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
     {
         try
         {
-            // Create a rich embed with command information
-            EmbedBuilder embed = new EmbedBuilder()
-                .WithTitle("📻 Plex Music Bot Help")
-                .WithDescription("Play music from your Plex library directly in Discord voice channels.")
-                .WithColor(Color.Blue)
-                .WithCurrentTimestamp();
-            // Add command sections
-            embed.AddField("/search [query] [source]",
-                "Search for music in your Plex library or other sources.\n" +
-                "Example: `/search query:\"The Beatles\" source:\"plex\"`",
-                false);
-            embed.AddField("/playlist [playlist] [shuffle]",
-                "Play a Plex playlist, optionally shuffled.\n" +
-                "Example: `/playlist playlist:\"Summer Hits\" shuffle:true`",
-                false);
-            embed.AddField("/play [query]",
-                "Quickly play music that matches your search.\n" +
-                "Example: `/play query:\"Bohemian Rhapsody\"`",
-                false);
-            embed.AddField("Player Controls",
-                "Use the buttons on the player message to control playback:\n" +
-                "• **Play/Pause**: Toggle playback\n" +
-                "• **Skip**: Move to the next track\n" +
-                "• **Queue Options**: View and manage the queue\n" +
-                "• **Repeat**: Set repeat mode\n" +
-                "• **Kill**: Stop playback and disconnect",
-                false);
-            // Send the embed
-            await RespondAsync(embed: embed.Build());
+            await RespondAsync(components: ComponentV2Builder.BuildHelp());
         }
         catch (Exception ex)
         {
             Logs.Error($"Error in help command: {ex.Message}");
-            await RespondAsync(embed: DiscordEmbedBuilder.Error("Help Error", "An error occurred while generating help information."), ephemeral: true);
+            await RespondAsync(components: ComponentV2Builder.Error("Help Error", "An error occurred while generating help information."), ephemeral: true);
         }
     }
 

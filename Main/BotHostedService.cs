@@ -18,9 +18,8 @@ namespace PlexBot.Main;
 /// <param name="extensionManager">The extension manager</param>
 /// <param name="serviceProvider">The service provider</param>
 public class BotHostedService(DiscordSocketClient client, DiscordEventHandler eventHandler, ExtensionManager extensionManager,
-    IServiceProvider serviceProvider) : IHostedService
+    IServiceProvider serviceProvider, DiscordButtonBuilder buttonBuilder) : IHostedService
 {
-    private static readonly DiscordButtonBuilder _buttonBuilder = DiscordButtonBuilder.Instance;
     private readonly string _discordToken = EnvConfig.Get("DISCORD_TOKEN")
             ?? throw new InvalidOperationException("DISCORD_TOKEN environment variable is not set");
 
@@ -106,19 +105,10 @@ public class BotHostedService(DiscordSocketClient client, DiscordEventHandler ev
                     Logs.Warning($"Failed to delete message: {ex.Message}");
                 }
             }
-            // TODO: Create a dynamic embed system that can be overridden by extensions
-            Embed embed = new EmbedBuilder()
-                .WithTitle("🎵 PlexBot Music Player")
-                .WithDescription("No track is currently playing. Use a `/play` command in any channel to start playing music!")
-                .WithColor(new Discord.Color(138, 43, 226))
-                .WithFooter("The player will appear here when music begins playing")
-                .WithCurrentTimestamp()
-                .Build();
-            IUserMessage infoMessage = await textChannel.SendMessageAsync(embed: embed);
-            ButtonContext context = new() { CustomData = new Dictionary<string, object> { { "message", infoMessage } } };
-            ComponentBuilder components = _buttonBuilder.BuildButtons(ButtonFlag.VisualPlayer, context);
-            // TODO: Send the initial player message with a placeholder image
-            IUserMessage initPlayer = await textChannel.SendMessageAsync("test", components: components.Build());
+            ButtonContext context = new();
+            ComponentBuilder components = buttonBuilder.BuildButtons(ButtonFlag.VisualPlayer, context);
+            MessageComponent cv2 = ComponentV2Builder.BuildIdlePlayer(components);
+            IUserMessage initPlayer = await textChannel.SendMessageAsync(components: cv2);
             stateManager.CurrentPlayerMessage = initPlayer;
             Logs.Debug($"\n\nStatic player channel initialized with message ID {initPlayer.Id}\n\n");
             Logs.Init($"Static player channel initialized successfully");

@@ -10,23 +10,20 @@ namespace PlexBot.Core.Discord.Events;
 /// <param name="services">The service provider for dependency injection</param>
 public class DiscordEventHandler(DiscordSocketClient client, InteractionService interactions, IServiceProvider services)
 {
-    private readonly DiscordSocketClient _client = client ?? throw new ArgumentNullException(nameof(client));
-    private readonly InteractionService _interactions = interactions ?? throw new ArgumentNullException(nameof(interactions));
-    private readonly IServiceProvider _services = services ?? throw new ArgumentNullException(nameof(services));
 
     /// <summary>Initializes Discord event handlers for logging, ready events, and interactions</summary>
     /// <returns>A task representing the asynchronous operation</returns>
     public Task InitializeAsync()
     {
         // Set up logging
-        _client.Log += LogAsync;
-        _interactions.Log += LogAsync;
+        client.Log += LogAsync;
+        interactions.Log += LogAsync;
 
         // Set up ready event
-        _client.Ready += ReadyAsync;
+        client.Ready += ReadyAsync;
 
         // Set up interaction created event
-        _client.InteractionCreated += HandleInteractionAsync;
+        client.InteractionCreated += HandleInteractionAsync;
 
         Logs.Init("Discord event handlers initialized");
 
@@ -40,10 +37,10 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
         try
         {
             // Register modules first
-            await _interactions.AddModulesAsync(Assembly.GetEntryAssembly(), _services);
+            await interactions.AddModulesAsync(Assembly.GetEntryAssembly(), services);
 
             // Log discovered modules
-            var modules = _interactions.Modules.ToList();
+            var modules = interactions.Modules.ToList();
             Logs.Info($"Discovered {modules.Count} interaction modules");
             foreach (ModuleInfo module in modules)
             {
@@ -59,14 +56,14 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
             {
                 // Register to specific test guild if needed
                 // ulong testGuildId = 123456789012345678;
-                // await _interactions.RegisterCommandsToGuildAsync(testGuildId);
+                // await interactions.RegisterCommandsToGuildAsync(testGuildId);
 
                 // Or register to all current guilds
-                foreach (SocketGuild guild in _client.Guilds)
+                foreach (SocketGuild guild in client.Guilds)
                 {
                     try
                     {
-                        await _interactions.RegisterCommandsToGuildAsync(guild.Id);
+                        await interactions.RegisterCommandsToGuildAsync(guild.Id);
                         Logs.Info($"Registered commands to guild: {guild.Name} ({guild.Id})");
                     }
                     catch (Exception ex)
@@ -78,14 +75,14 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
             else
             {
                 // In production, use global commands
-                await _interactions.RegisterCommandsGloballyAsync();
+                await interactions.RegisterCommandsGloballyAsync();
                 Logs.Info("Registered commands globally");
             }
 
             // Set bot status
-            await _client.SetGameAsync("/help", type: ActivityType.Listening);
+            await client.SetGameAsync("/help", type: ActivityType.Listening);
 
-            Logs.Init($"Bot is ready. Connected to {_client.Guilds.Count} guilds");
+            Logs.Init($"Bot is ready. Connected to {client.Guilds.Count} guilds");
         }
         catch (Exception ex)
         {
@@ -102,28 +99,28 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
         try
         {
             // Create an execution context for the interaction
-            SocketInteractionContext context = new(_client, interaction);
+            SocketInteractionContext context = new(client, interaction);
 
             // Execute the interaction handler
-            IResult result = await _interactions.ExecuteCommandAsync(context, _services);
+            IResult result = await interactions.ExecuteCommandAsync(context, services);
 
             if (!result.IsSuccess)
             {
                 Logs.Warning($"Interaction failed: {result.Error} - {result.ErrorReason}");
 
-                // Create a standardized error embed using our utility
-                var errorEmbed = result.Error.HasValue 
-                    ? DiscordEmbedBuilder.CommandError(result.Error.Value, result.ErrorReason)
-                    : DiscordEmbedBuilder.Error("Command Error", result.ErrorReason);
-                
-                // Respond with the error embed
+                // Create a standardized error using our CV2 utility
+                var errorComponents = result.Error.HasValue
+                    ? ComponentV2Builder.CommandError(result.Error.Value, result.ErrorReason)
+                    : ComponentV2Builder.Error("Command Error", result.ErrorReason);
+
+                // Respond with the error
                 if (!interaction.HasResponded)
                 {
-                    await interaction.RespondAsync(embed: errorEmbed, ephemeral: true);
+                    await interaction.RespondAsync(components: errorComponents, ephemeral: true);
                 }
                 else
                 {
-                    await interaction.FollowupAsync(embed: errorEmbed, ephemeral: true);
+                    await interaction.FollowupAsync(components: errorComponents, ephemeral: true);
                 }
             }
         }
@@ -131,18 +128,18 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
         {
             Logs.Error($"Error handling interaction: {ex.Message}");
 
-            // Create a standardized error embed for exceptions
-            var exceptionEmbed = DiscordEmbedBuilder.Error("Command Error", 
+            // Create a standardized error for exceptions
+            var exceptionComponents = ComponentV2Builder.Error("Command Error",
                 "An unexpected error occurred while processing your command. Please try again later.");
 
             // Try to respond with an error message if we haven't already
             if (!interaction.HasResponded)
             {
-                await interaction.RespondAsync(embed: exceptionEmbed, ephemeral: true);
+                await interaction.RespondAsync(components: exceptionComponents, ephemeral: true);
             }
             else
             {
-                await interaction.FollowupAsync(embed: exceptionEmbed, ephemeral: true);
+                await interaction.FollowupAsync(components: exceptionComponents, ephemeral: true);
             }
         }
     }

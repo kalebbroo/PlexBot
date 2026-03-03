@@ -161,7 +161,7 @@ public static class ImageBuilder
             try
             {
                 // Create a blurred copy of the album art for background
-                Image<Rgba32> backgroundArt = albumArt.Clone();
+                using Image<Rgba32> backgroundArt = albumArt.Clone();
                 backgroundArt.Mutate(ctx =>
                 {
                     // Resize to fill the background
@@ -186,7 +186,7 @@ public static class ImageBuilder
                     ), new RectangleF(0, 0, width, height));
                 });
                 // Create a clean version of album art for display
-                Image<Rgba32> displayArt = albumArt.Clone();
+                using Image<Rgba32> displayArt = albumArt.Clone();
                 displayArt.Mutate(ctx =>
                 {
                     // Make it square if it's not already
@@ -203,6 +203,8 @@ public static class ImageBuilder
                 });
                 // Draw album art on left side
                 canvas.Mutate(ctx => ctx.DrawImage(displayArt, new Point(40, 60), 1f));
+                // Dispose original albumArt - no longer needed after cloning
+                albumArt.Dispose();
                 // Add text information
                 try
                 {
@@ -293,7 +295,7 @@ public static class ImageBuilder
                 try
                 {
                     // Create a simple mask using multiple filled circles and rectangles
-                    Image<Rgba32> mask = new(width, height, Color.Transparent);
+                    using Image<Rgba32> mask = new(width, height, Color.Transparent);
                     mask.Mutate(ctx =>
                     {
                         // Fill the center

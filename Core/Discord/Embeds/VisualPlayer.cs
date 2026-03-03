@@ -1,10 +1,3 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Numerics;
-using System.Text;
-using System.Threading.Tasks;
-using Lavalink4NET.DiscordNet;
 using PlexBot.Core.Models.Players;
 using PlexBot.Core.Services.LavaLink;
 using PlexBot.Utils;
@@ -14,33 +7,44 @@ namespace PlexBot.Core.Discord.Embeds;
 
 public class VisualPlayer(VisualPlayerStateManager stateManager, IOptions<PlayerOptions> playerOptions, IAudioService audioService)
 {
-    /// <summary>Updates or creates the player UI with current track information and buttons</summary>
+    /// <summary>Updates or creates the player UI with current track information and buttons using Components V2</summary>
     public async Task AddOrUpdateVisualPlayerAsync(ComponentBuilder components, bool recreateImage = false)
     {
         try
         {
-            // Simple button update if we don't need to recreate the image and have an existing message
+            ulong guildId = stateManager.CurrentPlayerChannel?.GuildId ?? 0;
+            CustomLavaLinkPlayer? player = guildId > 0
+                ? await audioService.Players.GetPlayerAsync(guildId) as CustomLavaLinkPlayer
+                : null;
+
+            string statusLine = ComponentV2Builder.BuildPlayerStatusLine(
+                player?.Volume ?? 0.2f,
+                player?.RepeatMode ?? TrackRepeatMode.None);
+
+            // Button/status-only update (no image regeneration needed)
             if (!recreateImage && stateManager.CurrentPlayerMessage != null)
             {
+                MessageComponent cv2 = stateManager.UseModernPlayer
+                    ? ComponentV2Builder.BuildModernPlayer(statusLine, components)
+                    : BuildClassicCV2(player, statusLine, components);
+
                 await stateManager.CurrentPlayerMessage.ModifyAsync(msg =>
                 {
-                    msg.Components = components.Build();
+                    msg.Components = cv2;
+                    msg.Embed = null;
+                    msg.Flags = MessageFlags.ComponentsV2;
                 }).ConfigureAwait(false);
-                Logs.Debug("Updated player buttons successfully");
+                Logs.Debug("Updated player via CV2 successfully");
                 return;
             }
-            ulong guildId = stateManager.CurrentPlayerChannel.GuildId;
-            if (await audioService.Players.GetPlayerAsync(guildId) is not CustomLavaLinkPlayer player)
-            {
-                Logs.Error("Cannot update visual player: No active player found in AddOrUpdateVisualPlayerAsync");
-                return;
-            }
-            // For visual changes or new messages, we need the track and channel
+
             if (player?.CurrentItem is not CustomTrackQueueItem currentTrack)
             {
                 Logs.Warning("Cannot update visual player: No current track");
                 return;
             }
+
+            // Update existing message with new image/content
             if (stateManager.CurrentPlayerMessage != null)
             {
                 try
@@ -48,26 +52,28 @@ public class VisualPlayer(VisualPlayerStateManager stateManager, IOptions<Player
                     if (stateManager.UseModernPlayer)
                     {
                         using MemoryStream memoryStream = new();
-                        SixLabors.ImageSharp.Image image = await ImageBuilder.BuildPlayerImageAsync(currentTrack, player);
+                        using SixLabors.ImageSharp.Image image = await ImageBuilder.BuildPlayerImageAsync(currentTrack, player);
                         await image.SaveAsync(memoryStream, new PngEncoder());
                         memoryStream.Position = 0;
                         FileAttachment fileAttachment = new(memoryStream, "playerImage.png");
+                        MessageComponent cv2 = ComponentV2Builder.BuildModernPlayer(statusLine, components);
                         await stateManager.CurrentPlayerMessage.ModifyAsync(msg =>
                         {
                             msg.Attachments = new[] { fileAttachment };
-                            msg.Components = components.Build();
+                            msg.Components = cv2;
                             msg.Embed = null;
+                            msg.Flags = MessageFlags.ComponentsV2;
                         }).ConfigureAwait(false);
                     }
                     else
                     {
-                        // Update using the Classic Visual Player
-                        EmbedBuilder embed = DiscordEmbedBuilder.BuildPlayerEmbed(currentTrack, currentTrack.Artwork);
+                        MessageComponent cv2 = BuildClassicCV2(player, statusLine, components);
                         await stateManager.CurrentPlayerMessage.ModifyAsync(msg =>
                         {
-                            msg.Embed = embed.Build();
-                            msg.Components = components.Build();
+                            msg.Components = cv2;
+                            msg.Embed = null;
                             msg.Attachments = new List<FileAttachment>();
+                            msg.Flags = MessageFlags.ComponentsV2;
                         }).ConfigureAwait(false);
                     }
                     return;
@@ -86,29 +92,39 @@ public class VisualPlayer(VisualPlayerStateManager stateManager, IOptions<Player
                     stateManager.CurrentPlayerMessage = null;
                 }
             }
+
+            // Create new player message
+            if (stateManager.UseModernPlayer)
+            {
+                using MemoryStream memoryStream = new();
+                using SixLabors.ImageSharp.Image image = await ImageBuilder.BuildPlayerImageAsync(currentTrack, player);
+                await image.SaveAsync(memoryStream, new PngEncoder());
+                memoryStream.Position = 0;
+                FileAttachment fileAttachment = new(memoryStream, "playerImage.png");
+                MessageComponent cv2 = ComponentV2Builder.BuildModernPlayer(statusLine, components);
+                stateManager.CurrentPlayerMessage = await stateManager.CurrentPlayerChannel!.SendFileAsync(
+                    fileAttachment, components: cv2).ConfigureAwait(false);
+            }
             else
             {
-                if (stateManager.UseModernPlayer)
-                {
-                    using MemoryStream memoryStream = new();
-                    SixLabors.ImageSharp.Image image = await ImageBuilder.BuildPlayerImageAsync(currentTrack, player);
-                    await image.SaveAsync(memoryStream, new PngEncoder());
-                    memoryStream.Position = 0;
-                    FileAttachment fileAttachment = new(memoryStream, "playerImage.png");
-                    stateManager.CurrentPlayerMessage = await stateManager.CurrentPlayerChannel.SendFileAsync(fileAttachment, 
-                        components: components.Build()).ConfigureAwait(false);
-                }
-                else
-                {
-                    EmbedBuilder embed = DiscordEmbedBuilder.BuildPlayerEmbed(currentTrack, currentTrack.Artwork);
-                    stateManager.CurrentPlayerMessage = await stateManager.CurrentPlayerChannel.SendMessageAsync(embed: embed.Build(), 
-                        components: components.Build()).ConfigureAwait(false);
-                }
+                MessageComponent cv2 = BuildClassicCV2(player, statusLine, components);
+                stateManager.CurrentPlayerMessage = await stateManager.CurrentPlayerChannel!.SendMessageAsync(
+                    components: cv2).ConfigureAwait(false);
             }
         }
         catch (Exception ex)
         {
             Logs.Error($"Error updating visual player: {ex.Message}");
         }
+    }
+
+    private static MessageComponent BuildClassicCV2(CustomLavaLinkPlayer? player, string statusLine, ComponentBuilder buttons)
+    {
+        CustomTrackQueueItem? currentTrack = player?.CurrentItem as CustomTrackQueueItem;
+        string trackInfo = currentTrack != null
+            ? $"**\u25B6\uFE0F Now Playing**\n{currentTrack.Artist ?? "Unknown Artist"} - {currentTrack.Title ?? "Unknown Title"}\n" +
+              $"{currentTrack.Album ?? "Unknown Album"} | {currentTrack.Duration ?? "0:00"}"
+            : "**No track playing**";
+        return ComponentV2Builder.BuildClassicPlayer(trackInfo, currentTrack?.Artwork, statusLine, buttons);
     }
 }

@@ -84,10 +84,10 @@ namespace PlexBot.Core.Discord.Embeds
     /// <summary>Context object for button creation that contains information needed for dynamic buttons</summary>
     public class ButtonContext
     {
-        public VisualPlayer VisualPlayer;
-        public CustomLavaLinkPlayer Player;
-        public IDiscordInteraction Interaction;
-        public Dictionary<string, object> CustomData = [];
+        public VisualPlayer? VisualPlayer { get; set; }
+        public CustomLavaLinkPlayer? Player { get; set; }
+        public IDiscordInteraction? Interaction { get; set; }
+        public Dictionary<string, object> CustomData { get; set; } = [];
     }
 
     /// <summary>Delegate for creating button builders with context</summary>
@@ -96,12 +96,9 @@ namespace PlexBot.Core.Discord.Embeds
     /// <summary>Central management system for Discord buttons</summary>
     public class DiscordButtonBuilder
     {
-        private static readonly Lazy<DiscordButtonBuilder> _instance = new(() => new DiscordButtonBuilder());
-        public static DiscordButtonBuilder Instance => _instance.Value;
-
         private readonly Dictionary<string, (ButtonFlag Flags, int Priority, ButtonFactory Factory)> _buttonFactories = [];
 
-        private DiscordButtonBuilder()
+        public DiscordButtonBuilder()
         {
             RegisterDefaultButtons();
         }

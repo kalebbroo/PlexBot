@@ -38,9 +38,6 @@ public class PlexBotMain
 
             Logs.Init($"Starting Plex Music Bot");
 
-            // Ensure the application directory is set correctly
-            Directory.SetCurrentDirectory(AppContext.BaseDirectory);
-
             // Create and run the host
             using IHost host = CreateHostBuilder(args).Build();
 

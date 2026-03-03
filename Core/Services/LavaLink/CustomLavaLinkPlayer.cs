@@ -1,11 +1,7 @@
 ﻿using PlexBot.Utils;
-using SixLabors.ImageSharp.Formats.Png;
 using Discord.WebSocket;
 using PlexBot.Core.Discord.Embeds;
-using PlexBot.Main;
 using PlexBot.Core.Models.Players;
-using Microsoft.VisualBasic;
-using System;
 
 namespace PlexBot.Core.Services.LavaLink;
 
@@ -26,6 +22,7 @@ public sealed class CustomLavaLinkPlayer(IPlayerProperties<CustomLavaLinkPlayer,
         try
         {
             VisualPlayer visualPlayer = serviceProvider.GetRequiredService<VisualPlayer>();
+            DiscordButtonBuilder buttonBuilder = serviceProvider.GetRequiredService<DiscordButtonBuilder>();
             await base.NotifyTrackStartedAsync(track, cancellationToken).ConfigureAwait(false);
             if (track is not CustomTrackQueueItem customTrack)
             {
@@ -33,7 +30,7 @@ public sealed class CustomLavaLinkPlayer(IPlayerProperties<CustomLavaLinkPlayer,
                 return;
             }
             ButtonContext context = new() { Player = this };
-            ComponentBuilder components = DiscordButtonBuilder.Instance.BuildButtons(ButtonFlag.VisualPlayer, context);
+            ComponentBuilder components = buttonBuilder.BuildButtons(ButtonFlag.VisualPlayer, context);
             await visualPlayer.AddOrUpdateVisualPlayerAsync(components, recreateImage: true).ConfigureAwait(false);
         }
         catch (Exception ex)
