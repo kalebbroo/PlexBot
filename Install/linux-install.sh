@@ -18,15 +18,21 @@ if ! command -v docker &> /dev/null; then
     exit 1
 fi
 
-# Check for Docker Compose
-if ! command -v docker-compose &> /dev/null; then
-    echo "Docker Compose is not installed. Please install it first."
-    echo "Visit: https://docs.docker.com/compose/install/"
+# Detect compose command (plugin "docker compose" preferred, fallback to standalone)
+if docker compose version &> /dev/null; then
+    COMPOSE="docker compose"
+elif command -v docker-compose &> /dev/null; then
+    COMPOSE="docker-compose"
+else
+    echo "Docker Compose is not installed."
+    echo "Install via: https://docs.docker.com/compose/install/"
     exit 1
 fi
 
-# Create Extensions directory
-mkdir -p "$DOCKER_DIR/Extensions"
+echo "Using compose command: $COMPOSE"
+
+# Create plugins directory for Lavalink
+mkdir -p "$DOCKER_DIR/plugins"
 
 # Create Lavalink application.yml if it doesn't exist
 if [ ! -f "$DOCKER_DIR/lavalink.application.yml" ]; then
@@ -65,7 +71,7 @@ plugins:
     allowDirectPlaylistIds: true
     clients:
       - TVHTML5EMBEDDED
-      - TV 
+      - TV
     oauth:
       enabled: true
       refreshToken: ""
@@ -82,8 +88,8 @@ fi
 # Check if .env file exists
 if [ ! -f "$ROOT_DIR/.env" ]; then
     echo ""
-    echo "Please update the .env file with your Discord token and Plex server details."
-    echo "You MUST rename to .env and update the file with your own credentials before continuing."
+    echo "No .env file found at: $ROOT_DIR/.env"
+    echo "Please create a .env file with your Discord token and Plex server details."
     echo ""
     exit 1
 fi
@@ -95,25 +101,21 @@ echo ""
 echo "Building and starting Docker containers..."
 echo ""
 
-# Navigate to Docker directory and run docker-compose
 cd "$DOCKER_DIR"
 
-# Stop and remove existing containers, networks, and volumes
-docker-compose down --volumes --remove-orphans
+# Stop existing containers gracefully (preserve volumes/data)
+$COMPOSE -p plexbot down --remove-orphans 2>/dev/null || true
 
-# Remove any existing images
-docker rmi -f plexbot:latest
-docker rmi -f ghcr.io/lavalink-devs/lavalink:4
-
-# Clear build cache
-docker builder prune -f
-
-# Build and start the containers
-docker-compose -p plexbot up -d --build
+# Build and start containers
+$COMPOSE -p plexbot up -d --build
 
 echo ""
 echo "PlexBot installation completed successfully!"
 echo "The bot should now be running in the background."
 echo ""
-echo "You can check the logs with: docker-compose logs -f"
+echo "Useful commands:"
+echo "  View logs:       cd \"$DOCKER_DIR\" && $COMPOSE -p plexbot logs -f"
+echo "  Stop bot:        cd \"$DOCKER_DIR\" && $COMPOSE -p plexbot down"
+echo "  Restart bot:     cd \"$DOCKER_DIR\" && $COMPOSE -p plexbot restart"
+echo "  Rebuild & start: cd \"$DOCKER_DIR\" && $COMPOSE -p plexbot up -d --build"
 echo ""

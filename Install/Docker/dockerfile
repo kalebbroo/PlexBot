@@ -1,23 +1,21 @@
+# ── Build Stage ──────────────────────────────────────────────────────────────
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 
 WORKDIR /source
 
-# Copy the project files
 COPY . .
 
-# Restore dependencies and build the project
 RUN dotnet restore
-RUN dotnet publish -c Release -o /app/publish
+RUN dotnet publish -c Release -o /app
 
-# Runtime image using Alpine
+# ── Runtime Stage (SDK required for live-source rebuild support) ─────────────
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS runtime
 
 WORKDIR /app
 
-# Install additional dependencies and fonts for proper CJK and emoji support
-RUN apt-get update && apt-get install -y \
+# Install dependencies and fonts for CJK / emoji rendering (ImageSharp)
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
-    unzip \
     git \
     fontconfig \
     fonts-dejavu \
@@ -29,74 +27,11 @@ RUN apt-get update && apt-get install -y \
     fonts-ipafont-mincho \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy the build output from the build stage
-COPY --from=build /app/publish .
-COPY Images /app/Images
+# Copy build output (includes Images/ since it's part of the project)
+COPY --from=build /app .
 
-# Create startup script directly in the container
-RUN echo '#!/bin/bash' > /app/startup.sh && \
-    echo 'set -e' >> /app/startup.sh && \
-    echo '# Directories' >> /app/startup.sh && \
-    echo 'SOURCE_DIR="/source"' >> /app/startup.sh && \
-    echo 'APP_DIR="/app"' >> /app/startup.sh && \
-    echo '' >> /app/startup.sh && \
-    echo '# Check that .env file exists' >> /app/startup.sh && \
-    echo 'if [ ! -f "$APP_DIR/.env" ]; then' >> /app/startup.sh && \
-    echo '    echo "ERROR: No .env file found. Please create a .env file with your Discord token and Plex server details."' >> /app/startup.sh && \
-    echo '    exit 1' >> /app/startup.sh && \
-    echo 'fi' >> /app/startup.sh && \
-    echo '' >> /app/startup.sh && \
-    echo '# If the source directory is a git repository, update the source code' >> /app/startup.sh && \
-    echo 'if [ -d "$SOURCE_DIR/.git" ]; then' >> /app/startup.sh && \
-    echo '    echo "Checking for updates in source code..."' >> /app/startup.sh && \
-    echo '    cd "$SOURCE_DIR"' >> /app/startup.sh && \
-    echo '    git pull' >> /app/startup.sh && \
-    echo '    cd -' >> /app/startup.sh && \
-    echo 'fi' >> /app/startup.sh && \
-    echo '' >> /app/startup.sh && \
-    echo '# Function to check if rebuild is needed' >> /app/startup.sh && \
-    echo 'need_rebuild() {' >> /app/startup.sh && \
-    echo '  # If the binaries directory does not exist or is empty, rebuild is needed' >> /app/startup.sh && \
-    echo '  if [ ! -d "$APP_DIR/bin" ]; then' >> /app/startup.sh && \
-    echo '    echo "Binary directory does not exist, rebuild needed."' >> /app/startup.sh && \
-    echo '    return 0' >> /app/startup.sh && \
-    echo '  fi' >> /app/startup.sh && \
-    echo '' >> /app/startup.sh && \
-    echo '  if [ -z "$(ls -A "$APP_DIR/bin" 2>/dev/null)" ]; then' >> /app/startup.sh && \
-    echo '    echo "Binary directory is empty, rebuild needed."' >> /app/startup.sh && \
-    echo '    return 0' >> /app/startup.sh && \
-    echo '  fi' >> /app/startup.sh && \
-    echo '' >> /app/startup.sh && \
-    echo '  # Find the newest modification time for source and binary files' >> /app/startup.sh && \
-    echo '  NEWEST_SOURCE=$(find "$SOURCE_DIR" -type f \( -name "*.cs" -o -name "*.csproj" \) -print0 | xargs -0 stat --format "%Y" | sort -nr | head -n 1)' >> /app/startup.sh && \
-    echo '  NEWEST_BINARY=$(find "$APP_DIR/bin" -type f -name "*.dll" -print0 | xargs -0 stat --format "%Y" | sort -nr | head -n 1)' >> /app/startup.sh && \
-    echo '' >> /app/startup.sh && \
-    echo '  if [[ -z "$NEWEST_BINARY" || "$NEWEST_SOURCE" -gt "$NEWEST_BINARY" ]]; then' >> /app/startup.sh && \
-    echo '    echo "Source code is newer than binaries, rebuild needed."' >> /app/startup.sh && \
-    echo '    return 0' >> /app/startup.sh && \
-    echo '  fi' >> /app/startup.sh && \
-    echo '' >> /app/startup.sh && \
-    echo '  return 1' >> /app/startup.sh && \
-    echo '}' >> /app/startup.sh && \
-    echo '' >> /app/startup.sh && \
-    echo '# Rebuild the project if needed' >> /app/startup.sh && \
-    echo 'if need_rebuild; then' >> /app/startup.sh && \
-    echo '    echo "Rebuilding project from source..."' >> /app/startup.sh && \
-    echo '    cd "$SOURCE_DIR"' >> /app/startup.sh && \
-    echo '    dotnet restore' >> /app/startup.sh && \
-    echo '    dotnet build -c Release' >> /app/startup.sh && \
-    echo '    # Publish the build output to the APP_DIR' >> /app/startup.sh && \
-    echo '    dotnet publish -c Release -o "$APP_DIR/publish"' >> /app/startup.sh && \
-    echo '    cd "$APP_DIR"' >> /app/startup.sh && \
-    echo '    echo "Rebuild complete."' >> /app/startup.sh && \
-    echo 'fi' >> /app/startup.sh && \
-    echo '' >> /app/startup.sh && \
-    echo 'echo "Starting PlexBot application..."' >> /app/startup.sh && \
-    echo 'cd "$APP_DIR"' >> /app/startup.sh && \
-    echo 'dotnet PlexBot.dll' >> /app/startup.sh && \
-    chmod +x /app/startup.sh && \
-    echo "Startup script created successfully" && \
-    cat /app/startup.sh | head -5
+# Copy and set up the startup script (sed strips Windows \r line endings)
+COPY Install/Docker/startup.sh /app/startup.sh
+RUN sed -i 's/\r$//' /app/startup.sh && chmod +x /app/startup.sh
 
-# Explicitly run the script using bash
 ENTRYPOINT ["/bin/bash", "/app/startup.sh"]
