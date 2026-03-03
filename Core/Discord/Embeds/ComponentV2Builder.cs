@@ -92,7 +92,7 @@ public static class ComponentV2Builder
             .WithAccentColor(MusicColor)
             .WithMediaGallery(new MediaGalleryBuilder().AddItem("attachment://playerImage.png"))
             .WithSeparator(SeparatorSpacingSize.Small, isDivider: true)
-            .WithTextDisplay($"-# {statusLine}");
+            .WithTextDisplay(statusLine);
         AddActionRows(container, buttons);
         return new ComponentBuilderV2().WithContainer(container).Build();
     }
@@ -117,7 +117,7 @@ public static class ComponentV2Builder
         }
 
         container.WithSeparator(SeparatorSpacingSize.Small, isDivider: true)
-            .WithTextDisplay($"-# {statusLine}");
+            .WithTextDisplay(statusLine);
         AddActionRows(container, buttons);
         return new ComponentBuilderV2().WithContainer(container).Build();
     }
@@ -187,16 +187,44 @@ public static class ComponentV2Builder
         return new ComponentBuilderV2().WithContainer(container).Build();
     }
 
-    /// <summary>Builds a player status line from current player state</summary>
-    public static string BuildPlayerStatusLine(float volume, TrackRepeatMode repeatMode)
+    /// <summary>Builds a player status line showing the progress bar (volume/repeat are on the image)</summary>
+    public static string BuildPlayerStatusLine(
+        PlayerState state = PlayerState.NotPlaying,
+        TimeSpan? position = null, TimeSpan? duration = null)
     {
-        string repeatStr = repeatMode switch
-        {
-            TrackRepeatMode.Track => "\U0001F502 Track",
-            TrackRepeatMode.Queue => "\U0001F501 Queue",
-            _ => "Repeat: Off"
-        };
-        return $"\U0001F50A Volume: {volume * 100:F0}% | {repeatStr}";
+        string progressLine = BuildProgressBar(state, position, duration);
+        return $"-# {progressLine}";
+    }
+
+    /// <summary>Builds a visual progress bar showing track playback position</summary>
+    private static string BuildProgressBar(PlayerState state, TimeSpan? position, TimeSpan? duration)
+    {
+        const int segments = 15;
+        string playIcon = state == PlayerState.Paused ? "\u23F8" : "\u25B6";
+
+        if (position == null || duration == null || duration.Value.TotalSeconds < 1)
+            return $"{playIcon} 0:00 \u25CF{new string('\u2500', segments - 1)} 0:00";
+
+        double progress = Math.Clamp(position.Value.TotalSeconds / duration.Value.TotalSeconds, 0, 1);
+        int playedCount = (int)Math.Round(progress * segments);
+        playedCount = Math.Clamp(playedCount, 0, segments);
+
+        // Build: ━━━━━━●──────── (played ━, playhead ●, remaining ─)
+        string played = new string('\u2501', Math.Max(0, playedCount));
+        string remaining = new string('\u2500', Math.Max(0, segments - playedCount));
+        string bar = $"{played}\u25CF{remaining}";
+
+        string posStr = FormatTime(position.Value);
+        string durStr = FormatTime(duration.Value);
+        return $"{playIcon} {posStr} {bar} {durStr}";
+    }
+
+    /// <summary>Formats a TimeSpan as m:ss or h:mm:ss</summary>
+    private static string FormatTime(TimeSpan ts)
+    {
+        return ts.TotalHours >= 1
+            ? ts.ToString(@"h\:mm\:ss")
+            : $"{(int)ts.TotalMinutes}:{ts.Seconds:D2}";
     }
 
     private static MessageComponent BuildStatusMessage(Color color, string emoji, string title, string description)

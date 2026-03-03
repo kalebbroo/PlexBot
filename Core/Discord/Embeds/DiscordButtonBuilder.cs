@@ -106,46 +106,61 @@ namespace PlexBot.Core.Discord.Embeds
         /// <summary>Registers the default set of buttons used by the core application</summary>
         private void RegisterDefaultButtons()
         {
-            // Player control buttons
-            RegisterButton("pause_resume", ButtonFlag.VisualPlayer, 10, context =>
+            // Row 1: Transport controls (vol down, pause/resume, skip, repeat, vol up)
+            RegisterButton("vol_down", ButtonFlag.VisualPlayer, 10, _ =>
+            {
+                return new ButtonBuilder()
+                    .WithEmote(new Emoji("\uD83D\uDD09"))
+                    .WithCustomId("volume:down")
+                    .WithStyle(ButtonStyle.Secondary);
+            });
+            RegisterButton("pause_resume", ButtonFlag.VisualPlayer, 20, context =>
             {
                 bool isPaused = context.Player?.State == PlayerState.Paused;
                 return new ButtonBuilder()
+                    .WithEmote(new Emoji(isPaused ? "\u25B6\uFE0F" : "\u23F8\uFE0F"))
                     .WithLabel(isPaused ? "Resume" : "Pause")
                     .WithCustomId(isPaused ? "pause_resume:resume" : "pause_resume:pause")
-                    .WithStyle(isPaused ? ButtonStyle.Success : ButtonStyle.Secondary);
+                    .WithStyle(ButtonStyle.Secondary);
             });
-            RegisterButton("skip", ButtonFlag.VisualPlayer, 20, _ =>
+            RegisterButton("skip", ButtonFlag.VisualPlayer, 30, _ =>
             {
                 return new ButtonBuilder()
+                    .WithEmote(new Emoji("\u23ED\uFE0F"))
                     .WithLabel("Skip")
                     .WithCustomId("skip:skip")
-                    .WithStyle(ButtonStyle.Primary);
+                    .WithStyle(ButtonStyle.Secondary);
             });
-            RegisterButton("queue_options", ButtonFlag.VisualPlayer, 30, _ =>
+            RegisterButton("repeat", ButtonFlag.VisualPlayer, 40, context =>
+            {
+                TrackRepeatMode mode = context.Player?.RepeatMode ?? TrackRepeatMode.None;
+                string emoji = mode == TrackRepeatMode.Track ? "\uD83D\uDD02" : "\uD83D\uDD01";
+                ButtonStyle style = mode != TrackRepeatMode.None ? ButtonStyle.Primary : ButtonStyle.Secondary;
+                return new ButtonBuilder()
+                    .WithEmote(new Emoji(emoji))
+                    .WithCustomId("repeat:cycle")
+                    .WithStyle(style);
+            });
+            RegisterButton("vol_up", ButtonFlag.VisualPlayer, 50, _ =>
             {
                 return new ButtonBuilder()
+                    .WithEmote(new Emoji("\uD83D\uDD0A"))
+                    .WithCustomId("volume:up")
+                    .WithStyle(ButtonStyle.Secondary);
+            });
+            // Row 2: Utility controls (queue, stop)
+            RegisterButton("queue_options", ButtonFlag.VisualPlayer, 60, _ =>
+            {
+                return new ButtonBuilder()
+                    .WithEmote(new Emoji("\uD83D\uDCCB"))
                     .WithLabel("Queue Options")
                     .WithCustomId("queue_options:options:1")
-                    .WithStyle(ButtonStyle.Success);
-            });
-            RegisterButton("repeat", ButtonFlag.VisualPlayer, 40, _ =>
-            {
-                return new ButtonBuilder()
-                    .WithLabel("Repeat")
-                    .WithCustomId("repeat:select")
                     .WithStyle(ButtonStyle.Secondary);
             });
-            RegisterButton("volume", ButtonFlag.VisualPlayer, 50, _ =>
+            RegisterButton("kill", ButtonFlag.VisualPlayer, 70, _ =>
             {
                 return new ButtonBuilder()
-                    .WithLabel("Volume")
-                    .WithCustomId("volume:select")
-                    .WithStyle(ButtonStyle.Secondary);
-            });
-            RegisterButton("kill", ButtonFlag.VisualPlayer, 60, _ =>
-            {
-                return new ButtonBuilder()
+                    .WithEmote(new Emoji("\u23F9\uFE0F"))
                     .WithLabel("Kill")
                     .WithCustomId("kill:kill")
                     .WithStyle(ButtonStyle.Danger);

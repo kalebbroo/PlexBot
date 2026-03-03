@@ -118,18 +118,10 @@ public static class ImageBuilder
     /// <param name="player">Optional player object to get current state (volume and repeat mode)</param>
     /// <returns>The generated image</returns>
     /// <summary>Creates a visually appealing player image by downloading album art and overlaying track details</summary>
-    public static async Task<Image> BuildPlayerImageAsync(CustomTrackQueueItem track, CustomLavaLinkPlayer player = null)
+    public static async Task<Image> BuildPlayerImageAsync(CustomTrackQueueItem track, CustomLavaLinkPlayer? player = null)
     {
         try
         {
-            int volumePercent = 20; // Default value
-            string repeatMode = "none"; // Default value
-            if (player != null)
-            {
-                volumePercent = (int)(player.Volume * 100);
-                repeatMode = player.RepeatMode.ToString().ToLower();
-                Logs.Debug($"Using player state - Volume: {volumePercent}%, Repeat: {repeatMode}");
-            }
             // Get the album artwork URL
             string artworkUrl = track.Artwork ?? "";
             if (string.IsNullOrEmpty(artworkUrl) || artworkUrl == "N/A")
@@ -272,19 +264,21 @@ public static class ImageBuilder
                         // Draw duration text
                         string duration = track.Duration ?? "00:00";
                         ctx.DrawText(duration, infoFont, new Rgba32(180, 180, 180, 255), new PointF(durationTextX, 230));
-                        // Volume indicator with actual value from player
-                        int volumeIndicatorY = 280;
-                        DrawVolumeIndicator(ctx, textX, volumeIndicatorY, 200, 8, volumePercent, infoFont, smallInfoFont);
-                        // Repeat mode indicator with actual mode from player
-                        int repeatY = 320;
-                        DrawRepeatIndicator(ctx, textX, repeatY, repeatMode, infoFont, smallInfoFont);
-                        // Additional info/credit
-                        if (!string.IsNullOrEmpty(track.Studio))
+                        // Volume indicator
+                        int volumePercent = player != null ? (int)Math.Round(player.Volume * 100) : 20;
+                        DrawVolumeIndicator(ctx, textX, 275, 200, 8, volumePercent, infoFont, smallInfoFont);
+                        // Repeat indicator
+                        string repeatMode = player?.RepeatMode switch
                         {
-                            string credit = "Requested by: " + track.RequestedBy;
-                            string truncatedCredit = TruncateText(credit, smallInfoFont, maxWidth);
-                            ctx.DrawText(truncatedCredit, smallInfoFont, new Rgba32(150, 150, 150, 255), new PointF(textX - 200, 365)); // Changed from 340
-                        }
+                            TrackRepeatMode.Track => "Track",
+                            TrackRepeatMode.Queue => "Queue",
+                            _ => "None"
+                        };
+                        DrawRepeatIndicator(ctx, textX, 315, repeatMode, infoFont, smallInfoFont);
+                        // Requested by credit (bottom of image)
+                        string credit = "Requested by: " + (track.RequestedBy ?? "Unknown");
+                        string truncatedCredit = TruncateText(credit, smallInfoFont, maxWidth + 200);
+                        ctx.DrawText(truncatedCredit, smallInfoFont, new Rgba32(150, 150, 150, 255), new PointF(40, 365));
                     });
                 }
                 catch (Exception ex)
