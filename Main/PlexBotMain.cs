@@ -15,23 +15,23 @@ public class PlexBotMain
             // Initialize configuration
             EnvConfig.Initialize();
 
-            // Initialize logging
+            // Initialize logging (file always saves ALL levels; this controls console output only)
             Dictionary<string, string> logSettings = new()
             {
-                ["SaveToFile"] = EnvConfig.Get("LOG_SAVE_TO_FILE", "true"), // TODO: Add these to the ENV
+                ["SaveToFile"] = EnvConfig.Get("LOG_SAVE_TO_FILE", "true"),
                 ["LogPath"] = EnvConfig.Get("LOG_PATH", "logs/plex-bot-[year]-[month]-[day].log")
             };
 
             Logs.StartLogSaving(logSettings);
 
-            string logLevel = EnvConfig.Get("LOG_LEVEL", "Debug");
+            string logLevel = EnvConfig.Get("LOGGING_LEVEL_ROOT", "Info");
             Logs.MinimumLevel = logLevel.ToLowerInvariant() switch
             {
                 "verbose" => Logs.LogLevel.Verbose,
                 "debug" => Logs.LogLevel.Debug,
                 "info" => Logs.LogLevel.Info,
                 "init" => Logs.LogLevel.Init,
-                "warning" => Logs.LogLevel.Warning,
+                "warn" or "warning" => Logs.LogLevel.Warning,
                 "error" => Logs.LogLevel.Error,
                 _ => Logs.LogLevel.Info
             };
