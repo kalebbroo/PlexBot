@@ -1,0 +1,15 @@
+bin/
+obj/
+.git/
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+logs/
+data/
+Install/win-install.bat
+Install/linux-install.sh
+Install/Docker/docker-compose.yml
+Install/Docker/lavalink.application.yml
+Install/Docker/plugins/

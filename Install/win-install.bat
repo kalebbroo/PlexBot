@@ -20,17 +20,24 @@ if %ERRORLEVEL% NEQ 0 (
     exit /b 1
 )
 
-REM Check for Docker Compose
-docker-compose --version >nul 2>&1
+REM Detect compose command (plugin "docker compose" preferred, fallback to standalone)
+set "COMPOSE=docker compose"
+docker compose version >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
-    echo Docker Compose is not installed. It should come with Docker Desktop.
-    echo Please ensure Docker is properly installed.
-    pause
-    exit /b 1
+    docker-compose --version >nul 2>&1
+    if %ERRORLEVEL% NEQ 0 (
+        echo Docker Compose is not installed. It should come with Docker Desktop.
+        echo Please ensure Docker is properly installed.
+        pause
+        exit /b 1
+    )
+    set "COMPOSE=docker-compose"
 )
 
-REM Create extensions directory if it doesn't exist
-if not exist "%DOCKER_DIR%\Extensions" mkdir "%DOCKER_DIR%\Extensions"
+echo Using compose command: %COMPOSE%
+
+REM Create plugins directory if it doesn't exist
+if not exist "%DOCKER_DIR%\plugins" mkdir "%DOCKER_DIR%\plugins"
 
 REM Check if we have a lavalink config file, create if not
 if not exist "%DOCKER_DIR%\lavalink.application.yml" (
@@ -42,7 +49,7 @@ if not exist "%DOCKER_DIR%\lavalink.application.yml" (
         echo   server:
         echo     # Password comes from environment variables
         echo     sources:
-        echo       youtube: false  # Disable built-in YouTube source as we're using the plugin
+        echo       youtube: false
         echo       bandcamp: true
         echo       soundcloud: true
         echo       twitch: true
@@ -68,8 +75,8 @@ if not exist "%DOCKER_DIR%\lavalink.application.yml" (
         echo     allowDirectVideoIds: true
         echo     allowDirectPlaylistIds: true
         echo     clients:
-        echo        - TVHTML5EMBEDDED
-        echo        - TV 
+        echo       - TVHTML5EMBEDDED
+        echo       - TV
         echo     oauth:
         echo       enabled: true
         echo       refreshToken: ""
@@ -82,12 +89,12 @@ if not exist "%DOCKER_DIR%\lavalink.application.yml" (
         echo     lavalink: INFO
     ) > "%DOCKER_DIR%\lavalink.application.yml"
 )
-    
-REM Check if .env file exists and prompt if it does not
+
+REM Check if .env file exists
 if not exist "%ROOT_DIR%\.env" (
     echo.
-    echo Please update the .env file with your Discord token and Plex server details.
-    echo You MUST rename to .env and update the file with your own credentials before continuing.
+    echo No .env file found at: %ROOT_DIR%\.env
+    echo Please create a .env file with your Discord token and Plex server details.
     echo.
     pause
     exit /b 1
@@ -101,26 +108,22 @@ echo.
 echo Building and starting Docker containers...
 echo.
 
-REM Navigate to the Docker directory and run docker-compose
 cd "%DOCKER_DIR%"
 
-REM Stop and remove existing containers, networks, and volumes
-docker-compose down --volumes --remove-orphans
+REM Stop existing containers gracefully (preserve volumes/data)
+%COMPOSE% -p plexbot down --remove-orphans 2>nul
 
-REM Remove any existing images
-docker rmi -f plexbot:latest
-docker rmi -f ghcr.io/lavalink-devs/lavalink:4
-
-REM Clear build cache
-docker builder prune -f
-
-REM Build and start the containers
-docker-compose -p plexbot up -d --build
+REM Build and start containers
+%COMPOSE% -p plexbot up -d --build
 
 echo.
 echo PlexBot installation completed successfully!
 echo The bot should now be running in the background.
 echo.
-echo You can check the logs with: docker-compose logs -f
+echo Useful commands:
+echo   View logs:       %COMPOSE% -p plexbot logs -f
+echo   Stop bot:        %COMPOSE% -p plexbot down
+echo   Restart bot:     %COMPOSE% -p plexbot restart
+echo   Rebuild ^& start: %COMPOSE% -p plexbot up -d --build
 echo.
 pause

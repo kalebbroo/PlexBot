@@ -17,16 +17,16 @@ public static class EnvConfig
             return;
         }
 
-        // Load from .env file if it exists
-        string filePath = envFilePath ?? System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ".env");
-        if (File.Exists(filePath))
+        // Load from .env file - search multiple locations
+        string? filePath = envFilePath ?? FindEnvFile();
+        if (filePath != null)
         {
             Logs.Init($"Loading configuration from {filePath}");
             LoadEnvFile(filePath);
         }
         else
         {
-            Logs.Warning($".env file not found at {filePath}");
+            Logs.Warning(".env file not found in any expected location");
         }
 
         // Load from environment variables (overriding .env file)
@@ -97,6 +97,29 @@ public static class EnvConfig
         }
 
         return result;
+    }
+
+    /// <summary>Searches for the .env file in standard locations: cwd, base directory, and up the directory tree from base</summary>
+    private static string? FindEnvFile()
+    {
+        // 1. Current working directory (project root when using `dotnet run`)
+        string cwdPath = System.IO.Path.Combine(Directory.GetCurrentDirectory(), ".env");
+        if (File.Exists(cwdPath)) return cwdPath;
+
+        // 2. Application base directory (works for published/Docker deployments)
+        string basePath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ".env");
+        if (File.Exists(basePath)) return basePath;
+
+        // 3. Walk up from base directory (handles bin/Debug/net9.0/ → project root)
+        DirectoryInfo? dir = Directory.GetParent(AppDomain.CurrentDomain.BaseDirectory);
+        while (dir != null)
+        {
+            string candidate = System.IO.Path.Combine(dir.FullName, ".env");
+            if (File.Exists(candidate)) return candidate;
+            dir = dir.Parent;
+        }
+
+        return null;
     }
 
     /// <summary>Reads and parses a .env file, extracting key-value pairs while handling comments and formatting</summary>
