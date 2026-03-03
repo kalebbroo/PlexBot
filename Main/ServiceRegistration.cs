@@ -45,8 +45,13 @@ namespace PlexBot.Main
             // Configure Discord client
             services.AddSingleton(new DiscordSocketClient(new DiscordSocketConfig
             {
-                GatewayIntents = GatewayIntents.All,
-                AlwaysDownloadUsers = true,
+                GatewayIntents = GatewayIntents.Guilds
+                    | GatewayIntents.GuildMessages
+                    | GatewayIntents.GuildVoiceStates
+                    | GatewayIntents.GuildMessageReactions
+                    | GatewayIntents.DirectMessages
+                    | GatewayIntents.MessageContent,
+                AlwaysDownloadUsers = false,
                 MessageCacheSize = 100,
                 LogLevel = LogSeverity.Info
             }));
@@ -61,6 +66,7 @@ namespace PlexBot.Main
                 }));
             services.AddSingleton<DiscordEventHandler>();
             services.AddSingleton<VisualPlayer>();
+            services.AddSingleton<DiscordButtonBuilder>();
         }
 
         /// <summary>Registers Plex API services for authentication, data retrieval, and music functionality</summary>

@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Caching.Memory;
 using PlexBot.Core.Exceptions;
 using PlexBot.Core.Models;
 using PlexBot.Core.Models.Media;
@@ -7,34 +8,36 @@ using PlexBot.Utils;
 namespace PlexBot.Core.Services.PlexApi;
 
 /// <summary>Provides a specialized interface for interacting with music content in Plex libraries, handling the unique metadata and hierarchical structure of music media</summary>
-/// <remarks>Creates a new service instance that builds upon the core Plex API service to provide music-specific functionality and optimizations</remarks>
 /// <param name="plexApiService">The underlying API service that handles authentication and raw HTTP communication with the Plex server</param>
-public class PlexMusicService(IPlexApiService plexApiService) : IPlexMusicService
+/// <param name="cache">Memory cache for reducing redundant Plex API calls</param>
+public class PlexMusicService(IPlexApiService plexApiService, IMemoryCache cache) : IPlexMusicService
 {
-    private readonly IPlexApiService _plexApiService = plexApiService ?? throw new ArgumentNullException(nameof(plexApiService));
-    private readonly string _plexUrl = Environment.GetEnvironmentVariable("PLEX_URL") ?? "";
-    private readonly string _plexToken = Environment.GetEnvironmentVariable("PLEX_TOKEN") ?? "";
+    private static readonly MemoryCacheEntryOptions SearchCacheOptions = new() { SlidingExpiration = TimeSpan.FromSeconds(60) };
+    private static readonly MemoryCacheEntryOptions ListCacheOptions = new() { SlidingExpiration = TimeSpan.FromMinutes(2) };
+    private static readonly MemoryCacheEntryOptions PlaylistListCacheOptions = new() { SlidingExpiration = TimeSpan.FromMinutes(5) };
 
     /// <inheritdoc />
     public async Task<SearchResults> SearchLibraryAsync(string query, CancellationToken cancellationToken = default)
     {
+        string cacheKey = $"search:{query.ToLowerInvariant()}";
+        if (cache.TryGetValue(cacheKey, out SearchResults? cached) && cached != null)
+        {
+            Logs.Debug($"Search cache hit for: {query}");
+            return cached;
+        }
         Logs.Info($"Searching Plex library for: {query}");
         try
         {
-            // URL encode the query
             string encodedQuery = HttpUtility.UrlEncode(query);
-            // Construct the search URL
             string uri = $"/hubs/search?query={encodedQuery}&limit=100";
-            // Perform the request
-            string response = await _plexApiService.PerformRequestAsync(uri, cancellationToken);
-            // Parse the results
-            SearchResults results = ParseSearchResults(response, query, cancellationToken);
+            string response = await plexApiService.PerformRequestAsync(uri, cancellationToken);
+            SearchResults results = ParseSearchResults(response, query);
             Logs.Info($"Search complete. Found {results.Artists.Count} artists, {results.Albums.Count} albums, {results.Tracks.Count} tracks, {results.Playlists.Count} playlists");
+            cache.Set(cacheKey, results, SearchCacheOptions);
             return results;
         }
-        catch (PlexApiException ex)
+        catch (PlexApiException)
         {
-            Logs.Error($"Plex API error during search: {ex.Message}");
             throw;
         }
         catch (Exception ex)
@@ -50,9 +53,7 @@ public class PlexMusicService(IPlexApiService plexApiService) : IPlexMusicServic
         Logs.Debug($"Getting track details for key: {trackKey}");
         try
         {
-            // Perform the request to get track details
-            string response = await _plexApiService.PerformRequestAsync(trackKey, cancellationToken);
-            // Parse the response
+            string response = await plexApiService.PerformRequestAsync(trackKey, cancellationToken);
             JObject jObject = JObject.Parse(response);
             JToken? mediaContainer = jObject["MediaContainer"];
             if (mediaContainer == null)
@@ -66,34 +67,12 @@ public class PlexMusicService(IPlexApiService plexApiService) : IPlexMusicServic
                 Logs.Warning("No metadata items found in track details response");
                 return null;
             }
-            // Get the first (and should be only) item
-            JToken item = metadataItems.First();
-            // Get the playback URL
-            string partKey = item.SelectToken("Media[0].Part[0].key")?.ToString() ?? "";
-            string playableUrl = _plexApiService.GetPlaybackUrl(partKey);
-            // Create the track object
-            Track track = new()
-            {
-                Id = item["ratingKey"]?.ToString() ?? Guid.NewGuid().ToString(),
-                Title = item["title"]?.ToString() ?? "Unknown Title",
-                Artist = item["grandparentTitle"]?.ToString() ?? "Unknown Artist",
-                Album = item["parentTitle"]?.ToString() ?? "Unknown Album",
-                ReleaseDate = item["originallyAvailableAt"]?.ToString() ?? "N/A",
-                ArtworkUrl = FormatArtworkUrl(item["thumb"]?.ToString()),
-                PlaybackUrl = playableUrl,
-                ArtistUrl = item["grandparentKey"]?.ToString() ?? "",
-                DurationMs = long.TryParse(item["duration"]?.ToString(), out long duration) ? duration : 0,
-                DurationDisplay = FormatDuration(duration),
-                Studio = item["studio"]?.ToString() ?? "N/A",
-                SourceKey = item["key"]?.ToString() ?? "",
-                SourceSystem = "plex"
-            };
+            Track track = ParseTrack(metadataItems.First());
             Logs.Debug($"Retrieved track details: {track.Title} by {track.Artist}");
             return track;
         }
-        catch (PlexApiException ex)
+        catch (PlexApiException)
         {
-            Logs.Error($"Plex API error getting track details: {ex.Message}");
             throw;
         }
         catch (Exception ex)
@@ -106,12 +85,16 @@ public class PlexMusicService(IPlexApiService plexApiService) : IPlexMusicServic
     /// <inheritdoc />
     public async Task<List<Track>> GetTracksAsync(string containerKey, CancellationToken cancellationToken = default)
     {
+        string cacheKey = $"tracks:{containerKey}";
+        if (cache.TryGetValue(cacheKey, out List<Track>? cached) && cached != null)
+        {
+            Logs.Debug($"Tracks cache hit for: {containerKey}");
+            return cached;
+        }
         Logs.Debug($"Getting tracks for container: {containerKey}");
         try
         {
-            // Perform the request
-            string response = await _plexApiService.PerformRequestAsync(containerKey, cancellationToken);
-            // Parse the response
+            string response = await plexApiService.PerformRequestAsync(containerKey, cancellationToken);
             JObject jObject = JObject.Parse(response);
             JToken? mediaContainer = jObject["MediaContainer"];
             if (mediaContainer == null)
@@ -125,49 +108,22 @@ public class PlexMusicService(IPlexApiService plexApiService) : IPlexMusicServic
                 Logs.Warning("No metadata items found in tracks response");
                 return [];
             }
-            // Process each track
             List<Track> tracks = [];
             foreach (JToken item in metadataItems)
             {
-                // Skip non-track items
                 string type = item["type"]?.ToString() ?? "";
                 if (type != "track")
                 {
                     continue;
                 }
-                // Log the raw metadata we're getting from Plex
-                string title = item["title"]?.ToString() ?? "Unknown Title";
-                string artist = item["grandparentTitle"]?.ToString() ?? "Unknown Artist";
-                string album = item["parentTitle"]?.ToString() ?? "Unknown Album";
-                Logs.Debug($"Raw Plex metadata - Title: '{title}', Artist: '{artist}', Album: '{album}'");
-                // Get the playback URL
-                string partKey = item.SelectToken("Media[0].Part[0].key")?.ToString() ?? "";
-                string playableUrl = _plexApiService.GetPlaybackUrl(partKey);
-                // Create the track object
-                Track track = new()
-                {
-                    Id = item["ratingKey"]?.ToString() ?? Guid.NewGuid().ToString(),
-                    Title = title,
-                    Artist = artist,
-                    Album = album,
-                    ReleaseDate = item["originallyAvailableAt"]?.ToString() ?? "N/A",
-                    ArtworkUrl = FormatArtworkUrl(item["thumb"]?.ToString()),
-                    PlaybackUrl = playableUrl,
-                    ArtistUrl = item["grandparentKey"]?.ToString() ?? "",
-                    DurationMs = long.TryParse(item["duration"]?.ToString(), out long duration) ? duration : 0,
-                    DurationDisplay = FormatDuration(duration),
-                    Studio = item["studio"]?.ToString() ?? "N/A",
-                    SourceKey = item["key"]?.ToString() ?? "",
-                    SourceSystem = "plex"
-                };
-                tracks.Add(track);
+                tracks.Add(ParseTrack(item));
             }
             Logs.Debug($"Retrieved {tracks.Count} tracks");
+            cache.Set(cacheKey, tracks, ListCacheOptions);
             return tracks;
         }
-        catch (PlexApiException ex)
+        catch (PlexApiException)
         {
-            Logs.Error($"Plex API error getting tracks: {ex.Message}");
             throw;
         }
         catch (Exception ex)
@@ -180,12 +136,16 @@ public class PlexMusicService(IPlexApiService plexApiService) : IPlexMusicServic
     /// <inheritdoc />
     public async Task<List<Album>> GetAlbumsAsync(string artistKey, CancellationToken cancellationToken = default)
     {
+        string cacheKey = $"albums:{artistKey}";
+        if (cache.TryGetValue(cacheKey, out List<Album>? cached) && cached != null)
+        {
+            Logs.Debug($"Albums cache hit for: {artistKey}");
+            return cached;
+        }
         Logs.Debug($"Getting albums for artist: {artistKey}");
         try
         {
-            // Perform the request
-            string response = await _plexApiService.PerformRequestAsync(artistKey, cancellationToken);
-            // Parse the response
+            string response = await plexApiService.PerformRequestAsync(artistKey, cancellationToken);
             JObject jObject = JObject.Parse(response);
             JToken? mediaContainer = jObject["MediaContainer"];
             if (mediaContainer == null)
@@ -199,49 +159,22 @@ public class PlexMusicService(IPlexApiService plexApiService) : IPlexMusicServic
                 Logs.Warning("No metadata items found in albums response");
                 return [];
             }
-            // Process each album
             List<Album> albums = [];
             foreach (JToken item in metadataItems)
             {
-                // Skip non-album items
                 string type = item["type"]?.ToString() ?? "";
                 if (type != "album")
                 {
                     continue;
                 }
-                // Create the album object
-                Album album = new()
-                {
-                    Id = item["ratingKey"]?.ToString() ?? Guid.NewGuid().ToString(),
-                    Title = item["title"]?.ToString() ?? "Unknown Album",
-                    Artist = item["parentTitle"]?.ToString() ?? "Unknown Artist",
-                    ReleaseDate = item["originallyAvailableAt"]?.ToString() ?? "N/A",
-                    ArtworkUrl = FormatArtworkUrl(item["thumb"]?.ToString()),
-                    AlbumUrl = item["key"]?.ToString() ?? "",
-                    ArtistUrl = item["parentKey"]?.ToString() ?? "",
-                    Studio = item["studio"]?.ToString() ?? "N/A",
-                    Genre = GetGenresFromItem(item),
-                    Summary = item["summary"]?.ToString() ?? "",
-                    SourceKey = item["key"]?.ToString() ?? "",
-                    SourceSystem = "plex"
-                };
-                // Try to parse the year
-                if (int.TryParse(item["year"]?.ToString(), out int year))
-                {
-                    album.Year = year;
-                }
-                else
-                {
-                    album.ExtractYear();
-                }
-                albums.Add(album);
+                albums.Add(ParseAlbum(item));
             }
             Logs.Debug($"Retrieved {albums.Count} albums");
+            cache.Set(cacheKey, albums, ListCacheOptions);
             return albums;
         }
-        catch (PlexApiException ex)
+        catch (PlexApiException)
         {
-            Logs.Error($"Plex API error getting albums: {ex.Message}");
             throw;
         }
         catch (Exception ex)
@@ -254,13 +187,17 @@ public class PlexMusicService(IPlexApiService plexApiService) : IPlexMusicServic
     /// <inheritdoc />
     public async Task<List<Playlist>> GetPlaylistsAsync(CancellationToken cancellationToken = default)
     {
+        const string cacheKey = "playlists:audio";
+        if (cache.TryGetValue(cacheKey, out List<Playlist>? cached) && cached != null)
+        {
+            Logs.Debug("Playlists cache hit");
+            return cached;
+        }
         Logs.Debug("Getting audio playlists");
         try
         {
-            // Perform the request
             string uri = "/playlists?playlistType=audio";
-            string response = await _plexApiService.PerformRequestAsync(uri, cancellationToken);
-            // Parse the response
+            string response = await plexApiService.PerformRequestAsync(uri, cancellationToken);
             JObject jObject = JObject.Parse(response);
             JToken? mediaContainer = jObject["MediaContainer"];
             if (mediaContainer == null)
@@ -274,44 +211,17 @@ public class PlexMusicService(IPlexApiService plexApiService) : IPlexMusicServic
                 Logs.Warning("No metadata items found in playlists response");
                 return [];
             }
-            // Process each playlist
             List<Playlist> playlists = [];
             foreach (JToken item in metadataItems)
             {
-                // Create the playlist object
-                Playlist playlist = new()
-                {
-                    Id = item["ratingKey"]?.ToString() ?? Guid.NewGuid().ToString(),
-                    Title = item["title"]?.ToString() ?? "Unknown Playlist",
-                    Description = item["summary"]?.ToString() ?? "",
-                    ArtworkUrl = FormatArtworkUrl(item["thumb"]?.ToString()),
-                    PlaylistUrl = item["key"]?.ToString() ?? "",
-                    SourceKey = item["key"]?.ToString() ?? "",
-                    SourceSystem = "plex"
-                };
-                // Try to parse track count
-                if (int.TryParse(item["leafCount"]?.ToString(), out int trackCount))
-                {
-                    playlist.TrackCount = trackCount;
-                }
-                // Try to parse creation date
-                if (DateTimeOffset.TryParse(item["createdAt"]?.ToString(), out DateTimeOffset createdAt))
-                {
-                    playlist.CreatedAt = createdAt;
-                }
-                // Try to parse update date
-                if (DateTimeOffset.TryParse(item["updatedAt"]?.ToString(), out DateTimeOffset updatedAt))
-                {
-                    playlist.UpdatedAt = updatedAt;
-                }
-                playlists.Add(playlist);
+                playlists.Add(ParsePlaylist(item));
             }
             Logs.Debug($"Retrieved {playlists.Count} playlists");
+            cache.Set(cacheKey, playlists, PlaylistListCacheOptions);
             return playlists;
         }
-        catch (PlexApiException ex)
+        catch (PlexApiException)
         {
-            Logs.Error($"Plex API error getting playlists: {ex.Message}");
             throw;
         }
         catch (Exception ex)
@@ -321,21 +231,13 @@ public class PlexMusicService(IPlexApiService plexApiService) : IPlexMusicServic
         }
     }
 
-    /// <summary>Retrieves detailed information about a specific playlist.
-    /// Gets complete details for a playlist, including all tracks it contains
-    /// and any additional metadata.</summary>
-    /// <param name="playlistKey">The source key of the playlist</param>
-    /// <param name="cancellationToken">Token to cancel the operation</param>
-    /// <returns>A Playlist object with complete details including tracks</returns>
-    /// <exception cref="PlexApiException">Thrown when retrieval fails</exception>
+    /// <inheritdoc />
     public async Task<Playlist> GetPlaylistDetailsAsync(string playlistKey, CancellationToken cancellationToken = default)
     {
         Logs.Debug($"Getting playlist details: {playlistKey}");
         try
         {
-            // First get the playlist metadata
-            string response = await _plexApiService.PerformRequestAsync(playlistKey, cancellationToken);
-            // Parse the response for playlist details
+            string response = await plexApiService.PerformRequestAsync(playlistKey, cancellationToken);
             JObject jObject = JObject.Parse(response);
             JToken? mediaContainer = jObject["MediaContainer"];
             if (mediaContainer == null)
@@ -343,47 +245,42 @@ public class PlexMusicService(IPlexApiService plexApiService) : IPlexMusicServic
                 Logs.Warning("MediaContainer is null in the playlist details response");
                 throw new PlexApiException("Invalid playlist details response");
             }
-            // Get the metadata array
             JToken? metadata = mediaContainer["Metadata"];
             if (metadata == null || !metadata.Any())
             {
                 Logs.Warning("No metadata found in playlist details response");
                 throw new PlexApiException("Invalid playlist details response");
             }
-            // Create the playlist object
+            // Playlist details come from MediaContainer level, not individual Metadata items
             Playlist playlist = new()
             {
                 Id = mediaContainer["ratingKey"]?.ToString() ?? Guid.NewGuid().ToString(),
                 Title = mediaContainer["title"]?.ToString() ?? "Unknown Playlist",
                 Description = mediaContainer["summary"]?.ToString() ?? "",
-                ArtworkUrl = FormatArtworkUrl(mediaContainer["thumb"]?.ToString()),
+                ArtworkUrl = plexApiService.GetArtworkUrl(mediaContainer["thumb"]?.ToString()),
                 PlaylistUrl = playlistKey,
                 SourceKey = playlistKey,
                 SourceSystem = "plex"
             };
-            // Try to parse track count
             if (int.TryParse(mediaContainer["leafCount"]?.ToString(), out int trackCount))
             {
                 playlist.TrackCount = trackCount;
             }
-            // Try to parse creation date
             if (DateTimeOffset.TryParse(mediaContainer["createdAt"]?.ToString(), out DateTimeOffset createdAt))
             {
                 playlist.CreatedAt = createdAt;
             }
-            // Try to parse update date
             if (DateTimeOffset.TryParse(mediaContainer["updatedAt"]?.ToString(), out DateTimeOffset updatedAt))
             {
                 playlist.UpdatedAt = updatedAt;
             }
-            // Extract tracks from the same response - MediaContainer.Metadata contains the tracks
+            // Extract tracks from Metadata array
             playlist.Tracks = ParsePlaylistTracks(metadata);
             Logs.Debug($"Retrieved playlist details: {playlist.Title} with {playlist.Tracks.Count} tracks");
             return playlist;
         }
-        catch (PlexApiException ex)
+        catch (PlexApiException)
         {
-            Logs.Error($"Plex API error getting playlist details: {ex.Message}");
             throw;
         }
         catch (Exception ex)
@@ -393,74 +290,43 @@ public class PlexMusicService(IPlexApiService plexApiService) : IPlexMusicServic
         }
     }
 
-    /// <summary>Parses tracks from playlist metadata.
-    /// Extracts track information directly from the metadata array in the playlist response.</summary>
-    /// <param name="metadata">The metadata array from the Plex API response</param>
-    /// <returns>A list of Track objects</returns>
+    /// <summary>Parses tracks from playlist metadata</summary>
     private List<Track> ParsePlaylistTracks(JToken metadata)
     {
         List<Track> tracks = [];
         foreach (JToken item in metadata)
         {
-            // Only process items that are tracks
             string type = item["type"]?.ToString() ?? "";
             if (type != "track")
             {
                 continue;
             }
-            // Get the playback URL
-            string partKey = item.SelectToken("Media[0].Part[0].key")?.ToString() ?? "";
-            string playableUrl = _plexApiService.GetPlaybackUrl(partKey);
-            // Parse duration
-            long.TryParse(item["duration"]?.ToString(), out long duration);
-            Track track = new()
-            {
-                Id = item["ratingKey"]?.ToString() ?? Guid.NewGuid().ToString(),
-                Title = item["title"]?.ToString() ?? "Unknown Title",
-                Artist = item["grandparentTitle"]?.ToString() ?? "Unknown Artist",
-                Album = item["parentTitle"]?.ToString() ?? "Unknown Album",
-                ReleaseDate = item["originallyAvailableAt"]?.ToString() ?? "N/A",
-                ArtworkUrl = FormatArtworkUrl(item["thumb"]?.ToString()),
-                PlaybackUrl = playableUrl,
-                ArtistUrl = item["grandparentKey"]?.ToString() ?? "",
-                DurationMs = duration,
-                DurationDisplay = FormatDuration(duration),
-                Studio = item["studio"]?.ToString() ?? "N/A",
-                SourceKey = item["key"]?.ToString() ?? "",
-                SourceSystem = "plex"
-            };
-            tracks.Add(track);
+            tracks.Add(ParseTrack(item));
         }
         return tracks;
     }
 
-    /// <summary>Parses a playlist from a JToken.
-    /// Extracts playlist metadata from the Plex API response into a structured object.</summary>
-    /// <param name="item">The JToken containing playlist metadata</param>
-    /// <returns>A Playlist object with the extracted metadata</returns>
-    private Playlist ParsePlaylist(JToken item) // TODO: Check if this is actually needed could be redundant
+    /// <summary>Parses a playlist from a JToken</summary>
+    private Playlist ParsePlaylist(JToken item)
     {
         Playlist playlist = new()
         {
             Id = item["ratingKey"]?.ToString() ?? Guid.NewGuid().ToString(),
             Title = item["title"]?.ToString() ?? "Unknown Playlist",
             Description = item["summary"]?.ToString() ?? "",
-            ArtworkUrl = FormatArtworkUrl(item["thumb"]?.ToString()),
+            ArtworkUrl = plexApiService.GetArtworkUrl(item["thumb"]?.ToString()),
             PlaylistUrl = item["key"]?.ToString() ?? "",
             SourceKey = item["key"]?.ToString() ?? "",
             SourceSystem = "plex"
         };
-        // Try to parse track count
         if (int.TryParse(item["leafCount"]?.ToString(), out int trackCount))
         {
             playlist.TrackCount = trackCount;
         }
-        // Try to parse creation date
         if (DateTimeOffset.TryParse(item["createdAt"]?.ToString(), out DateTimeOffset createdAt))
         {
             playlist.CreatedAt = createdAt;
         }
-        // Try to parse update date
         if (DateTimeOffset.TryParse(item["updatedAt"]?.ToString(), out DateTimeOffset updatedAt))
         {
             playlist.UpdatedAt = updatedAt;
@@ -468,14 +334,8 @@ public class PlexMusicService(IPlexApiService plexApiService) : IPlexMusicServic
         return playlist;
     }
 
-    /// <summary>Parses search results from a JSON response.
-    /// Extracts and organizes search results from the Plex API response into a
-    /// structured object with categorized results.</summary>
-    /// <param name="jsonResponse">The JSON response from the Plex API</param>
-    /// <param name="query">The original search query</param>
-    /// <param name="cancellationToken">Token to cancel the operation</param>
-    /// <returns>A SearchResults object containing all matching content</returns>
-    private SearchResults ParseSearchResults(string jsonResponse, string query, CancellationToken cancellationToken)
+    /// <summary>Parses search results from a JSON response</summary>
+    private SearchResults ParseSearchResults(string jsonResponse, string query)
     {
         SearchResults results = new()
         {
@@ -497,51 +357,43 @@ public class PlexMusicService(IPlexApiService plexApiService) : IPlexMusicServic
                 Logs.Warning("Hubs are null in the MediaContainer");
                 return results;
             }
-            // Process each hub
             foreach (JToken hub in hubs)
             {
                 string hubType = hub["type"]?.ToString() ?? "unknown";
                 string hubTitle = hub["title"]?.ToString() ?? "Unknown";
                 Logs.Debug($"Processing hub: {hubTitle} ({hubType})");
-                // Skip hubs without metadata
                 JToken? metadataItems = hub["Metadata"];
                 if (metadataItems == null || !metadataItems.Any())
                 {
                     continue;
                 }
-                // Process items by hub type
                 switch (hubType.ToLower())
                 {
                     case "artist":
                         foreach (JToken item in metadataItems)
                         {
-                            Artist artist = ParseArtist(item);
-                            results.Artists.Add(artist);
+                            results.Artists.Add(ParseArtist(item));
                         }
                         break;
                     case "album":
                         foreach (JToken item in metadataItems)
                         {
-                            Album album = ParseAlbum(item);
-                            results.Albums.Add(album);
+                            results.Albums.Add(ParseAlbum(item));
                         }
                         break;
                     case "track":
                         foreach (JToken item in metadataItems)
                         {
-                            Track track = ParseTrack(item);
-                            results.Tracks.Add(track);
+                            results.Tracks.Add(ParseTrack(item));
                         }
                         break;
                     case "playlist":
                         foreach (JToken item in metadataItems)
                         {
-                            // Only include audio playlists
                             string playlistType = item["playlistType"]?.ToString() ?? "";
                             if (playlistType.Equals("audio", StringComparison.OrdinalIgnoreCase))
                             {
-                                Playlist playlist = ParsePlaylist(item);
-                                results.Playlists.Add(playlist);
+                                results.Playlists.Add(ParsePlaylist(item));
                             }
                         }
                         break;
@@ -557,10 +409,7 @@ public class PlexMusicService(IPlexApiService plexApiService) : IPlexMusicServic
         }
     }
 
-    /// <summary>Parses an artist from a JToken.
-    /// Extracts artist metadata from the Plex API response into a structured object.</summary>
-    /// <param name="item">The JToken containing artist metadata</param>
-    /// <returns>An Artist object with the extracted metadata</returns>
+    /// <summary>Parses an artist from a JToken</summary>
     private Artist ParseArtist(JToken item)
     {
         return new Artist
@@ -568,7 +417,7 @@ public class PlexMusicService(IPlexApiService plexApiService) : IPlexMusicServic
             Id = item["ratingKey"]?.ToString() ?? Guid.NewGuid().ToString(),
             Name = item["title"]?.ToString() ?? "Unknown Artist",
             Summary = item["summary"]?.ToString() ?? "",
-            ArtworkUrl = FormatArtworkUrl(item["thumb"]?.ToString()),
+            ArtworkUrl = plexApiService.GetArtworkUrl(item["thumb"]?.ToString()),
             ArtistUrl = item["key"]?.ToString() ?? "",
             SourceKey = item["key"]?.ToString() ?? "",
             SourceSystem = "plex",
@@ -576,10 +425,7 @@ public class PlexMusicService(IPlexApiService plexApiService) : IPlexMusicServic
         };
     }
 
-    /// <summary>Parses an album from a JToken.
-    /// Extracts album metadata from the Plex API response into a structured object.</summary>
-    /// <param name="item">The JToken containing album metadata</param>
-    /// <returns>An Album object with the extracted metadata</returns>
+    /// <summary>Parses an album from a JToken</summary>
     private Album ParseAlbum(JToken item)
     {
         Album album = new()
@@ -588,7 +434,7 @@ public class PlexMusicService(IPlexApiService plexApiService) : IPlexMusicServic
             Title = item["title"]?.ToString() ?? "Unknown Album",
             Artist = item["parentTitle"]?.ToString() ?? "Unknown Artist",
             ReleaseDate = item["originallyAvailableAt"]?.ToString() ?? "N/A",
-            ArtworkUrl = FormatArtworkUrl(item["thumb"]?.ToString()),
+            ArtworkUrl = plexApiService.GetArtworkUrl(item["thumb"]?.ToString()),
             AlbumUrl = item["key"]?.ToString() ?? "",
             ArtistUrl = item["parentKey"]?.ToString() ?? "",
             Studio = item["studio"]?.ToString() ?? "N/A",
@@ -597,7 +443,6 @@ public class PlexMusicService(IPlexApiService plexApiService) : IPlexMusicServic
             SourceKey = item["key"]?.ToString() ?? "",
             SourceSystem = "plex"
         };
-        // Try to parse the year
         if (int.TryParse(item["year"]?.ToString(), out int year))
         {
             album.Year = year;
@@ -609,15 +454,11 @@ public class PlexMusicService(IPlexApiService plexApiService) : IPlexMusicServic
         return album;
     }
 
-    /// <summary>Parses a track from a JToken.
-    /// Extracts track metadata from the Plex API response into a structured object.</summary>
-    /// <param name="item">The JToken containing track metadata</param>
-    /// <returns>A Track object with the extracted metadata</returns>
+    /// <summary>Parses a track from a JToken</summary>
     private Track ParseTrack(JToken item)
     {
-        // Get the playback URL
         string partKey = item.SelectToken("Media[0].Part[0].key")?.ToString() ?? "";
-        string playableUrl = _plexApiService.GetPlaybackUrl(partKey);
+        string playableUrl = plexApiService.GetPlaybackUrl(partKey);
         long.TryParse(item["duration"]?.ToString(), out long duration);
         return new Track
         {
@@ -626,7 +467,7 @@ public class PlexMusicService(IPlexApiService plexApiService) : IPlexMusicServic
             Artist = item["grandparentTitle"]?.ToString() ?? "Unknown Artist",
             Album = item["parentTitle"]?.ToString() ?? "Unknown Album",
             ReleaseDate = item["originallyAvailableAt"]?.ToString() ?? "N/A",
-            ArtworkUrl = FormatArtworkUrl(item["thumb"]?.ToString()),
+            ArtworkUrl = plexApiService.GetArtworkUrl(item["thumb"]?.ToString()),
             PlaybackUrl = playableUrl,
             ArtistUrl = item["grandparentKey"]?.ToString() ?? "",
             DurationMs = duration,
@@ -637,43 +478,16 @@ public class PlexMusicService(IPlexApiService plexApiService) : IPlexMusicServic
         };
     }
 
-    /// <summary>Formats an artwork URL to include the server URL and token.
-    /// Converts a relative artwork path from Plex into a full URL that can be used
-    /// to display the artwork.</summary>
-    /// <param name="artworkPath">The relative artwork path from Plex</param>
-    /// <returns>A full URL to the artwork</returns>
-    private string FormatArtworkUrl(string? artworkPath)
-    {
-        if (string.IsNullOrEmpty(artworkPath))
-        {
-            return ""; // No artwork available
-        }
-        // If it's already a full URL, just return it
-        if (artworkPath.StartsWith("http"))
-        {
-            return artworkPath;
-        }
-        // Otherwise, prepend the Plex server URL and append the token
-        return $"{_plexUrl}{artworkPath}?X-Plex-Token={_plexToken}";
-    }
-
-    /// <summary>Formats a duration in milliseconds as a human-readable string.
-    /// Converts a raw duration value into a formatted string like "3:45" or "1:23:45".</summary>
-    /// <param name="durationMs">The duration in milliseconds</param>
-    /// <returns>A formatted duration string</returns>
+    /// <summary>Formats a duration in milliseconds as a human-readable string</summary>
     private static string FormatDuration(long durationMs)
     {
         TimeSpan timeSpan = TimeSpan.FromMilliseconds(durationMs);
-        // Format as mm:ss or hh:mm:ss depending on length
         return timeSpan.TotalHours >= 1
             ? $"{(int)timeSpan.TotalHours}:{timeSpan.Minutes:D2}:{timeSpan.Seconds:D2}"
             : $"{timeSpan.Minutes:D2}:{timeSpan.Seconds:D2}";
     }
 
-    /// <summary>Extracts genre information from a JToken.
-    /// Parses the Genre array from Plex metadata and returns a comma-separated list.</summary>
-    /// <param name="item">The JToken containing genre metadata</param>
-    /// <returns>A comma-separated list of genres</returns>
+    /// <summary>Extracts genre information from a JToken</summary>
     private static string GetGenresFromItem(JToken item)
     {
         JToken? genres = item["Genre"];
@@ -681,8 +495,7 @@ public class PlexMusicService(IPlexApiService plexApiService) : IPlexMusicServic
         {
             return "";
         }
-        // Extract genre names and join them with commas
-        var genreNames = genres.Select(g => g["tag"]?.ToString()).Where(g => !string.IsNullOrEmpty(g));
+        IEnumerable<string?> genreNames = genres.Select(g => g["tag"]?.ToString()).Where(g => !string.IsNullOrEmpty(g));
         return string.Join(", ", genreNames);
     }
 }

@@ -53,14 +53,12 @@ public record PlayerOptions(ITextChannel? CurrentPlayerChannel) : QueuedLavalink
     }
 }
 
-/// <summary>Manages runtime state for the Visual Player across the application</summary>
+/// <summary>Manages runtime state for the Visual Player across the application with thread-safe access</summary>
 public class VisualPlayerStateManager
 {
-    /// <summary>Current active channel for player messages</summary>
-    public ITextChannel? CurrentPlayerChannel { get; set; }
-
-    /// <summary>Current active player message in the channel</summary>
-    public IUserMessage? CurrentPlayerMessage { get; set; }
+    private readonly SemaphoreSlim _lock = new(1, 1);
+    private ITextChannel? _currentPlayerChannel;
+    private IUserMessage? _currentPlayerMessage;
 
     /// <summary>Controls whether to use visual album art display vs text-only player</summary>
     public bool UseModernPlayer { get; set; } = EnvConfig.GetBool("USE_MODERN_PLAYER", true);
@@ -70,4 +68,18 @@ public class VisualPlayerStateManager
 
     /// <summary>Optional channel ID to use as static player channel</summary>
     public ulong? StaticChannelId { get; set; } = EnvConfig.GetLong("STATIC_PLAYER_CHANNEL_ID", 0);
+
+    /// <summary>Gets the current player channel in a thread-safe manner</summary>
+    public ITextChannel? CurrentPlayerChannel
+    {
+        get { _lock.Wait(); try { return _currentPlayerChannel; } finally { _lock.Release(); } }
+        set { _lock.Wait(); try { _currentPlayerChannel = value; } finally { _lock.Release(); } }
+    }
+
+    /// <summary>Gets the current player message in a thread-safe manner</summary>
+    public IUserMessage? CurrentPlayerMessage
+    {
+        get { _lock.Wait(); try { return _currentPlayerMessage; } finally { _lock.Release(); } }
+        set { _lock.Wait(); try { _currentPlayerMessage = value; } finally { _lock.Release(); } }
+    }
 }

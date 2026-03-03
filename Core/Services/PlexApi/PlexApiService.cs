@@ -13,10 +13,10 @@ namespace PlexBot.Core.Services.PlexApi
         private string? _plexToken;
 
         /// <summary>Configures the service with required dependencies and validates essential configuration settings</summary>
-        /// <param name="httpClient">HTTP client for making network requests to the Plex server</param>
-        /// <param name="authService">Authentication service that provides valid Plex access tokens</param>
-        public PlexApiService(HttpClient httpClient)
+        /// <param name="httpClientFactory">HTTP client factory for creating named HTTP clients</param>
+        public PlexApiService(IHttpClientFactory httpClientFactory)
         {
+            HttpClient httpClient = httpClientFactory.CreateClient("PlexApi");
             _httpClient = new HttpClientWrapper(httpClient, "PlexAPI");
             _plexUrl = EnvConfig.Get("PLEX_URL", "").TrimEnd('/');
             _plexToken = EnvConfig.Get("PLEX_TOKEN", "");
@@ -93,6 +93,21 @@ namespace PlexBot.Core.Services.PlexApi
             }
             // Construct the URL with the token
             return $"{_plexUrl}{partKey}?X-Plex-Token={_plexToken}";
+        }
+
+        /// <inheritdoc />
+        public string GetArtworkUrl(string? artworkPath)
+        {
+            if (string.IsNullOrEmpty(artworkPath))
+            {
+                return "";
+            }
+            // If it's already a full URL, just return it
+            if (artworkPath.StartsWith("http"))
+            {
+                return artworkPath;
+            }
+            return $"{_plexUrl}{artworkPath}?X-Plex-Token={_plexToken}";
         }
 
         /// <inheritdoc />
