@@ -43,6 +43,8 @@ namespace PlexBot.Main
         private static void AddDiscordServices(IServiceCollection services)
         {
             // Configure Discord client
+            // LogSeverity.Debug ensures all Discord/Lavalink messages reach our Logs class,
+            // which handles console filtering (LOGGING_LEVEL_ROOT) and always saves everything to file
             services.AddSingleton(new DiscordSocketClient(new DiscordSocketConfig
             {
                 GatewayIntents = GatewayIntents.Guilds
@@ -53,7 +55,7 @@ namespace PlexBot.Main
                     | GatewayIntents.MessageContent,
                 AlwaysDownloadUsers = false,
                 MessageCacheSize = 100,
-                LogLevel = LogSeverity.Info
+                LogLevel = LogSeverity.Debug
             }));
 
             // Configure interaction service
@@ -62,7 +64,7 @@ namespace PlexBot.Main
                 new InteractionServiceConfig
                 {
                     DefaultRunMode = RunMode.Async,
-                    LogLevel = LogSeverity.Info
+                    LogLevel = LogSeverity.Debug
                 }));
             services.AddSingleton<DiscordEventHandler>();
             services.AddSingleton<VisualPlayer>();
