@@ -35,22 +35,26 @@ public class PlexMusicService(IPlexApiService plexApiService, IMemoryCache cache
             Logs.Info($"Search complete. Found {results.Artists.Count} artists, {results.Albums.Count} albums, {results.Tracks.Count} tracks, {results.Playlists.Count} playlists");
             cache.Set(cacheKey, results, SearchCacheOptions);
 
-            // Side-populate individual track cache so GetTrackDetailsAsync is a hit after search
+            // Side-populate individual caches so subsequent detail fetches are hits
             foreach (Track track in results.Tracks)
             {
                 if (!string.IsNullOrEmpty(track.SourceKey))
-                {
                     cache.Set($"track:{track.SourceKey}", track, ListCacheOptions);
-                }
+            }
+            foreach (Album album in results.Albums)
+            {
+                if (!string.IsNullOrEmpty(album.SourceKey))
+                    cache.Set($"albums:{album.SourceKey}", new List<Album> { album }, ListCacheOptions);
+            }
+            foreach (Artist artist in results.Artists)
+            {
+                if (!string.IsNullOrEmpty(artist.SourceKey))
+                    cache.Set($"artist:{artist.SourceKey}", artist, ListCacheOptions);
             }
 
             return results;
         }
-        catch (PlexApiException)
-        {
-            throw;
-        }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not PlexApiException)
         {
             Logs.Error($"Error searching Plex library: {ex.Message}");
             throw new PlexApiException($"Failed to search Plex library: {ex.Message}", ex);
@@ -88,11 +92,7 @@ public class PlexMusicService(IPlexApiService plexApiService, IMemoryCache cache
             Logs.Debug($"Retrieved track details: {track.Title} by {track.Artist}");
             return track;
         }
-        catch (PlexApiException)
-        {
-            throw;
-        }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not PlexApiException)
         {
             Logs.Error($"Error getting track details: {ex.Message}");
             throw new PlexApiException($"Failed to get track details: {ex.Message}", ex);
@@ -139,11 +139,7 @@ public class PlexMusicService(IPlexApiService plexApiService, IMemoryCache cache
             cache.Set(cacheKey, tracks, ListCacheOptions);
             return tracks;
         }
-        catch (PlexApiException)
-        {
-            throw;
-        }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not PlexApiException)
         {
             Logs.Error($"Error getting tracks: {ex.Message}");
             throw new PlexApiException($"Failed to get tracks: {ex.Message}", ex);
@@ -190,11 +186,7 @@ public class PlexMusicService(IPlexApiService plexApiService, IMemoryCache cache
             cache.Set(cacheKey, albums, ListCacheOptions);
             return albums;
         }
-        catch (PlexApiException)
-        {
-            throw;
-        }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not PlexApiException)
         {
             Logs.Error($"Error getting albums: {ex.Message}");
             throw new PlexApiException($"Failed to get albums: {ex.Message}", ex);
@@ -237,11 +229,7 @@ public class PlexMusicService(IPlexApiService plexApiService, IMemoryCache cache
             cache.Set(cacheKey, playlists, PlaylistListCacheOptions);
             return playlists;
         }
-        catch (PlexApiException)
-        {
-            throw;
-        }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not PlexApiException)
         {
             Logs.Error($"Error getting playlists: {ex.Message}");
             throw new PlexApiException($"Failed to get playlists: {ex.Message}", ex);
@@ -303,11 +291,7 @@ public class PlexMusicService(IPlexApiService plexApiService, IMemoryCache cache
             Logs.Debug($"Retrieved playlist details: {playlist.Title} with {playlist.Tracks.Count} tracks");
             return playlist;
         }
-        catch (PlexApiException)
-        {
-            throw;
-        }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not PlexApiException)
         {
             Logs.Error($"Error getting playlist details: {ex.Message}");
             throw new PlexApiException($"Failed to get playlist details: {ex.Message}", ex);
