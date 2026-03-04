@@ -199,17 +199,6 @@ namespace PlexBot.Core.Discord.Embeds
                     .WithCustomId($"queue_options:clear:{currentPage}")
                     .WithStyle(ButtonStyle.Danger);
             });
-            RegisterButton("back_to_player", ButtonFlag.QueueOptions, 40, context => {
-                int currentPage = 1;
-                if (context.CustomData.TryGetValue("currentPage", out var page) && page is int pageNum)
-                {
-                    currentPage = pageNum;
-                }
-                return new ButtonBuilder()
-                    .WithLabel("Back")
-                    .WithCustomId($"queue_options:back:{currentPage}")
-                    .WithStyle(ButtonStyle.Secondary);
-            });
         }
 
         /// <summary>Registers a new button factory with the manager</summary>
