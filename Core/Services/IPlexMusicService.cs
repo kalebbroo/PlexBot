@@ -46,4 +46,10 @@ public interface IPlexMusicService
     /// <returns>A fully populated Playlist object containing all tracks and associated playlist metadata</returns>
     /// <exception cref="PlexApiException">Thrown when the playlist cannot be found or the server encounters an error retrieving its contents</exception>
     Task<Playlist> GetPlaylistDetailsAsync(string playlistKey, CancellationToken cancellationToken = default);
+
+    /// <summary>Gets all tracks for an artist across all albums, fetched in parallel with bounded concurrency</summary>
+    /// <param name="artistKey">The unique Plex identifier for the artist</param>
+    /// <param name="cancellationToken">Optional token to cancel the operation</param>
+    /// <returns>A flat list of all tracks by the artist across all albums</returns>
+    Task<List<Track>> GetAllArtistTracksAsync(string artistKey, CancellationToken cancellationToken = default);
 }

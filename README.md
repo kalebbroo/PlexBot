@@ -139,6 +139,43 @@ PlexBot’s [Extensions system](./Docs/Extensions/CreatingExtensions.md) lets yo
 
 ---
 
+## Performance Tuning (Audio Stuttering Fix)
+
+If you experience brief audio stuttering or "CD skip" sounds during playback — especially when other applications are running on the same machine — this is caused by Lavalink's audio thread being interrupted by the OS.
+
+**How audio streaming works:** Lavalink (a Java process) must send an Opus audio frame to Discord exactly every 20 milliseconds. When your CPU is under load, the OS scheduler can preempt Lavalink's thread, causing a missed frame and an audible glitch. PlexBot itself does not touch the audio stream — it only handles commands and UI.
+
+Two optional settings in [`Install/Docker/docker-compose.yml`](./Install/Docker/docker-compose.yml) can help:
+
+### JVM Garbage Collection Tuning
+Uncomment the `_JAVA_OPTIONS` line in the Lavalink service environment to switch Java from its default garbage collector to **ZGC**, which keeps GC pauses under 1ms (the default can pause for 10-50ms).
+
+```yaml
+- _JAVA_OPTIONS=-XX:+UseZGC -XX:+ZGenerational -Xms256m -Xmx512m
+```
+
+| Pros | Cons |
+|------|------|
+| Eliminates GC-related audio stuttering | Uses ~10-20% more memory than the default GC |
+| Sub-millisecond pause times | Requires Java 21+ (included in the Lavalink 4 Docker image) |
+
+### CPU Pinning & Priority
+Uncomment the `cpuset` and `cpu_shares` lines to reserve dedicated CPU cores for Lavalink so other processes cannot starve it.
+
+```yaml
+cpuset: "0,1"
+cpu_shares: 2048
+```
+
+| Pros | Cons |
+|------|------|
+| Prevents other processes from starving the audio thread | Pinned cores are less available to other containers |
+| No stuttering even under heavy host CPU load | Requires knowing which cores to dedicate |
+
+> **Only enable these if you are experiencing stuttering.** Most users running PlexBot on a dedicated server or low-traffic machine will not need them.
+
+---
+
 ## 📜 License
 
 MIT License. See [LICENSE](./LICENSE).

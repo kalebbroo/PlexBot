@@ -32,6 +32,10 @@ public sealed class CustomLavaLinkPlayer(IPlayerProperties<CustomLavaLinkPlayer,
             ButtonContext context = new() { Player = this };
             ComponentBuilder components = buttonBuilder.BuildButtons(ButtonFlag.VisualPlayer, context);
             await visualPlayer.AddOrUpdateVisualPlayerAsync(components, recreateImage: true).ConfigureAwait(false);
+
+            // Prefetch next track's artwork in background (fire and forget)
+            ITrackPrefetchService prefetch = serviceProvider.GetRequiredService<ITrackPrefetchService>();
+            _ = prefetch.PrefetchNextAsync(this, cancellationToken);
         }
         catch (Exception ex)
         {

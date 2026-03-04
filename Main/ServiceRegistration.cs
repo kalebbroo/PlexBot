@@ -119,7 +119,9 @@ namespace PlexBot.Main
                 options.UsePremiumFeatures = false;
                 options.DefaultRepeatMode = TrackRepeatMode.None;
             });
-            // Add player service
+            // Add player services
+            services.AddSingleton<ITrackResolverService, TrackResolverService>();
+            services.AddSingleton<ITrackPrefetchService, TrackPrefetchService>();
             services.AddSingleton<IPlayerService, PlayerService>();
             // Register the state manager as a singleton
             services.AddSingleton<VisualPlayerStateManager>();

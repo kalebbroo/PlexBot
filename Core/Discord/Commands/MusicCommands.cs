@@ -159,7 +159,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
                 // Get track information
                 string title = lavalinkTrack.Title ?? "Unknown Title";
                 string author = lavalinkTrack.Author ?? "Unknown";
-                string duration = FormatDuration(lavalinkTrack.Duration);
+                string duration = FormatHelper.FormatDuration(lavalinkTrack.Duration);
                 string trackId = lavalinkTrack.Uri?.ToString() ?? lavalinkTrack.Identifier;
                 // Add to select menu
                 selectMenu.AddOption(
@@ -180,14 +180,6 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
             Logs.Error($"Error searching YouTube: {ex.Message}");
             await FollowupAsync(components: ComponentV2Builder.Error("YouTube Search Error", "An error occurred while searching YouTube. Please try again later."), ephemeral: true);
         }
-    }
-
-    /// <summary>Converts a TimeSpan duration into a human-readable format (e.g., "3:45" or "1:23:45") for display in UI elements</summary>
-    public static string FormatDuration(TimeSpan duration)
-    {
-        return duration.TotalHours >= 1
-            ? $"{(int)duration.TotalHours}:{duration.Minutes:D2}:{duration.Seconds:D2}"
-            : $"{duration.Minutes:D2}:{duration.Seconds:D2}";
     }
 
     /// <summary>Plays music from a Plex playlist.
@@ -286,13 +278,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
             if (results.Artists.Count != 0)
             {
                 Artist artist = results.Artists.First();
-                List<Album> albums = await plexMusicService.GetAlbumsAsync(artist.SourceKey);
-                List<Track> allTracks = [];
-                foreach (var album in albums)
-                {
-                    List<Track> tracks = await plexMusicService.GetTracksAsync(album.SourceKey);
-                    allTracks.AddRange(tracks);
-                }
+                List<Track> allTracks = await plexMusicService.GetAllArtistTracksAsync(artist.SourceKey);
                 if (allTracks.Count != 0)
                 {
                     await playerService.AddToQueueAsync(Context.Interaction, allTracks);
