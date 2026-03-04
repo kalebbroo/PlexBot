@@ -125,15 +125,14 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
         }
     }
 
-    /// <summary>Handles queue option button clicks.
+    /// <summary>Handles queue option button clicks via ephemeral messages.
     /// Displays and manages queue options like viewing, clearing, or shuffling.</summary>
     /// <param name="action">The specific queue action (options, view, etc.)</param>
     /// <param name="pageStr">The current page number (for pagination)</param>
-    /// <returns>A task representing the asynchronous operation</returns>
     [ComponentInteraction("queue_options:*:*")]
     public async Task HandleQueueOptionsAsync(string action, string pageStr)
     {
-        await DeferAsync();
+        await DeferAsync(ephemeral: true);
         if (IsOnCooldown(Context.User.Id, $"queue_options:{action}"))
         {
             await FollowupAsync(components: ComponentV2Builder.Error("Cooldown", "Please wait a moment before clicking again."), ephemeral: true);
@@ -142,7 +141,6 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
         SocketInteraction interaction = Context.Interaction;
         try
         {
-            // Get the player
             if (await playerService.GetPlayerAsync(interaction, false) is not CustomLavaLinkPlayer player)
             {
                 await FollowupAsync(components: ComponentV2Builder.Error("No Player", "No active player found."), ephemeral: true);
@@ -157,31 +155,29 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
             switch (action.ToLowerInvariant())
             {
                 case "options":
-                    // Show queue option buttons
+                    // Send ephemeral queue management panel
+                    string nowPlaying = (player.CurrentItem as CustomTrackQueueItem)?.Title ?? "Nothing";
+                    string artist = (player.CurrentItem as CustomTrackQueueItem)?.Artist ?? "";
+                    string displayNow = string.IsNullOrEmpty(artist) ? nowPlaying : $"{nowPlaying} - {artist}";
                     context.CustomData["currentPage"] = currentPage;
                     ComponentBuilder optionsComponents = buttonBuilder.BuildButtons(ButtonFlag.QueueOptions, context);
-                    await visualPlayer.AddOrUpdateVisualPlayerAsync(optionsComponents);
+                    await FollowupAsync(components: ComponentV2Builder.BuildQueueOptions(
+                        displayNow, player.Queue.Count, optionsComponents), ephemeral: true);
                     break;
                 case "view":
-                    // Show the queue
                     await ShowQueueAsync(player, currentPage);
                     break;
                 case "shuffle":
-                    // Shuffle the queue
+                    int countBefore = player.Queue.Count;
                     await player.Queue.ShuffleAsync();
-                    await FollowupAsync(components: ComponentV2Builder.Success("Queue Shuffled",
-                        $"Shuffled {player.Queue.Count} tracks."), ephemeral: true);
+                    await FollowupAsync(components: ComponentV2Builder.Success(
+                        "Queue Shuffled", $"Shuffled {countBefore} tracks."), ephemeral: true);
                     break;
                 case "clear":
-                    int clearedCount = player.Queue.Count;
+                    int cleared = player.Queue.Count;
                     await player.Queue.ClearAsync();
-                    await FollowupAsync(components: ComponentV2Builder.Success("Queue Cleared",
-                        $"Removed {clearedCount} tracks from the queue."), ephemeral: true);
-                    break;
-                case "back":
-                    // Restore default player buttons
-                    ComponentBuilder defaultComponents = buttonBuilder.BuildButtons(ButtonFlag.VisualPlayer, context);
-                    await visualPlayer.AddOrUpdateVisualPlayerAsync(defaultComponents);
+                    await FollowupAsync(components: ComponentV2Builder.Success(
+                        "Queue Cleared", $"Removed {cleared} tracks from the queue."), ephemeral: true);
                     break;
                 default:
                     await FollowupAsync(components: ComponentV2Builder.Error("Unknown Action", $"Unrecognized queue action: {action}"), ephemeral: true);
@@ -461,8 +457,6 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
                 components.WithButton("Next", $"queue_options:view:{Math.Min(totalPages, page + 1)}",
                                    ButtonStyle.Secondary, disabled: page >= totalPages);
             }
-            components.WithButton("Back", "queue_options:back:1", ButtonStyle.Secondary);
-
             await FollowupAsync(components: ComponentV2Builder.BuildQueueDisplay(
                 nowPlayingLine, queueText, footerLine, components), ephemeral: true);
         }

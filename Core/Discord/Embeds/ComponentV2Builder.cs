@@ -134,6 +134,20 @@ public static class ComponentV2Builder
         return new ComponentBuilderV2().WithContainer(container).Build();
     }
 
+    /// <summary>Builds the ephemeral queue options panel with now-playing info and action buttons</summary>
+    public static MessageComponent BuildQueueOptions(
+        string nowPlaying, int queueCount, ComponentBuilder actionButtons)
+    {
+        var container = new ContainerBuilder()
+            .WithAccentColor(MusicColor)
+            .WithTextDisplay("## \U0001F4CB Queue Options")
+            .WithTextDisplay($"\u25B6\uFE0F **Now Playing:** {nowPlaying}")
+            .WithTextDisplay($"{queueCount} tracks in queue")
+            .WithSeparator(SeparatorSpacingSize.Small, isDivider: true);
+        AddActionRows(container, actionButtons);
+        return new ComponentBuilderV2().WithContainer(container).Build();
+    }
+
     /// <summary>Builds the queue display layout with pagination</summary>
     public static MessageComponent BuildQueueDisplay(
         string? nowPlayingLine, string queueText, string footerLine, ComponentBuilder paginationButtons)
