@@ -51,6 +51,12 @@ public class VisualPlayer(
             // Start progress timer on new track
             StartProgressTimer();
 
+            // Get upcoming tracks from the queue for the "Next Up" display
+            var upcomingTracks = player.Queue
+                .Take(2)
+                .OfType<CustomTrackQueueItem>()
+                .ToList();
+
             // Update existing message with new image/content
             if (stateManager.CurrentPlayerMessage != null)
             {
@@ -59,7 +65,7 @@ public class VisualPlayer(
                     if (stateManager.UseModernPlayer)
                     {
                         using MemoryStream memoryStream = new();
-                        using SixLabors.ImageSharp.Image image = await ImageBuilder.BuildPlayerImageAsync(currentTrack, player);
+                        using SixLabors.ImageSharp.Image image = await ImageBuilder.BuildPlayerImageAsync(currentTrack, player, upcomingTracks);
                         await image.SaveAsync(memoryStream, new PngEncoder());
                         memoryStream.Position = 0;
                         FileAttachment fileAttachment = new(memoryStream, "playerImage.png");
@@ -104,7 +110,7 @@ public class VisualPlayer(
             if (stateManager.UseModernPlayer)
             {
                 using MemoryStream memoryStream = new();
-                using SixLabors.ImageSharp.Image image = await ImageBuilder.BuildPlayerImageAsync(currentTrack, player);
+                using SixLabors.ImageSharp.Image image = await ImageBuilder.BuildPlayerImageAsync(currentTrack, player, upcomingTracks);
                 await image.SaveAsync(memoryStream, new PngEncoder());
                 memoryStream.Position = 0;
                 FileAttachment fileAttachment = new(memoryStream, "playerImage.png");
@@ -148,7 +154,7 @@ public class VisualPlayer(
         {
             while (!ct.IsCancellationRequested)
             {
-                await Task.Delay(TimeSpan.FromSeconds(10), ct).ConfigureAwait(false);
+                await Task.Delay(TimeSpan.FromSeconds(1), ct).ConfigureAwait(false);
                 if (ct.IsCancellationRequested) break;
 
                 ulong guildId = stateManager.CurrentPlayerChannel?.GuildId ?? 0;

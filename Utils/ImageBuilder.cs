@@ -118,7 +118,7 @@ public static class ImageBuilder
     /// <param name="player">Optional player object to get current state (volume and repeat mode)</param>
     /// <returns>The generated image</returns>
     /// <summary>Creates a visually appealing player image by downloading album art and overlaying track details</summary>
-    public static async Task<Image> BuildPlayerImageAsync(CustomTrackQueueItem track, CustomLavaLinkPlayer? player = null)
+    public static async Task<Image> BuildPlayerImageAsync(CustomTrackQueueItem track, CustomLavaLinkPlayer? player = null, List<CustomTrackQueueItem>? upcomingTracks = null)
     {
         try
         {
@@ -266,7 +266,7 @@ public static class ImageBuilder
                         ctx.DrawText(duration, infoFont, new Rgba32(180, 180, 180, 255), new PointF(durationTextX, 230));
                         // Volume indicator
                         int volumePercent = player != null ? (int)Math.Round(player.Volume * 100) : 20;
-                        DrawVolumeIndicator(ctx, textX, 275, 200, 8, volumePercent, infoFont, smallInfoFont);
+                        DrawVolumeIndicator(ctx, textX, 275, 100, 8, volumePercent, infoFont, smallInfoFont);
                         // Repeat indicator
                         string repeatMode = player?.RepeatMode switch
                         {
@@ -274,7 +274,24 @@ public static class ImageBuilder
                             TrackRepeatMode.Queue => "Queue",
                             _ => "None"
                         };
-                        DrawRepeatIndicator(ctx, textX, 315, repeatMode, infoFont, smallInfoFont);
+                        DrawRepeatIndicator(ctx, textX, 305, repeatMode, infoFont, smallInfoFont);
+                        // Next Up queue preview on the right side
+                        if (upcomingTracks != null && upcomingTracks.Count > 0)
+                        {
+                            int nextUpX = 560; // Right portion of the image
+                            int nextUpY = 225;
+                            int nextUpMaxWidth = 200;
+                            ctx.DrawText("Next Up", infoFont, new Rgba32(180, 180, 180, 255), new PointF(nextUpX, nextUpY));
+                            for (int i = 0; i < Math.Min(upcomingTracks.Count, 2); i++)
+                            {
+                                var upcoming = upcomingTracks[i];
+                                int itemY = nextUpY + 28 + (i * 40);
+                                string upTitle = TruncateText(upcoming.Title ?? "Unknown", smallInfoFont, nextUpMaxWidth);
+                                string upArtist = TruncateText(upcoming.Artist ?? "Unknown", smallInfoFont, nextUpMaxWidth);
+                                ctx.DrawText(upTitle, smallInfoFont, Color.White, new PointF(nextUpX, itemY));
+                                ctx.DrawText(upArtist, smallInfoFont, new Rgba32(140, 140, 140, 255), new PointF(nextUpX, itemY + 18));
+                            }
+                        }
                         // Requested by credit (bottom of image)
                         string credit = "Requested by: " + (track.RequestedBy ?? "Unknown");
                         string truncatedCredit = TruncateText(credit, smallInfoFont, maxWidth + 200);
@@ -405,26 +422,26 @@ public static class ImageBuilder
     {
         // Ensure volume is between 0-100
         volumePercent = Math.Clamp(volumePercent, 0, 100);
-        // Load and draw the volume icon
+        // Load and draw the volume icon (vertically centered with the bar)
         Image<Rgba32> icon = GetIcon("audio.png");
-        ctx.DrawImage(icon, new Point(x, y), 1.0f);
-        // Calculate spacing based on icon size
-        int iconWidth = icon.Width;
-        int textX = x + iconWidth + 8; // 8px spacing between icon and text
-        // Draw volume label
-        ctx.DrawText("Volume", labelFont, Color.White, new PointF(textX, y));
-        // Draw the value text
-        ctx.DrawText($"{volumePercent}%", valueFont, Color.White, new PointF(x + width + 10, y + 4));
+        int iconY = y + (icon.Height - height) / 2 - 8; // Center icon relative to bar
+        ctx.DrawImage(icon, new Point(x, iconY), 1.0f);
+        // Bar starts after the icon with spacing
+        int barX = x + icon.Width + 8;
         // Background track - with rounded corners
-        int cornerRadius = height; // Make it fully rounded at the ends
-        DrawRoundedRectangle(ctx, x, y + icon.Height + 6, width, height, cornerRadius, new Rgba32(80, 80, 80, 200), true);
+        int barY = y + icon.Height / 2 - height / 2; // Vertically center the bar with the icon
+        int cornerRadius = height;
+        DrawRoundedRectangle(ctx, barX, barY, width, height, cornerRadius, new Rgba32(80, 80, 80, 200), true);
         // Active volume level - with rounded corners
         float fillWidth = (width * volumePercent) / 100f;
         if (fillWidth > 0)
         {
-            // Only draw if we have a non-zero width
-            DrawRoundedRectangle(ctx, x, y + icon.Height + 6, (int)fillWidth, height, cornerRadius, new Rgba32(65, 105, 225, 255), true);
+            DrawRoundedRectangle(ctx, barX, barY, (int)fillWidth, height, cornerRadius, new Rgba32(65, 105, 225, 255), true);
         }
+        // Percentage text after the bar (vertically centered)
+        int textX = barX + width + 8;
+        int textY = barY - 4; // Slight offset up to visually center text with bar
+        ctx.DrawText($"{volumePercent}%", valueFont, Color.White, new PointF(textX, textY));
     }
 
     private static void DrawRepeatIndicator(IImageProcessingContext ctx, int x, int y, string repeatMode, Font labelFont, Font valueFont)

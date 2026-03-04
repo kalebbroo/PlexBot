@@ -106,12 +106,12 @@ namespace PlexBot.Core.Discord.Embeds
         /// <summary>Registers the default set of buttons used by the core application</summary>
         private void RegisterDefaultButtons()
         {
-            // Row 1: Transport controls (vol down, pause/resume, skip, repeat, vol up)
-            RegisterButton("vol_down", ButtonFlag.VisualPlayer, 10, _ =>
+            // Row 1: vol up, pause/resume, skip, repeat, queue options
+            RegisterButton("vol_up", ButtonFlag.VisualPlayer, 10, _ =>
             {
                 return new ButtonBuilder()
-                    .WithEmote(new Emoji("\uD83D\uDD09"))
-                    .WithCustomId("volume:down")
+                    .WithEmote(new Emoji("\uD83D\uDD0A"))
+                    .WithCustomId("volume:up")
                     .WithStyle(ButtonStyle.Secondary);
             });
             RegisterButton("pause_resume", ButtonFlag.VisualPlayer, 20, context =>
@@ -119,7 +119,6 @@ namespace PlexBot.Core.Discord.Embeds
                 bool isPaused = context.Player?.State == PlayerState.Paused;
                 return new ButtonBuilder()
                     .WithEmote(new Emoji(isPaused ? "\u25B6\uFE0F" : "\u23F8\uFE0F"))
-                    .WithLabel(isPaused ? "Resume" : "Pause")
                     .WithCustomId(isPaused ? "pause_resume:resume" : "pause_resume:pause")
                     .WithStyle(ButtonStyle.Secondary);
             });
@@ -141,20 +140,20 @@ namespace PlexBot.Core.Discord.Embeds
                     .WithCustomId("repeat:cycle")
                     .WithStyle(style);
             });
-            RegisterButton("vol_up", ButtonFlag.VisualPlayer, 50, _ =>
-            {
-                return new ButtonBuilder()
-                    .WithEmote(new Emoji("\uD83D\uDD0A"))
-                    .WithCustomId("volume:up")
-                    .WithStyle(ButtonStyle.Secondary);
-            });
-            // Row 2: Utility controls (queue, stop)
-            RegisterButton("queue_options", ButtonFlag.VisualPlayer, 60, _ =>
+            RegisterButton("queue_options", ButtonFlag.VisualPlayer, 50, _ =>
             {
                 return new ButtonBuilder()
                     .WithEmote(new Emoji("\uD83D\uDCCB"))
                     .WithLabel("Queue Options")
                     .WithCustomId("queue_options:options:1")
+                    .WithStyle(ButtonStyle.Secondary);
+            });
+            // Row 2: vol down, kill (vol down stacked under vol up)
+            RegisterButton("vol_down", ButtonFlag.VisualPlayer, 60, _ =>
+            {
+                return new ButtonBuilder()
+                    .WithEmote(new Emoji("\uD83D\uDD09"))
+                    .WithCustomId("volume:down")
                     .WithStyle(ButtonStyle.Secondary);
             });
             RegisterButton("kill", ButtonFlag.VisualPlayer, 70, _ =>
