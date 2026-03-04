@@ -169,10 +169,14 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
                 case "shuffle":
                     // Shuffle the queue
                     await player.Queue.ShuffleAsync();
+                    await FollowupAsync(components: ComponentV2Builder.Success("Queue Shuffled",
+                        $"Shuffled {player.Queue.Count} tracks."), ephemeral: true);
                     break;
                 case "clear":
-                    // Clear the queue
+                    int clearedCount = player.Queue.Count;
                     await player.Queue.ClearAsync();
+                    await FollowupAsync(components: ComponentV2Builder.Success("Queue Cleared",
+                        $"Removed {clearedCount} tracks from the queue."), ephemeral: true);
                     break;
                 case "back":
                     // Restore default player buttons
