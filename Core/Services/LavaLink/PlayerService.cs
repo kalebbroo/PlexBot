@@ -339,6 +339,13 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
                     }
                 }
             }
+            // Rebuild the player image now that the queue is fully populated (for Next Up display)
+            if (successCount > 0 && player is CustomLavaLinkPlayer customPlayerRefresh)
+            {
+                ButtonContext ctx = new() { Player = customPlayerRefresh, Interaction = interaction };
+                ComponentBuilder refreshComponents = buttonBuilder.BuildButtons(ButtonFlag.VisualPlayer, ctx);
+                await visualPlayer.AddOrUpdateVisualPlayerAsync(refreshComponents, recreateImage: true);
+            }
             // Final message
             if (successCount > 0)
             {

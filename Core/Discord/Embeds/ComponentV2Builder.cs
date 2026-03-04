@@ -187,36 +187,112 @@ public static class ComponentV2Builder
         return new ComponentBuilderV2().WithContainer(container).Build();
     }
 
+    // Left cap emoji: 8 fill levels (empty → 1-6 → filled)
+    private static readonly string[] LeftCapLevels =
+    [
+        "<:bar_left_empty:1478623138618150993>",
+        "<:bar_left_filled_1:1478623139972780063>",
+        "<:bar_left_filled_2:1478623140966957197>",
+        "<:bar_left_filled_3:1478623141906350140>",
+        "<:bar_left_filled_4:1478623142778896474>",
+        "<:bar_left_filled_5:1478623143579877417>",
+        "<:bar_left_filled_6:1478623144330661888>",
+        "<:bar_left_filled:1478623139398418613>",
+    ];
+
+    // Middle segment emoji: 14 fill levels (empty → 1-12 → filled)
+    private static readonly string[] MidLevels =
+    [
+        "<:bar_mid_empty:1478623145228505118>",
+        "<:bar_filled_1:1478623122654629908>",
+        "<:bar_filled_2:1478623123992612936>",
+        "<:bar_filled_3:1478623124919685282>",
+        "<:bar_filled_4:1478623125649358848>",
+        "<:bar_filled_5:1478623126526103613>",
+        "<:bar_filled_6:1478623127222091806>",
+        "<:bar_filled_7:1478623128174465095>",
+        "<:bar_filled_8:1478623128920785007>",
+        "<:bar_filled_9:1478623135346462804>",
+        "<:bar_filled_10:1478623136302764083>",
+        "<:bar_filled_11:1478623137217380483>",
+        "<:bar_filled_12:1478623137963704463>",
+        "<:bar_mid_filled:1478623145970892861>",
+    ];
+
+    // Right cap emoji: 8 fill levels (empty → 1-6 → filled)
+    private static readonly string[] RightCapLevels =
+    [
+        "<:bar_right_empty:1478623147224862811>",
+        "<:bar_right_filled_1:1478623149070352476>",
+        "<:bar_right_filled_2:1478623149753897034>",
+        "<:bar_right_filled_3:1478623150404276376>",
+        "<:bar_right_filled_4:1478623152631320679>",
+        "<:bar_right_filled_5:1478623153709383762>",
+        "<:bar_right_filled_6:1478623154321752144>",
+        "<:bar_right_filled:1478623147975639123>",
+    ];
+
     /// <summary>Builds a player status line showing the progress bar (volume/repeat are on the image)</summary>
     public static string BuildPlayerStatusLine(
         PlayerState state = PlayerState.NotPlaying,
         TimeSpan? position = null, TimeSpan? duration = null)
     {
         string progressLine = BuildProgressBar(state, position, duration);
-        return $"-# {progressLine}";
+        return progressLine;
     }
 
-    /// <summary>Builds a visual progress bar showing track playback position</summary>
+    /// <summary>Builds a smooth-fill progress bar using custom emoji with partial fill levels</summary>
     private static string BuildProgressBar(PlayerState state, TimeSpan? position, TimeSpan? duration)
     {
-        const int segments = 15;
-        string playIcon = state == PlayerState.Paused ? "\u23F8" : "\u25B6";
+        const int middleSegments = 14;
+        const int totalSegments = middleSegments + 2; // left cap + middle + right cap
 
         if (position == null || duration == null || duration.Value.TotalSeconds < 1)
-            return $"{playIcon} 0:00 \u25CF{new string('\u2500', segments - 1)} 0:00";
+        {
+            string emptyBar = LeftCapLevels[0]
+                + string.Concat(Enumerable.Repeat(MidLevels[0], middleSegments))
+                + RightCapLevels[0];
+            return $"` 0:00 `{emptyBar}` 0:00 `";
+        }
 
         double progress = Math.Clamp(position.Value.TotalSeconds / duration.Value.TotalSeconds, 0, 1);
-        int playedCount = (int)Math.Round(progress * segments);
-        playedCount = Math.Clamp(playedCount, 0, segments);
 
-        // Build: ━━━━━━●──────── (played ━, playhead ●, remaining ─)
-        string played = new string('\u2501', Math.Max(0, playedCount));
-        string remaining = new string('\u2500', Math.Max(0, segments - playedCount));
-        string bar = $"{played}\u25CF{remaining}";
+        // Map progress to a continuous position across all segments (0.0 to totalSegments)
+        double fillPosition = progress * totalSegments;
+        int activeSegment = (int)fillPosition;
+
+        var bar = new System.Text.StringBuilder();
+        for (int i = 0; i < totalSegments; i++)
+        {
+            // Pick the right emoji array for this segment
+            string[] levels = i == 0 ? LeftCapLevels
+                : i == totalSegments - 1 ? RightCapLevels
+                : MidLevels;
+
+            int maxLevel = levels.Length - 1;
+
+            if (i < activeSegment)
+            {
+                // Fully filled — progress has passed this segment
+                bar.Append(levels[maxLevel]);
+            }
+            else if (i == activeSegment)
+            {
+                // Active segment — partially filled based on fractional position
+                double fraction = fillPosition - activeSegment;
+                int level = (int)Math.Round(fraction * maxLevel);
+                bar.Append(levels[Math.Clamp(level, 0, maxLevel)]);
+            }
+            else
+            {
+                // Empty — progress hasn't reached this segment
+                bar.Append(levels[0]);
+            }
+        }
 
         string posStr = FormatTime(position.Value);
         string durStr = FormatTime(duration.Value);
-        return $"{playIcon} {posStr} {bar} {durStr}";
+        return $"` {posStr} `{bar}` {durStr} `";
     }
 
     /// <summary>Formats a TimeSpan as m:ss or h:mm:ss</summary>
