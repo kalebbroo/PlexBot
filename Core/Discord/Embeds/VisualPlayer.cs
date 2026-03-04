@@ -9,7 +9,8 @@ public class VisualPlayer(
     VisualPlayerStateManager stateManager,
     IOptions<PlayerOptions> playerOptions,
     IAudioService audioService,
-    DiscordButtonBuilder buttonBuilder) : IDisposable
+    DiscordButtonBuilder buttonBuilder,
+    ITrackPrefetchService prefetchService) : IDisposable
 {
     private CancellationTokenSource? _progressCts;
 
@@ -65,7 +66,7 @@ public class VisualPlayer(
                     if (stateManager.UseModernPlayer)
                     {
                         using MemoryStream memoryStream = new();
-                        using SixLabors.ImageSharp.Image image = await ImageBuilder.BuildPlayerImageAsync(currentTrack, player, upcomingTracks);
+                        using SixLabors.ImageSharp.Image image = await ImageBuilder.BuildPlayerImageAsync(currentTrack, player, upcomingTracks, prefetchService);
                         await image.SaveAsync(memoryStream, new PngEncoder());
                         memoryStream.Position = 0;
                         FileAttachment fileAttachment = new(memoryStream, "playerImage.png");
@@ -110,7 +111,7 @@ public class VisualPlayer(
             if (stateManager.UseModernPlayer)
             {
                 using MemoryStream memoryStream = new();
-                using SixLabors.ImageSharp.Image image = await ImageBuilder.BuildPlayerImageAsync(currentTrack, player, upcomingTracks);
+                using SixLabors.ImageSharp.Image image = await ImageBuilder.BuildPlayerImageAsync(currentTrack, player, upcomingTracks, prefetchService);
                 await image.SaveAsync(memoryStream, new PngEncoder());
                 memoryStream.Position = 0;
                 FileAttachment fileAttachment = new(memoryStream, "playerImage.png");
