@@ -303,16 +303,9 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
             {
                 throw new PlayerException("No track is currently playing", "Skip");
             }
-            // Get current track info for the message
-            string trackTitle = "the current track";
-            if (player is CustomLavaLinkPlayer customPlayer && customPlayer.CurrentItem is CustomTrackQueueItem currentTrack)
-            {
-                trackTitle = currentTrack.Title ?? "the current track";
-            }
-            // Skip the current track - default to 1 track to fix argument type error
+            // Skip the current track — the player UI updates automatically via NotifyTrackStartedAsync
             await player.SkipAsync(1, cancellationToken);
             Logs.Debug($"Track skipped by {interaction.User.Username}");
-            await interaction.FollowupAsync($"Skipped {trackTitle}.", ephemeral: true);
         }
         catch (Exception ex) when (ex is not PlayerException)
         {

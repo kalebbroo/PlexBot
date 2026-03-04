@@ -233,7 +233,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         [Summary("query", "The track to play (URL or search term)")]
         string query)
     {
-        await DeferAsync();
+        await DeferAsync(ephemeral: true);
         try
         {
             Logs.Info($"Play command: {query}");
