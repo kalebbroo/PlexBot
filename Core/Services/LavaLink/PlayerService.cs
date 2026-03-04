@@ -33,12 +33,6 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
             // Determine channel behavior based on connectToVoiceChannel parameter
             PlayerChannelBehavior channelBehavior = connectToVoiceChannel ? PlayerChannelBehavior.Join : PlayerChannelBehavior.None;
             PlayerRetrieveOptions retrieveOptions = new(channelBehavior);
-            // Create player factory
-            ValueTask<CustomLavaLinkPlayer> CreatePlayerAsync(IPlayerProperties<CustomLavaLinkPlayer, CustomPlayerOptions> properties,
-                IServiceProvider serviceProvider, CancellationToken token = default)
-            {
-                return ValueTask.FromResult(new CustomLavaLinkPlayer(properties, serviceProvider));
-            }
             float defaultVolume = 0.2f;
             // Create player options
             CustomPlayerOptions playerOptions = new()

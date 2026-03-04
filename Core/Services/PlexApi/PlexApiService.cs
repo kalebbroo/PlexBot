@@ -24,6 +24,10 @@ namespace PlexBot.Core.Services.PlexApi
             {
                 throw new ArgumentException("PLEX_URL is not configured. Please set it in the .env file.");
             }
+            if (string.IsNullOrEmpty(_plexToken))
+            {
+                throw new ArgumentException("PLEX_TOKEN is not configured. Please set it in the .env file.");
+            }
             Logs.Init($"PlexApiService initialized with server URL: {_plexUrl}");
         }
 
