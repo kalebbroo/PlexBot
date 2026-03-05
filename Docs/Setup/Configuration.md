@@ -18,19 +18,19 @@ Template files are provided: `RenameMe.env.txt` → `.env` and `RenameMe.config.
 | `PLEX_TOKEN` | Plex authentication token | Yes | N/A |
 | `PLEX_CLIENT_IDENTIFIER` | Unique app identifier | No | Auto-generated |
 | `PLEX_APP_NAME` | Display name for Plex | No | `PlexBot` |
-| `LAVALINK_HOST` | Lavalink server hostname | No | `lavalink` |
+| `LAVALINK_HOST` | Lavalink hostname — `Lavalink` for Docker, IP/hostname for remote | No | `Lavalink` |
 | `LAVALINK_SERVER_PORT` | Lavalink server port | No | `2333` |
 | `LAVALINK_SERVER_PASSWORD` | Lavalink password | No | `youshallnotpass` |
-| `LOGGING_LEVEL_LAVALINK` | Lavalink container log level | No | `INFO` |
+| `LAVALINK_SECURE` | Use HTTPS/WSS (set `true` for remote Lavalink behind SSL) | No | `false` |
 
 ---
 
 ## config.fds — Application Settings
 
-### Player Settings
+### Visual Player Settings
 
 ```yaml
-player:
+visualPlayer:
     useModernPlayer: true        # true = album art image player, false = classic text embed
     inactivityTimeout: 2.0       # Minutes before auto-disconnect from voice
     staticChannel:
@@ -41,6 +41,13 @@ player:
         emoji:                   # See "Custom Progress Bar Emoji" section below
             bar_left_empty:
             # ... (30 emoji IDs total)
+```
+
+### Plex Settings
+
+```yaml
+plex:
+    maxConcurrentResolves: 3     # Max parallel resolves when loading playlists (lower = safer for Plex)
 ```
 
 ### Logging Settings

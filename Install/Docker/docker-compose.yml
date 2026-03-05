@@ -33,22 +33,18 @@ services:
     env_file:
       - ../../.env
     environment:
-      # These can override what's in the .env file if needed
-      - SERVER_PORT=${SERVER_PORT:-2333}
-      - SERVER_ADDRESS=${SERVER_ADDRESS:-0.0.0.0}
+      # Map PlexBot env vars to what the Lavalink container expects
+      - SERVER_PORT=${LAVALINK_SERVER_PORT:-2333}
+      - SERVER_ADDRESS=0.0.0.0
       - LAVALINK_SERVER_PASSWORD=${LAVALINK_SERVER_PASSWORD:-youshallnotpass}
-      # --- Optional: JVM Garbage Collection Tuning ---
-      # Switches Java to ZGC (Z Garbage Collector) which keeps GC pauses under 1ms.
-      # The default Java GC can cause 10-50ms "stop-the-world" pauses that interrupt
-      # Lavalink's 20ms audio frame schedule, resulting in audible stuttering.
-      # Only uncomment if you experience audio stuttering during playback.
-      # Tradeoff: ZGC uses slightly more memory (~10-20%) than the default GC.
-      # - _JAVA_OPTIONS=-XX:+UseZGC -XX:+ZGenerational -Xms256m -Xmx512m
+      # JVM tuning — uncomment _JAVA_OPTIONS in .env to enable ZGC (reduces audio stuttering)
+      - _JAVA_OPTIONS=${_JAVA_OPTIONS:-}
     volumes:
       - ./lavalink.application.yml:/opt/Lavalink/application.yml
       - ./plugins:/opt/Lavalink/plugins
+      - ../../logs/lavalink:/opt/Lavalink/logs
     ports:
-      - "${SERVER_PORT:-2333}:${SERVER_PORT:-2333}"
+      - "${LAVALINK_SERVER_PORT:-2333}:${LAVALINK_SERVER_PORT:-2333}"
     # --- Optional: CPU Pinning & Priority ---
     # Reserves dedicated CPU cores for Lavalink so other processes on the host
     # cannot starve its audio thread. Lavalink must send an Opus frame every 20ms;
