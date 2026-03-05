@@ -29,6 +29,8 @@ visualPlayer:
     # Disable to reduce Discord API calls
     progressBar:
         enabled: true
+        # Bar width: small (mobile-friendly), medium (default), large (wide displays)
+        size: medium
         # Custom Discord emoji for a smooth-fill progress bar
         # If all IDs are empty, falls back to unicode block characters that work everywhere
         #

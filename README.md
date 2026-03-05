@@ -148,6 +148,7 @@ Uses [Frenetic Data Syntax](https://github.com/FreneticLLC/FreneticUtilities) (Y
 | `visualPlayer.staticChannel.enabled` | bool | `false` | Lock the player to one specific channel |
 | `visualPlayer.staticChannel.channelId` | int | `0` | Discord channel ID (right-click channel > Copy Channel ID) |
 | `visualPlayer.progressBar.enabled` | bool | `true` | Show a live-updating progress bar (updates every second). Disable to reduce Discord API calls |
+| `visualPlayer.progressBar.size` | string | `medium` | Bar width: `small` (mobile-friendly, 10 segments), `medium` (default, 16 segments), `large` (wide displays, 22 segments) |
 | `visualPlayer.progressBar.emoji.*` | int | _(empty)_ | Custom Discord emoji IDs for smooth-fill progress bar. Leave empty for unicode fallback (`▓░`) |
 
 #### Plex
