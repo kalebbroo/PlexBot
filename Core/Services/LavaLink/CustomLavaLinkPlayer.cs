@@ -9,14 +9,10 @@ namespace PlexBot.Core.Services.LavaLink;
 /// <remarks>Constructs the player with specified properties to enable audio playback with enhanced Discord integration for visual feedback</remarks>
 /// <param name="properties">Configuration container with player settings, options, and channel information</param>
 public sealed class CustomLavaLinkPlayer(IPlayerProperties<CustomLavaLinkPlayer, CustomPlayerOptions> properties,
-    IServiceProvider serviceProvider) : QueuedLavalinkPlayer(properties)
+    IServiceProvider serviceProvider) : QueuedLavalinkPlayer(properties), IInactivityPlayerListener
 {
 
-    /// <summary>Handles the track start event by building and sending a rich visual player interface with artwork and interactive controls</summary>
-    /// <param name="track">The track that started playing, containing metadata for display</param>
-    /// <param name="cancellationToken">Token to cancel the operation in case of shutdown or timeout</param>
-    /// <returns>A task representing the asynchronous operation of creating and sending the player UI</returns>
-    /// <summary>Handles the track start event by building and sending a rich visual player interface</summary>
+    /// <inheritdoc />
     protected override async ValueTask NotifyTrackStartedAsync(ITrackQueueItem track, CancellationToken cancellationToken = default)
     {
         try
@@ -43,48 +39,35 @@ public sealed class CustomLavaLinkPlayer(IPlayerProperties<CustomLavaLinkPlayer,
         }
     }
 
-    /// <summary>Handles the track end event by logging track completion and performing cleanup</summary>
-    /// <param name="queueItem">The track that ended, containing metadata for logging</param>
-    /// <param name="endReason">The reason the track ended, used for logging and debugging</param>
-    /// <param name="cancellationToken">Token to cancel the operation in case of shutdown or timeout</param>
-    /// <returns>A task representing the asynchronous operation of logging track completion</returns>
+    /// <inheritdoc />
     protected override async ValueTask NotifyTrackEndedAsync(ITrackQueueItem queueItem, TrackEndReason endReason, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         ArgumentNullException.ThrowIfNull(queueItem);
 
-        // Call base implementation first
         await base.NotifyTrackEndedAsync(queueItem, endReason, cancellationToken).ConfigureAwait(false);
 
-        // Log track end
         string trackTitle = (queueItem as CustomTrackQueueItem)?.Title ?? queueItem.Track?.Title ?? "Unknown Track";
         Logs.Debug($"Track ended: {trackTitle}, Reason: {endReason}");
     }
 
-    /// <summary>Handles the player active event when users join the voice channel after all users had left</summary>
-    /// <param name="cancellationToken">Token to cancel the operation in case of shutdown or timeout</param>
-    /// <returns>A task representing the asynchronous operation of handling player activation</returns>
-    public ValueTask NotifyPlayerActiveAsync(CancellationToken cancellationToken = default)
+    /// <summary>Called by Lavalink4NET inactivity tracking when the player becomes active again (users rejoin voice)</summary>
+    public ValueTask NotifyPlayerActiveAsync(PlayerTrackingState trackingState, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         Logs.Debug($"Player active event for guild {GuildId}");
-        return default; // No special handling needed
+        return default;
     }
 
-    /// <summary>Handles the player inactive event due to inactivity timeout, stopping playback and disconnecting from the voice channel</summary>
-    /// <param name="cancellationToken">Token to cancel the operation in case of shutdown or timeout</param>
-    /// <returns>A task representing the asynchronous operation of handling player inactivity</returns>
-    public async ValueTask NotifyPlayerInactiveAsync(CancellationToken cancellationToken = default)
+    /// <summary>Called by Lavalink4NET inactivity tracking when the inactivity timeout is reached, stopping playback and disconnecting</summary>
+    public async ValueTask NotifyPlayerInactiveAsync(PlayerTrackingState trackingState, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        Logs.Info($"Player inactive timeout reached for guild {GuildId}");
+        Logs.Info($"Player inactive timeout reached for guild {GuildId}, disconnecting...");
 
         try
         {
-            // Stop playback
             await StopAsync(cancellationToken).ConfigureAwait(false);
-
-            // Disconnect from voice channel
             await DisconnectAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
@@ -93,14 +76,12 @@ public sealed class CustomLavaLinkPlayer(IPlayerProperties<CustomLavaLinkPlayer,
         }
     }
 
-    /// <summary>Handles the player tracked state change event, used to update the visual player interface</summary>
-    /// <param name="cancellationToken">Token to cancel the operation in case of shutdown or timeout</param>
-    /// <returns>A task representing the asynchronous operation of handling player state changes</returns>
-    public ValueTask NotifyPlayerTrackedAsync(CancellationToken cancellationToken = default)
+    /// <summary>Called by Lavalink4NET inactivity tracking when player tracking state changes</summary>
+    public ValueTask NotifyPlayerTrackedAsync(PlayerTrackingState trackingState, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        Logs.Debug($"Player tracked state change for guild {GuildId}");
-        return default; // No special handling needed
+        Logs.Debug($"Player tracked state change for guild {GuildId}: {trackingState.Status}");
+        return default;
     }
 }
 
@@ -116,8 +97,6 @@ public sealed record CustomPlayerOptions(ITextChannel? TextChannel) : QueuedLava
 
     /// <summary>Gets or sets whether to delete player messages when they become outdated, used for cleanup and organization</summary>
     public bool DeleteOutdatedMessages { get; init; } = true;
-
-    public TimeSpan InactivityTimeout { get; init; } = TimeSpan.FromMinutes(20);
 
     /// <summary>Initializes a new instance of the CustomPlayerOptions class, setting default values for LavaLink player configuration</summary>
     public CustomPlayerOptions() : this((ITextChannel?)null)
