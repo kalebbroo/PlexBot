@@ -6,9 +6,9 @@ namespace PlexBot.Core.Services.LavaLink;
 /// <summary>Pre-resolves upcoming tracks and caches artwork to reduce gaps between songs</summary>
 public class TrackPrefetchService(IHttpClientFactory httpClientFactory) : ITrackPrefetchService
 {
-    // Small artwork cache — keyed by URL, max entries managed by eviction
-    private readonly ConcurrentDictionary<string, byte[]> _artworkCache = new();
-    private const int MaxArtworkCacheEntries = 5;
+    // Artwork cache with LRU timestamps — keyed by URL
+    private readonly ConcurrentDictionary<string, (byte[] Bytes, long Ticks)> _artworkCache = new();
+    private const int MaxArtworkCacheEntries = 10;
 
     // Track the URL currently being prefetched to avoid duplicate work
     private volatile string? _currentlyPrefetching;
@@ -39,14 +39,17 @@ public class TrackPrefetchService(IHttpClientFactory httpClientFactory) : ITrack
                 using HttpClient client = httpClientFactory.CreateClient();
                 byte[] artworkBytes = await client.GetByteArrayAsync(artworkUrl, cancellationToken);
 
-                // Evict oldest entries if cache is full
+                // Evict oldest entries (by LRU timestamp) if cache is full
                 while (_artworkCache.Count >= MaxArtworkCacheEntries)
                 {
-                    string? keyToRemove = _artworkCache.Keys.FirstOrDefault();
-                    if (keyToRemove != null) _artworkCache.TryRemove(keyToRemove, out _);
+                    var oldest = _artworkCache.OrderBy(kvp => kvp.Value.Ticks).FirstOrDefault();
+                    if (oldest.Key != null)
+                        _artworkCache.TryRemove(oldest.Key, out _);
+                    else
+                        break;
                 }
 
-                _artworkCache[artworkUrl] = artworkBytes;
+                _artworkCache[artworkUrl] = (artworkBytes, DateTime.UtcNow.Ticks);
                 Logs.Debug($"Prefetched artwork for: {nextTrack.Title} ({artworkBytes.Length} bytes)");
             }
             finally
@@ -68,10 +71,12 @@ public class TrackPrefetchService(IHttpClientFactory httpClientFactory) : ITrack
     /// <inheritdoc />
     public byte[]? GetCachedArtwork(string artworkUrl)
     {
-        if (_artworkCache.TryRemove(artworkUrl, out byte[]? bytes))
+        if (_artworkCache.TryGetValue(artworkUrl, out var cached))
         {
+            // Update timestamp for LRU behavior (keeps artwork cached for repeat mode)
+            _artworkCache[artworkUrl] = (cached.Bytes, DateTime.UtcNow.Ticks);
             Logs.Debug($"Prefetch artwork cache hit: {artworkUrl}");
-            return bytes;
+            return cached.Bytes;
         }
         return null;
     }

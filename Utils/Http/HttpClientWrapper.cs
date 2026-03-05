@@ -572,6 +572,89 @@ public class HttpClientWrapper(HttpClient httpClient, string serviceName, int ma
             lastException ?? new InvalidOperationException("Unknown error"));
     }
 
+    /// <summary>Downloads content from the specified URI as a byte array with retry logic.</summary>
+    /// <param name="uri">The URI to download from</param>
+    /// <param name="headers">Optional headers to include with the request</param>
+    /// <param name="cancellationToken">Token to cancel the operation</param>
+    /// <returns>The downloaded bytes</returns>
+    /// <exception cref="PlexApiException">Thrown when the download fails after all retry attempts</exception>
+    public async Task<byte[]> DownloadBytesAsync(
+        string uri,
+        Dictionary<string, string>? headers = null,
+        CancellationToken cancellationToken = default)
+    {
+        int attemptCount = 0;
+        Exception? lastException = null;
+        while (attemptCount <= _maxRetries)
+        {
+            try
+            {
+                attemptCount++;
+                Logs.Debug($"[{_serviceName}] Downloading bytes from {uri} (Attempt {attemptCount}/{_maxRetries + 1})");
+                using HttpRequestMessage request = new(HttpMethod.Get, uri);
+                if (headers != null)
+                {
+                    foreach (var header in headers)
+                    {
+                        request.Headers.Add(header.Key, header.Value);
+                    }
+                }
+                using HttpResponseMessage response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+                if (!response.IsSuccessStatusCode)
+                {
+                    string responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+                    Logs.Warning($"[{_serviceName}] Download failed with status {response.StatusCode}: {responseBody}");
+                    if (ShouldRetry(response.StatusCode) && attemptCount <= _maxRetries)
+                    {
+                        TimeSpan delay = TimeSpan.FromMilliseconds(_retryDelay.TotalMilliseconds * Math.Pow(2, attemptCount - 1));
+                        Logs.Debug($"[{_serviceName}] Retrying after {delay.TotalSeconds:N1} seconds...");
+                        await Task.Delay(delay, cancellationToken);
+                        continue;
+                    }
+                    throw new PlexApiException(
+                        $"Download from {_serviceName} failed with status code {response.StatusCode}",
+                        response.StatusCode,
+                        uri,
+                        responseBody);
+                }
+                byte[] bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+                Logs.Debug($"[{_serviceName}] Downloaded {bytes.Length} bytes successfully");
+                return bytes;
+            }
+            catch (Exception ex) when (ex is HttpRequestException ||
+                                      (ex is TaskCanceledException && !cancellationToken.IsCancellationRequested))
+            {
+                lastException = ex;
+                Logs.Warning($"[{_serviceName}] Download error: {ex.Message}");
+                if (attemptCount <= _maxRetries)
+                {
+                    TimeSpan delay = TimeSpan.FromMilliseconds(_retryDelay.TotalMilliseconds * Math.Pow(2, attemptCount - 1));
+                    Logs.Debug($"[{_serviceName}] Retrying after {delay.TotalSeconds:N1} seconds...");
+                    await Task.Delay(delay, cancellationToken);
+                    continue;
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                Logs.Info($"[{_serviceName}] Download was canceled");
+                throw;
+            }
+            catch (PlexApiException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                lastException = ex;
+                Logs.Error($"[{_serviceName}] Unexpected download error: {ex.Message}");
+                break;
+            }
+        }
+        throw new PlexApiException(
+            $"Download from {_serviceName} failed after {attemptCount} attempts",
+            lastException ?? new InvalidOperationException("Unknown error"));
+    }
+
     /// <summary>Determines whether a request should be retried based on its status code.
     /// Only certain status codes that indicate transient errors should trigger retries,
     /// while others (like authentication errors) should fail immediately.</summary>

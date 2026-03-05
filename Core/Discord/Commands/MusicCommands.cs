@@ -139,8 +139,9 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         try
         {
             Logs.Debug($"Searching YouTube for: {query}");
+            using CancellationTokenSource cts = new(TimeSpan.FromSeconds(15));
             TrackLoadResult searchResults = await audioService.Tracks.LoadTracksAsync(
-                query, TrackSearchMode.YouTube, cancellationToken: CancellationToken.None);
+                query, TrackSearchMode.YouTube, cancellationToken: cts.Token);
             List<LavalinkTrack> tracks = [.. searchResults.Tracks];
             if (tracks.Count == 0)
             {
@@ -166,7 +167,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
                     // Limit title length for Discord UI
                     title.Length > 80 ? title[..77] + "..." : title,
                     trackId,
-                    $"{author} | {duration}");
+                    TruncateDescription($"{author} | {duration}"));
             }
             // Build and send component
             ComponentBuilder builder = new ComponentBuilder().WithSelectMenu(selectMenu);
@@ -242,14 +243,14 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
                 await FollowupAsync(components: ComponentV2Builder.Error("Invalid Query", "Please enter a URL or search term."), ephemeral: true);
                 return;
             }
-            // Check if the query is a URL
-            bool isUrl = Uri.TryCreate(query, UriKind.Absolute, out _);
-            if (isUrl)
+            // Check if the query is a URL — route through Lavalink directly
+            if (Uri.TryCreate(query, UriKind.Absolute, out Uri? parsedUri) &&
+                (parsedUri.Scheme == "http" || parsedUri.Scheme == "https"))
             {
-                // URL handling would go here, but for now we'll treat it as a search
-                await FollowupAsync(components: ComponentV2Builder.Info("URL Playback", "Direct URL playback is not yet implemented. Treating as a search query."), ephemeral: true);
+                await HandleUrlPlaybackAsync(query, parsedUri);
+                return;
             }
-            // Search for the track
+            // Not a URL — search Plex library
             SearchResults results = await plexMusicService.SearchLibraryAsync(query);
             if (!results.HasResults)
             {
@@ -293,6 +294,109 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
             Logs.Error($"Error in play command: {ex.Message}");
             await FollowupAsync(components: ComponentV2Builder.Error("Playback Error", "An error occurred while playing. Please try again later."), ephemeral: true);
         }
+    }
+
+    /// <summary>Handles playback of a direct URL (YouTube, SoundCloud, etc.) through Lavalink.
+    /// Supports single tracks and YouTube playlists.</summary>
+    private async Task HandleUrlPlaybackAsync(string url, Uri parsedUri)
+    {
+        try
+        {
+            bool isYouTubePlaylist = IsYouTubePlaylistUrl(parsedUri);
+
+            // Use Lavalink to load the URL (handles YouTube, SoundCloud, direct links, etc.)
+            using CancellationTokenSource cts = new(TimeSpan.FromSeconds(30));
+            TrackLoadResult loadResult = await audioService.Tracks.LoadTracksAsync(
+                url, TrackSearchMode.None, cancellationToken: cts.Token);
+
+            // Handle YouTube playlists
+            if (loadResult.IsPlaylist && isYouTubePlaylist)
+            {
+                await HandleYouTubePlaylistResultAsync(loadResult);
+                return;
+            }
+
+            // Single track
+            LavalinkTrack? lavalinkTrack = loadResult.Track;
+            if (lavalinkTrack == null)
+            {
+                await FollowupAsync(components: ComponentV2Builder.Error("Not Found",
+                    "Could not load a playable track from this URL."), ephemeral: true);
+                return;
+            }
+
+            string sourceSystem = DetectSourceSystem(parsedUri);
+            Track track = Track.CreateFromUrl(
+                lavalinkTrack.Title ?? "Unknown Title",
+                lavalinkTrack.Author ?? "Unknown Artist",
+                url,
+                lavalinkTrack.ArtworkUri?.ToString() ?? "",
+                sourceSystem);
+            track.DurationMs = (long)lavalinkTrack.Duration.TotalMilliseconds;
+            track.DurationDisplay = FormatHelper.FormatDuration(lavalinkTrack.Duration);
+
+            await playerService.AddToQueueAsync(Context.Interaction, [track]);
+        }
+        catch (Exception ex)
+        {
+            Logs.Error($"Error playing URL: {ex.Message}");
+            await FollowupAsync(components: ComponentV2Builder.Error("Playback Error",
+                "An error occurred while loading this URL. Please try again."), ephemeral: true);
+        }
+    }
+
+    /// <summary>Handles a YouTube playlist loaded via Lavalink, converting all tracks and queueing them</summary>
+    private async Task HandleYouTubePlaylistResultAsync(TrackLoadResult loadResult)
+    {
+        List<LavalinkTrack> playlistTracks = [.. loadResult.Tracks];
+
+        if (playlistTracks.Count == 0)
+        {
+            await FollowupAsync(components: ComponentV2Builder.Error("Empty Playlist",
+                "This playlist contains no playable tracks."), ephemeral: true);
+            return;
+        }
+
+        string playlistName = loadResult.Playlist?.Name ?? "YouTube Playlist";
+
+        // Convert all LavalinkTracks to normalized Track models
+        List<Track> tracks = playlistTracks.Select(lt =>
+        {
+            Track t = Track.CreateFromUrl(
+                lt.Title ?? "Unknown Title",
+                lt.Author ?? "Unknown Artist",
+                lt.Uri?.ToString() ?? lt.Identifier,
+                lt.ArtworkUri?.ToString() ?? "",
+                "youtube");
+            t.DurationMs = (long)lt.Duration.TotalMilliseconds;
+            t.DurationDisplay = FormatHelper.FormatDuration(lt.Duration);
+            return t;
+        }).ToList();
+
+        Logs.Info($"Loaded YouTube playlist '{playlistName}' with {tracks.Count} tracks");
+        await playerService.AddToQueueAsync(Context.Interaction, tracks);
+    }
+
+    /// <summary>Checks whether a URI points to a YouTube playlist (has a 'list' query parameter)</summary>
+    private static bool IsYouTubePlaylistUrl(Uri uri)
+    {
+        string host = uri.Host.ToLowerInvariant();
+        if (!host.Contains("youtube.com") && !host.Contains("youtu.be"))
+            return false;
+
+        var queryParams = HttpUtility.ParseQueryString(uri.Query);
+        return !string.IsNullOrEmpty(queryParams["list"]);
+    }
+
+    /// <summary>Detects the source system from a URL's host for proper track categorization</summary>
+    private static string DetectSourceSystem(Uri uri)
+    {
+        string host = uri.Host.ToLowerInvariant();
+        if (host.Contains("youtube.com") || host.Contains("youtu.be"))
+            return "youtube";
+        if (host.Contains("soundcloud.com"))
+            return "soundcloud";
+        return "external";
     }
 
     /// <summary>Shows information about the bot and available commands.
