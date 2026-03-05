@@ -107,6 +107,17 @@ namespace PlexBot.Main
                 options.BaseAddress = new Uri($"http://{host}:{port}");
                 options.ResumptionOptions = new LavalinkSessionResumptionOptions(TimeSpan.FromSeconds(60));
             });
+
+            // Add inactivity tracking - auto-disconnects when no users in voice or player idle
+            TimeSpan inactivityTimeout = TimeSpan.FromMinutes(BotConfig.GetDouble("visualPlayer.inactivityTimeout", 2.0));
+            services.AddInactivityTracking();
+            services.ConfigureInactivityTracking(options =>
+            {
+                options.DefaultTimeout = inactivityTimeout;
+                options.DefaultPollInterval = TimeSpan.FromSeconds(5);
+                options.UseDefaultTrackers = true;
+            });
+
             // Register options
             services.Configure<PlayerOptions>(options => {
                 options.DefaultVolume = 0.2f;
