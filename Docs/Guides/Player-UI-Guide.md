@@ -2,111 +2,118 @@
 
 ## Overview
 
-PlexBot offers two distinct player UI styles designed to enhance your Discord music experience. This guide covers both styles and how to configure them for your server.
-
-![Player Examples](../images/player-examples.png)
+PlexBot offers two player UI styles and a configurable progress bar. All player settings live in `config.fds` (not `.env`).
 
 ## Player Styles
 
-PlexBot supports two different player UI styles:
+### 1. Modern Visual Player (Default)
 
-### 1. Visual Player (Default)
+A rich image-based player that uses album artwork as the background with track info overlaid using ImageSharp rendering.
 
-The visual player provides a rich graphical experience with album artwork as the background and text overlay.
-
-**Features:**
-- Displays album artwork as background
-- Overlays track information (artist, title, album, etc.) directly on the image
-- Visually appealing design for music channels
-
-**Example:**
-```
-Now Playing:
-[Visual Player with Album Art and Track Details]
-```
+- Album artwork fills the player background
+- Track title, artist, and album overlaid on the image
+- Volume level and repeat mode shown on the image itself
+- Uses Discord's Components V2 container system
+- Requires font packages installed in Docker (handled automatically by the Dockerfile)
 
 ### 2. Classic Embed Player
 
-The classic embed player uses Discord's native embed system with a thumbnail for album art.
+A lightweight text-based player using Discord's native embed system.
 
-**Features:**
-- Standard Discord embed format
-- Album artwork displayed as thumbnail
-- Track information in text fields
-- Lighter on resources
-
-**Example:**
-```
-Now Playing:
-Artist: Example Artist
-Title: Example Song
-Album: Example Album
-```
+- Standard Discord embed with text fields
+- Album artwork shown as a small thumbnail
+- Lower CPU usage (no image rendering)
+- Works well in multi-purpose channels
 
 ## Configuration
 
-You can configure your preferred player style using environment variables:
+All player settings are in `config.fds`:
 
-### Environment Variables
-
-| Variable | Description | Default | Options |
-|----------|-------------|---------|---------|
-| `PLAYER_STYLE_VISUAL` | Enables visual player with album artwork background | `true` | `true`/`false` |
-
-Add these variables to your `.env` file:
-
-```bash
-# Player UI Configuration
-PLAYER_STYLE_VISUAL=true  # Set to false for classic embed style
+```yaml
+visualPlayer:
+    useModernPlayer: true       # true = modern image player, false = classic embed
+    inactivityTimeout: 2.0      # Minutes of silence before auto-disconnect
+    staticChannel:
+        enabled: false          # Lock player to one channel
+        channelId: 0            # Discord channel ID
+    progressBar:
+        enabled: true           # Show live progress bar (updates every second)
+        size: medium            # small / medium / large
 ```
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `visualPlayer.useModernPlayer` | `true` | `true` = modern image player, `false` = classic embed |
+| `visualPlayer.inactivityTimeout` | `2.0` | Minutes of silence before the bot auto-disconnects |
+| `visualPlayer.staticChannel.enabled` | `false` | Lock the player to a single channel |
+| `visualPlayer.staticChannel.channelId` | `0` | The Discord channel ID for the static player |
 
 ## Static Player Channel
 
-PlexBot can maintain a static player in a designated channel, regardless of where commands are issued.
+When enabled, the player always appears in the designated channel regardless of where commands are used. The bot creates a placeholder message on startup and updates it as tracks change.
 
-### Features:
-- Fixed player display in a designated channel
-- Automatically updates when tracks change
-- Creates placeholder message on bot startup
+To set up:
+1. Create a dedicated text channel in your Discord server
+2. Right-click the channel and select **Copy Channel ID** (requires Developer Mode in Discord settings)
+3. Set the values in `config.fds`:
+   ```yaml
+   visualPlayer:
+       staticChannel:
+           enabled: true
+           channelId: 123456789012345678
+   ```
 
-### Configuration:
+## Progress Bar
 
-| Variable | Description | Default | Options |
-|----------|-------------|---------|---------|
-| `USE_STATIC_PLAYER_CHANNEL` | Enables static player channel | `false` | `true`/`false` |
-| `STATIC_PLAYER_CHANNEL_ID` | Discord channel ID for static player | N/A | Valid Discord channel ID |
+The progress bar shows a live-updating track position that refreshes every second.
 
-Add these variables to your `.env` file:
+### Size Options
 
-```bash
-# Static Player Configuration
-USE_STATIC_PLAYER_CHANNEL=true
-STATIC_PLAYER_CHANNEL_ID=123456789012345678  # Replace with your channel ID
+| Size | Segments | Best For |
+|------|----------|----------|
+| `small` | 10 | Mobile / narrow displays |
+| `medium` | 16 | Default — works well on most screens |
+| `large` | 22 | Desktop / wide displays |
+
+### Custom Emoji vs Unicode Fallback
+
+- **Custom emoji** (30 Discord application emoji) provide a smooth-fill progress bar with partial fill levels
+- **Unicode fallback** (`▓░`) works everywhere but only supports filled/empty (no partial fill)
+
+To use custom emoji, upload the images from `Images/Icons/progress/` to your bot application in the [Discord Developer Portal](https://discord.com/developers/applications) and paste the IDs into `config.fds`. See the [Configuration Guide](../Setup/Configuration.md) for a detailed walkthrough.
+
+To disable the progress bar entirely (reduces Discord API calls):
+```yaml
+visualPlayer:
+    progressBar:
+        enabled: false
 ```
 
-## Example Setup
+## Player Controls
 
-Complete `.env` configuration example:
+The player includes interactive buttons:
 
-```bash
-# Basic Bot Configuration
-DISCORD_TOKEN=your_discord_token_here
-DISCORD_APPLICATION_ID=your_application_id_here
-
-# Player UI Configuration
-PLAYER_STYLE_VISUAL=true
-USE_STATIC_PLAYER_CHANNEL=true
-STATIC_PLAYER_CHANNEL_ID=123456789012345678
-```
+| Button | Action |
+|--------|--------|
+| Pause/Resume | Toggle playback |
+| Skip | Skip to next track |
+| Repeat | Cycle: Off → Queue → Track |
+| Shuffle | Shuffle the current queue |
+| Volume Up/Down | Adjust volume by 10% |
+| Stop | Stop playback and disconnect |
+| Queue | View and manage the queue |
 
 ## Troubleshooting
 
-### Visual Player Shows No Album Art
-- Ensure the bot has access to the internet to download album artwork
-- Check that the Docker container has font packages installed
-- Verify that your `.env` file has `PLAYER_STYLE_VISUAL=true`
+### Visual Player Shows No Text or Broken Image
+- Rebuild the Docker container to ensure font packages are installed: `docker-compose up -d --build`
+- The Dockerfile installs DejaVu, Liberation, Noto (including CJK and emoji) fonts automatically
 
 ### Static Player Not Appearing
-- Verify that the channel ID is correct
-- Ensure the bot has permissions to send messages in the designated channel
-- Check that both `USE_STATIC_PLAYER_CHANNEL=true` and `STATIC_PLAYER_CHANNEL_ID` are set
+- Verify the channel ID is correct (must be the numeric ID, not the channel name)
+- Ensure the bot has **Send Messages** and **Attach Files** permissions in the channel
+- Check that `staticChannel.enabled` is `true` in `config.fds`
+
+### Progress Bar Not Showing
+- Check that `progressBar.enabled` is `true` in `config.fds`
+- If using custom emoji, ensure all 30 IDs are present and valid — missing IDs cause a fallback to unicode
