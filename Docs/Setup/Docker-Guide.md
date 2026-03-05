@@ -1,335 +1,176 @@
-# Docker Deployment Guide for PlexBot
+# Docker Deployment Guide
 
-This guide covers everything you need to know about deploying and managing PlexBot using Docker containers.
+## Overview
 
-## Introduction to Docker
-
-Docker allows PlexBot to run in an isolated container with all dependencies pre-configured, making deployment consistent across different environments.
+PlexBot runs as two Docker containers — the bot itself (.NET 9) and Lavalink (Java audio server). The install scripts handle everything, but this guide covers the Docker setup in detail for customization and troubleshooting.
 
 ## Prerequisites
 
-- Docker Engine (v20.10.0+)
-- Docker Compose (v2.0.0+)
-- Git (for cloning the repository)
-- Internet connection for pulling images
+- Docker Engine 20.10+
+- Docker Compose v2+
+- Git
 
 ## Project Structure
 
-The PlexBot Docker setup uses these key files:
-
-- `Install/Docker/dockerfile` - Defines the PlexBot container image
-- `docker-compose.yml` - Orchestrates PlexBot and Lavalink services
-- `Install/Docker/startup.sh` - Container entrypoint script
-
-## Quick Start
-
-```bash
-# Clone the repository
-git clone https://github.com/kalebbroo/plex_music_bot.git
-cd plex_music_bot
-
-# Configure environment variables
-cp RenameMe.env.txt .env
-nano .env  # Edit with your Discord token and other settings
-
-# Run the installation script
-## For Windows:
-cd Install
-win-inatall.bat
-
-## For Linux:
-chmod +x ./Install/linux-install.sh
-./Install/linux-install.sh
+```
+PlexBot/
+├── Install/Docker/
+│   ├── dockerfile              # Multi-stage .NET 9 build
+│   ├── docker-compose.yml      # Orchestrates PlexBot + Lavalink
+│   ├── lavalink.application.yml  # Lavalink server config
+│   ├── startup.sh              # Container entrypoint
+│   └── plugins/                # Lavalink plugins (YouTube, etc.)
+├── .env                        # Secrets (tokens, passwords)
+├── config.fds                  # Application settings
+└── logs/                       # Persisted log files
+    └── lavalink/               # Lavalink logs
 ```
 
-## Docker Compose Configuration
+## Docker Compose Services
 
-The default `docker-compose.yml` sets up two services:
+### PlexBot Service
 
-```yaml
-version: '3'
-services:
-  plexbot:
-    build:
-      context: .
-      dockerfile: ./Install/Docker/dockerfile
-    restart: unless-stopped
-    volumes:
-      - ./data:/app/data
-    depends_on:
-      - lavalink
-    env_file:
-      - .env
+- **Image**: Built from `Install/Docker/dockerfile`
+- **Container name**: `PlexBot`
+- **Depends on**: Lavalink (starts after Lavalink is ready)
+- **Volumes**:
+  - `../../` → `/source` (project root for live source access)
+  - `../../data` → `/app/data` (persistent data)
+  - `../../logs` → `/app/logs` (bot logs)
+  - `../../.env` → `/app/.env` (secrets)
+  - `../../config.fds` → `/app/config.fds` (settings)
+  - `../../Images` → `/app/Images` (player assets)
+- **Network**: `plexbot-network` (bridge)
 
-  lavalink:
-    image: fredboat/lavalink:latest
-    restart: unless-stopped
-    volumes:
-      - ./Install/Lavalink/application.yml:/opt/Lavalink/application.yml
-```
+### Lavalink Service
 
-### Key Components:
+- **Image**: `ghcr.io/lavalink-devs/lavalink:4`
+- **Container name**: `LavaLink`
+- **Ports**: `2333:2333` (configurable via `LAVALINK_SERVER_PORT` in `.env`)
+- **Volumes**:
+  - `lavalink.application.yml` → Lavalink config
+  - `plugins/` → Lavalink plugins
+  - `../../logs/lavalink` → Lavalink log files (persisted)
+- **Network**: `plexbot-network` (bridge)
 
-- **PlexBot Service**:
-  - Built from the local Dockerfile
-  - Persistent data through volume mount
-  - Environment variables from `.env` file
-  - Auto-restarts unless manually stopped
+## Dockerfile
 
-- **Lavalink Service**:
-  - Uses official Fredboat Lavalink image
-  - Custom configuration through mounted `application.yml`
-  - Auto-restarts unless manually stopped
+The build uses a multi-stage .NET 9 SDK image:
 
-## Dockerfile Analysis
-
-The PlexBot Dockerfile builds a .NET application with required dependencies:
-
+**Build stage**: Restores and publishes the .NET project
 ```dockerfile
-FROM mcr.microsoft.com/dotnet/sdk:7.0 AS build
-
-# Install necessary dependencies
-RUN apt-get update && apt-get install -y \
-    curl \
-    unzip \
-    git \
-    fontconfig \
-    fonts-dejavu \
-    fonts-liberation \
-    fonts-noto \
-    && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /app
-COPY . ./
-
-# Build the application
-RUN dotnet restore && \
-    dotnet publish -c Release -o out
-
-# Setup the runtime container
-FROM mcr.microsoft.com/dotnet/aspnet:7.0
-WORKDIR /app
-COPY --from=build /app/out .
-COPY Install/Docker/startup.sh /app/startup.sh
-RUN chmod +x /app/startup.sh
-
-# Set the entrypoint
-ENTRYPOINT ["/app/startup.sh"]
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+WORKDIR /source
+COPY . .
+RUN dotnet restore
+RUN dotnet publish -c Release -o /app
 ```
 
-### Key Features:
+**Runtime stage**: Uses the SDK image (not just runtime) to support live source rebuilds. Installs font packages for ImageSharp text rendering:
+- `fonts-dejavu`, `fonts-liberation` — Latin text
+- `fonts-noto`, `fonts-noto-cjk`, `fonts-noto-color-emoji` — CJK characters and emoji
+- `fonts-ipafont-gothic`, `fonts-ipafont-mincho` — Japanese text
 
-- **Multi-stage build**: Smaller final image by separating build and runtime environments
-- **Font packages**: Installed for proper text rendering on player images
-- **Startup script**: Handles initialization and ensures code updates are applied
-
-## Volume Mounts
-
-Docker volumes preserve data between container restarts:
-
-| Container Path | Host Path | Purpose |
-|----------------|-----------|---------|
-| `/app/data` | `./data` | Persistent bot data storage |
-| `/opt/Lavalink/application.yml` | `./Install/Lavalink/application.yml` | Lavalink configuration |
-
-## Managing Docker Containers
+## Container Management
 
 ### Viewing Logs
 
 ```bash
-# View logs from both services
+# Both services
 docker-compose logs
 
-# View only PlexBot logs with follow option
+# Follow PlexBot logs
 docker-compose logs -f plexbot
 
-# View only Lavalink logs with follow option
+# Follow Lavalink logs
 docker-compose logs -f lavalink
 ```
 
-### Container Management
+Bot logs are also saved to `logs/` and Lavalink logs to `logs/lavalink/` on the host.
+
+### Start / Stop / Restart
 
 ```bash
-# Stop containers
-docker-compose down
-
-# Start containers
-docker-compose up -d
-
-# Restart a specific service
-docker-compose restart plexbot
-
-# Rebuild and restart (after code changes)
-docker-compose up -d --build
+docker-compose up -d          # Start
+docker-compose down            # Stop
+docker-compose restart plexbot # Restart just the bot
+docker-compose up -d --build   # Rebuild and restart
 ```
 
-### Checking Container Status
+### Check Status
 
 ```bash
-# List running containers
-docker-compose ps
-
-# View resource usage
-docker stats
+docker-compose ps    # List containers
+docker stats         # Resource usage
 ```
 
-## Updating PlexBot
+## Updating
 
-To update PlexBot to the latest version:
+Pull the latest code and rebuild:
 
 ```bash
-# Pull the latest code
 git pull
-
-# Rebuild and restart containers
 docker-compose down
 docker-compose up -d --build
 ```
 
-## Customizing the Docker Setup
+Or just run the install script again — it handles this automatically.
 
-### Using Custom Ports
+## Performance Tuning
 
-Modify `docker-compose.yml` to change port mappings:
+Two optional settings in `docker-compose.yml` help with audio stuttering:
 
-```yaml
-services:
-  lavalink:
-    # Other settings...
-    ports:
-      - "8888:2333"  # Maps container port 2333 to host port 8888
+### JVM Garbage Collection
+
+Uncomment `_JAVA_OPTIONS` in `.env` to switch Lavalink's JVM to ZGC:
+```env
+_JAVA_OPTIONS=-XX:+UseZGC -XX:+ZGenerational -Xms256m -Xmx512m
 ```
 
-### Adding Custom Volumes
+### CPU Pinning
 
-For additional persistent storage:
-
+Uncomment `cpuset` and `cpu_shares` in `docker-compose.yml` to reserve CPU cores for Lavalink:
 ```yaml
-services:
-  plexbot:
-    # Other settings...
-    volumes:
-      - ./data:/app/data
-      - ./custom_files:/app/custom_files
+cpuset: "0,1"
+cpu_shares: 2048
 ```
 
-### Setting Resource Limits
+See the [README Performance Tuning](../../README.md#performance-tuning-audio-stuttering-fix) section for details.
 
-To prevent resource exhaustion on your host:
+## Remote Lavalink
 
-```yaml
-services:
-  plexbot:
-    # Other settings...
-    deploy:
-      resources:
-        limits:
-          cpus: '1.0'
-          memory: 1G
+To use a Lavalink server running on a different machine, update `.env`:
+
+```env
+LAVALINK_HOST=192.168.1.100
+LAVALINK_SERVER_PORT=2333
+LAVALINK_SERVER_PASSWORD=mypassword
+LAVALINK_SECURE=false
 ```
+
+Then remove or comment out the `lavalink` service and `depends_on` block in `docker-compose.yml`.
 
 ## System Requirements
 
-Minimum recommended specifications for running PlexBot in Docker:
+| Resource | Minimum |
+|----------|---------|
+| CPU | 2 cores |
+| RAM | 2 GB |
+| Disk | 1 GB free |
+| Network | Stable connection to Discord and Plex |
 
-- **CPU**: 2 cores
-- **RAM**: 2GB
-- **Storage**: 1GB free space
-- **Network**: 5 Mbps upload/download
+## Security
 
-## Handling Container Updates
+- Store all tokens and passwords in `.env` — never in `docker-compose.yml` or code
+- Don't expose the Lavalink port publicly unless you need remote access
+- `.env` is `.gitignore`d — never commit it
 
-The container automatically checks for code updates on startup via the `startup.sh` script:
+## Troubleshooting
 
-```bash
-#!/bin/bash
-cd /app
-
-echo "Starting PlexBot..."
-echo "Checking for updates..."
-
-# Code update logic here
-
-dotnet PlexBot.dll
-```
-
-## Security Considerations
-
-- **Environment Variables**: Store sensitive tokens in `.env` file, not in `docker-compose.yml`
-- **Network Exposure**: Avoid exposing Lavalink ports publicly
-- **Volume Permissions**: Ensure proper file permissions on mounted volumes
-
-## Troubleshooting Docker Issues
-
-### Container Fails to Start
-
-Check logs for error messages:
-```bash
-docker-compose logs plexbot
-```
-
-Common issues:
-- Missing required environment variables
-- Incorrect file permissions
-- Port conflicts
-
-### Container Starts but Bot is Offline
-
-Verify network connectivity and Discord token:
-```bash
-docker exec -it plexbot_plexbot_1 ping discord.com
-```
-
-### High Resource Usage
-
-Monitor and adjust resource limits:
-```bash
-docker stats
-```
-
-Consider increasing limits in `docker-compose.yml` if resources are exhausted.
-
-## Advanced Docker Configurations
-
-### Docker Networks
-
-For enhanced security, create isolated networks:
-
-```yaml
-services:
-  plexbot:
-    # Other settings...
-    networks:
-      - bot_network
-  
-  lavalink:
-    # Other settings...
-    networks:
-      - bot_network
-
-networks:
-  bot_network:
-    driver: bridge
-```
-
-### Health Checks
-
-Add health monitoring to automatically restart unhealthy containers:
-
-```yaml
-services:
-  plexbot:
-    # Other settings...
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-```
+See the [Troubleshooting Guide](../Guides/Troubleshooting.md) for common issues.
 
 ## Additional Resources
 
+- [Installation Guide](./Installation.md)
+- [Configuration Guide](./Configuration.md)
 - [Docker Documentation](https://docs.docker.com/)
-- [Docker Compose Documentation](https://docs.docker.com/compose/)
-- [PlexBot Installation Guide](./Installation.md)
-- [PlexBot Configuration Guide](./Configuration.md)

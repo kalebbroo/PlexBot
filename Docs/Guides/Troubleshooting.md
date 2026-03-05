@@ -1,270 +1,161 @@
 # PlexBot Troubleshooting Guide
 
-This guide provides solutions to common issues you might encounter when running PlexBot.
-
 ## Table of Contents
 - [Connection Issues](#connection-issues)
 - [Audio Problems](#audio-problems)
 - [Visual Player Issues](#visual-player-issues)
+- [Track Loading Failures](#track-loading-failures)
 - [Command Problems](#command-problems)
-- [Docker-Specific Issues](#docker-specific-issues)
+- [Docker Issues](#docker-issues)
 - [Lavalink Issues](#lavalink-issues)
 
 ## Connection Issues
 
 ### Bot Won't Connect to Discord
 
-**Symptoms:**
-- Bot shows offline in Discord
-- Logs show connection errors
+- Verify `DISCORD_TOKEN` in `.env` is correct
+- Check [Discord Status](https://discordstatus.com/) for outages
+- Ensure the bot has been invited to your server with the correct permissions
+- Check the bot logs: `docker-compose logs plexbot`
 
-**Solutions:**
+### Bot Is Online but Not Responding
 
-1. **Check Discord Token:**
-   ```bash
-   # Verify your token is correct in .env
-   DISCORD_TOKEN=your_discord_token_here
-   ```
-
-2. **Verify Network Connectivity:**
-   ```bash
-   # Test connection to Discord
-   ping discord.com
-   ```
-
-3. **Check Discord API Status:**
-   Visit [Discord Status](https://discordstatus.com/) to see if there are any ongoing API issues.
-
-4. **Review Bot Permissions:**
-   Ensure your bot has the correct OAuth2 scopes and permissions.
+- Ensure the bot has **Use Application Commands** permission in your server
+- Slash commands can take up to 1 hour to propagate globally — set `bot.environment: Development` in `config.fds` for instant guild-scoped updates
+- Try restarting: `docker-compose restart plexbot`
 
 ## Audio Problems
 
 ### No Sound in Voice Channel
 
-**Symptoms:**
-- Bot joins voice channel but doesn't play audio
-- Commands seem to work but no music plays
-
-**Solutions:**
-
-1. **Check Lavalink Connection:**
-   ```bash
-   # In Docker:
-   docker-compose logs lavalink
-   
-   # Look for successful connection messages
+1. Check that Lavalink is running: `docker-compose logs lavalink`
+2. Ensure the bot has **Connect** and **Speak** permissions in the voice channel
+3. Verify Lavalink connection settings in `.env` match your setup:
+   ```env
+   LAVALINK_HOST=Lavalink
+   LAVALINK_SERVER_PORT=2333
+   LAVALINK_SERVER_PASSWORD=youshallnotpass
    ```
+4. Make sure your Plex server is reachable from the machine running PlexBot
 
-2. **Verify Voice Channel Permissions:**
-   - Ensure bot has "Connect" and "Speak" permissions in the voice channel
+### Audio Stuttering / Skipping
 
-3. **Test with Different Audio Sources:**
-   - Try YouTube links
-   - Try Spotify links
-   - Try direct file playback
+Lavalink must send an audio frame to Discord every 20ms. Stuttering is caused by interruptions to this schedule.
 
-4. **Check Volume Settings:**
+**Quick fixes:**
+1. Uncomment `_JAVA_OPTIONS` in `.env` to enable ZGC garbage collection:
+   ```env
+   _JAVA_OPTIONS=-XX:+UseZGC -XX:+ZGenerational -Xms256m -Xmx512m
    ```
-   /volume 100
-   ```
+2. Uncomment `cpuset` and `cpu_shares` in `docker-compose.yml` to pin CPU cores for Lavalink
 
-### Choppy or Stuttering Audio
-
-**Symptoms:**
-- Audio plays but frequently stutters or cuts out
-
-**Solutions:**
-
-1. **Check Server Resources:**
-   ```bash
-   # Check CPU and memory usage
-   top
-   ```
-
-2. **Optimize Lavalink:**
-   Adjust Lavalink buffer settings in `application.yml`
-
-3. **Network Bandwidth:**
-   Ensure your server has sufficient upload bandwidth
+See the [Performance Tuning](../../README.md#performance-tuning-audio-stuttering-fix) section in the README for full details.
 
 ## Visual Player Issues
 
 ### No Text on Player Images
 
-**Symptoms:**
-- Player image shows but has no text overlay
-- Background image appears without track information
+The modern visual player renders text with ImageSharp, which requires fonts installed in the Docker container.
 
-**Solutions:**
-
-1. **Verify Font Packages in Docker:**
-   ```bash
-   # Check if fonts are installed
-   docker exec -it plexbot_plexbot_1 fc-list
-   
-   # If empty or error, rebuild with fonts
-   docker-compose up -d --build
-   ```
-
-2. **Check Logs for Font Errors:**
-   ```bash
-   docker-compose logs | grep -i font
-   ```
-
-3. **Manual Font Installation:**
-   ```bash
-   # If using Docker, modify Dockerfile to include:
-   RUN apt-get update && apt-get install -y \
-       fontconfig \
-       fonts-dejavu \
-       fonts-liberation \
-       fonts-noto
-   ```
+- Rebuild the container: `docker-compose up -d --build`
+- The Dockerfile installs DejaVu, Liberation, Noto (including CJK and emoji) fonts automatically
+- Check for font errors: `docker-compose logs plexbot | grep -i font`
 
 ### Player Image Not Showing
 
-**Symptoms:**
-- No album art or player image appears
-- Only text information is displayed
+- Ensure `visualPlayer.useModernPlayer` is `true` in `config.fds`
+- Make sure the bot has **Attach Files** permission in the channel
+- Check logs for ImageSharp errors
 
-**Solutions:**
+### Progress Bar Missing or Broken
 
-1. **Check Network Access:**
-   Ensure the bot can access external URLs for album art
+- Verify `visualPlayer.progressBar.enabled` is `true` in `config.fds`
+- If using custom emoji, all 30 IDs must be present — missing IDs trigger a fallback to unicode
+- Check the bot startup log for "Progress bar: Using custom Discord emoji" or "Using unicode fallback"
 
-2. **Enable Visual Player Mode:**
-   ```bash
-   # In .env file
-   PLAYER_STYLE_VISUAL=true
-   ```
+### Progress Bar Wraps on Mobile
 
-3. **Check ImageSharp Errors:**
-   Look for image processing errors in logs
+Set `visualPlayer.progressBar.size` to `small` in `config.fds` for a narrower bar that fits mobile screens.
+
+## Track Loading Failures
+
+### "Added X of Y tracks" — Some Tracks Failed
+
+When loading large playlists, Plex can drop connections under concurrent load.
+
+**Fixes:**
+1. Lower `plex.maxConcurrentResolves` in `config.fds` (default: `3`, try `2` or `1`)
+2. Failed tracks are retried automatically — check logs for "Retry succeeded" vs "Failed to resolve after retry"
+3. The player embed shows which specific tracks failed to load
+
+### All Tracks Fail
+
+- Verify Plex is reachable: `curl -H "X-Plex-Token: YOUR_TOKEN" http://your-plex-ip:32400`
+- Check that your `PLEX_URL` and `PLEX_TOKEN` in `.env` are correct
+- Look at Lavalink logs for connection errors: check `logs/lavalink/` or `docker-compose logs lavalink`
 
 ## Command Problems
 
-### Commands Not Responding
+### Slash Commands Not Appearing
 
-**Symptoms:**
-- Bot is online but doesn't respond to commands
-- No error messages appear
+- Commands may take up to 1 hour to register globally with Discord
+- For instant updates during development, set `bot.environment: Development` in `config.fds` (guild-scoped commands update immediately)
+- Ensure the bot has **Use Application Commands** permission
 
-**Solutions:**
+### Buttons Not Responding
 
-1. **Verify Command Registration:**
-   Check if slash commands are registered with Discord
+- There is a 2-second cooldown on all button interactions — wait and try again
+- Check that the bot is still running: `docker-compose logs plexbot`
+- If the player message is old (from a previous bot session), start a new one with `/play` or `/search`
 
-2. **Check Bot Permissions:**
-   Ensure "Use Application Commands" permission is granted
-
-3. **Server-Specific Issues:**
-   Try the bot in a different server or channel
-
-4. **Restart the Bot:**
-   ```bash
-   docker-compose restart plexbot
-   ```
-
-### Command Syntax Errors
-
-**Symptoms:**
-- Commands return syntax errors
-- "Unknown command" messages
-
-**Solutions:**
-
-1. **Review Command Documentation:**
-   Use `/help` to see correct command syntax
-
-2. **Check for Updates:**
-   Your bot version might be outdated
-
-## Docker-Specific Issues
+## Docker Issues
 
 ### Container Crashes on Startup
 
-**Symptoms:**
-- Docker container exits shortly after starting
-- Logs show initialization errors
-
-**Solutions:**
-
-1. **Check Environment Variables:**
-   Ensure all required variables are set in `.env`
-
-2. **Increase Container Resources:**
-   Allocate more CPU/memory to the container
-
-3. **File Permissions:**
-   Check permissions on mounted volumes
-
-4. **Clean Rebuild:**
+1. Check logs: `docker-compose logs plexbot`
+2. Verify all required environment variables are set in `.env` (`DISCORD_TOKEN`, `PLEX_URL`, `PLEX_TOKEN`)
+3. Make sure `config.fds` exists at the project root (copy from `RenameMe.config.fds`)
+4. Try a clean rebuild:
    ```bash
    docker-compose down
-   docker system prune -a
    docker-compose up -d --build
    ```
 
-### Volume Mounting Issues
+### Config Changes Not Taking Effect
 
-**Symptoms:**
-- Data doesn't persist between restarts
-- Configuration changes don't take effect
+Both `.env` and `config.fds` are read at startup. After changes, restart the bot:
+```bash
+docker-compose restart plexbot
+```
 
-**Solutions:**
+### Lavalink Logs Lost After Container Rebuild
 
-1. **Check Volume Paths:**
-   Ensure paths in `docker-compose.yml` are correct
-
-2. **Verify File Ownership:**
-   Files should be owned by the user inside the container
+Lavalink logs are persisted to `logs/lavalink/` on the host via volume mount. They survive container rebuilds.
 
 ## Lavalink Issues
 
-### Lavalink Connection Failures
+### "Unable to connect to Lavalink node"
 
-**Symptoms:**
-- Errors about "Unable to connect to Lavalink node"
-- Audio commands fail with connection errors
-
-**Solutions:**
-
-1. **Check Lavalink Availability:**
-   ```bash
-   # Test if Lavalink is accessible
-   curl -I http://lavalink:2333
+1. Check that the Lavalink container is running: `docker-compose ps`
+2. Verify the settings in `.env` match:
+   ```env
+   LAVALINK_HOST=Lavalink          # Docker service name
+   LAVALINK_SERVER_PORT=2333
+   LAVALINK_SERVER_PASSWORD=youshallnotpass
    ```
+3. Both containers must be on the same Docker network (`plexbot-network`)
+4. Restart Lavalink: `docker-compose restart lavalink`
 
-2. **Verify Lavalink Configuration:**
-   ```bash
-   # In .env
-   LAVALINK_HOST=lavalink
-   LAVALINK_PORT=2333
-   LAVALINK_PASSWORD=youshallnotpass
-   ```
+### Remote Lavalink Connection Issues
 
-3. **Lavalink Log Analysis:**
-   ```bash
-   docker-compose logs lavalink
-   ```
-
-4. **Restart Lavalink:**
-   ```bash
-   docker-compose restart lavalink
-   ```
+If using a remote Lavalink server:
+- Set `LAVALINK_HOST` to the IP/hostname of the remote server
+- Set `LAVALINK_SECURE=true` if behind an HTTPS reverse proxy
+- Ensure the port is open and reachable from the PlexBot machine
 
 ## Still Having Issues?
 
-If you've tried the solutions above and are still experiencing problems:
-
-1. **Check Full Logs:**
-   ```bash
-   docker-compose logs > plexbot-logs.txt
-   ```
-
-2. **Open an Issue:**
-   Submit the logs and a detailed description of your issue on our [GitHub repository](https://github.com/kalebbroo/plex_music_bot/issues)
-
-3. **Discord Support:**
-   Join our support server for real-time assistance
+1. Collect logs: `docker-compose logs > plexbot-debug.txt`
+2. Check PlexBot logs in `logs/` and Lavalink logs in `logs/lavalink/`
+3. Open an issue on [GitHub](https://github.com/kalebbroo/PlexBot/issues) with the logs and a description of the problem
+4. Join the [Discord support server](https://discord.com/invite/5m4Wyu52Ek)

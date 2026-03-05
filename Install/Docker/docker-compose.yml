@@ -33,15 +33,29 @@ services:
     env_file:
       - ../../.env
     environment:
-      # These can override what's in the .env file if needed
-      - SERVER_PORT=${SERVER_PORT:-2333}
-      - SERVER_ADDRESS=${SERVER_ADDRESS:-0.0.0.0}
+      # Map PlexBot env vars to what the Lavalink container expects
+      - SERVER_PORT=${LAVALINK_SERVER_PORT:-2333}
+      - SERVER_ADDRESS=0.0.0.0
       - LAVALINK_SERVER_PASSWORD=${LAVALINK_SERVER_PASSWORD:-youshallnotpass}
+      # JVM tuning — uncomment _JAVA_OPTIONS in .env to enable ZGC (reduces audio stuttering)
+      - _JAVA_OPTIONS=${_JAVA_OPTIONS:-}
     volumes:
       - ./lavalink.application.yml:/opt/Lavalink/application.yml
       - ./plugins:/opt/Lavalink/plugins
+      - ../../logs/lavalink:/opt/Lavalink/logs
     ports:
-      - "${SERVER_PORT:-2333}:${SERVER_PORT:-2333}"
+      - "${LAVALINK_SERVER_PORT:-2333}:${LAVALINK_SERVER_PORT:-2333}"
+    # --- Optional: CPU Pinning & Priority ---
+    # Reserves dedicated CPU cores for Lavalink so other processes on the host
+    # cannot starve its audio thread. Lavalink must send an Opus frame every 20ms;
+    # if the OS scheduler preempts it (e.g. when opening a browser), you hear a stutter.
+    # Only uncomment if you experience audio stuttering and are running other
+    # workloads on the same machine.
+    # Tradeoffs:
+    #   - cpuset pinning makes those cores unavailable to other containers
+    #   - cpu_shares only affects scheduling under contention, no impact when idle
+    # cpuset: "0,1"        # Pin Lavalink to CPU cores 0 and 1
+    # cpu_shares: 2048      # Double default priority (1024) under CPU contention
     networks:
       - plexbot-network
 

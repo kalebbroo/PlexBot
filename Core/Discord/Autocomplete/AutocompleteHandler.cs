@@ -95,10 +95,7 @@ public class PlaylistAutocompleteHandler : AutocompleteHandler
         catch (Exception ex)
         {
             Logs.Error($"Error generating playlist suggestions: {ex.Message}");
-            // Return a friendly error message but still let the dropdown appear
-            return AutocompletionResult.FromSuccess([
-                new AutocompleteResult("Error loading playlists. Try again later.", "error")
-            ]);
+            return AutocompletionResult.FromSuccess([]);
         }
     }
 }

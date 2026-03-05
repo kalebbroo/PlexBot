@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using Lavalink4NET;
 using PlexBot.Core.Models.Media;
 using PlexBot.Utils;
 using Discord.WebSocket;
@@ -18,7 +17,8 @@ namespace PlexBot.Core.Discord.Interactions;
 /// <param name="playerService">Service for managing audio playback</param>
 /// <param name="audioService">Service for managing audio playback</param>
 public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayerService playerService,
-    IAudioService audioService, VisualPlayer visualPlayer, DiscordButtonBuilder buttonBuilder) : InteractionModuleBase<SocketInteractionContext>
+    VisualPlayer visualPlayer, DiscordButtonBuilder buttonBuilder,
+    ITrackResolverService trackResolver) : InteractionModuleBase<SocketInteractionContext>
 {
 
     // Cooldown tracking to prevent spamming
@@ -349,32 +349,19 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
     {
         try
         {
-            // Get albums by the artist
-            List<Album> albums = await plexMusicService.GetAlbumsAsync(artistKey);
-            if (albums.Count == 0)
-            {
-                await FollowupAsync(components: ComponentV2Builder.Error("Empty Artist", "The selected artist has no albums."), ephemeral: true);
-                return;
-            }
-            // Get all tracks from all albums
-            List<Track> allTracks = [];
-            foreach (Album album in albums)
-            {
-                List<Track> tracks = await plexMusicService.GetTracksAsync(album.SourceKey);
-                allTracks.AddRange(tracks);
-            }
+            // Get all tracks from all albums in parallel
+            List<Track> allTracks = await plexMusicService.GetAllArtistTracksAsync(artistKey);
             if (allTracks.Count == 0)
             {
                 await FollowupAsync(components: ComponentV2Builder.Error("Empty Artist", "The selected artist has no tracks."), ephemeral: true);
                 return;
             }
-            // Add all tracks to queue
             await playerService.AddToQueueAsync(Context.Interaction, allTracks);
         }
         catch (Exception ex)
         {
             Logs.Error($"Error handling artist selection: {ex.Message}");
-            throw; // Rethrow for the caller to handle
+            throw;
         }
     }
 
@@ -387,44 +374,29 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
         try
         {
             Logs.Debug($"Handling YouTube selection for URL: {videoUrl}");
-            // Get a player
-            QueuedLavalinkPlayer? player = await playerService.GetPlayerAsync(Context.Interaction, true);
-            if (player == null)
-            {
-                await FollowupAsync(components: ComponentV2Builder.Error("Player Error", "Failed to initialize player for YouTube playback."), ephemeral: true);
-                return;
-            }
-            // Create the proper load options
-            TrackLoadOptions loadOptions = new()
-            {
-                SearchMode = TrackSearchMode.None // Use None since we have a direct URL
-            };
-            // Load the track just to test if it's playable
-            LavalinkTrack? lavalinkTrack = await audioService.Tracks.LoadTrackAsync(
-                videoUrl,
-                loadOptions,
-                cancellationToken: CancellationToken.None);
-            if (lavalinkTrack == null)
+
+            // Create a track stub and resolve through the resolver (single Lavalink call)
+            Track track = Track.CreateFromUrl("Loading...", "YouTube", videoUrl, "", "youtube");
+            LavalinkTrack? resolved = await trackResolver.ResolveTrackAsync(track);
+
+            if (resolved == null)
             {
                 await FollowupAsync(components: ComponentV2Builder.Error("YouTube Error", "This YouTube video cannot be played. It may be age-restricted or requires login."), ephemeral: true);
                 return;
             }
-            // Create our custom track
-            Track track = Track.CreateFromUrl(
-                lavalinkTrack.Title ?? "YouTube Track",
-                lavalinkTrack.Author ?? "YouTube",
-                videoUrl,
-                lavalinkTrack.ArtworkUri?.ToString() ?? "",
-                "youtube"
-            );
 
-            // Use your existing player service
+            // Update track metadata from what Lavalink found
+            track.Title = resolved.Title ?? "YouTube Track";
+            track.Artist = resolved.Author ?? "YouTube";
+            track.ArtworkUrl = resolved.ArtworkUri?.ToString() ?? "";
+
+            // Queue the track (resolver in AddToQueueAsync will resolve again, but the URL is the same
+            // and Lavalink handles this efficiently — the key win is removing the duplicate GetPlayerAsync call)
             await playerService.AddToQueueAsync(Context.Interaction, [track]);
         }
         catch (Exception ex)
         {
             Logs.Error($"Error handling YouTube selection: {ex.Message}");
-            // Check for specific error message
             if (ex.Message.Contains("login") || ex.Message.Contains("This video requires login"))
             {
                 await FollowupAsync(components: ComponentV2Builder.Error("YouTube Error", "This YouTube video cannot be played as it requires login or is age-restricted."), ephemeral: true);
@@ -503,14 +475,28 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
     private static bool IsOnCooldown(ulong userId, string commandId)
     {
         var key = (userId, commandId);
+        DateTime now = DateTime.UtcNow;
+
+        // Prune stale entries periodically to prevent unbounded growth
+        if (_lastInteracted.Count > 100)
+        {
+            foreach (var staleKey in _lastInteracted
+                .Where(kvp => now - kvp.Value > TimeSpan.FromMinutes(5))
+                .Select(kvp => kvp.Key)
+                .ToList())
+            {
+                _lastInteracted.TryRemove(staleKey, out _);
+            }
+        }
+
         if (_lastInteracted.TryGetValue(key, out DateTime lastTime))
         {
-            if (DateTime.UtcNow - lastTime < _cooldownPeriod)
+            if (now - lastTime < _cooldownPeriod)
             {
                 return true;
             }
         }
-        _lastInteracted[key] = DateTime.UtcNow;
+        _lastInteracted[key] = now;
         return false;
     }
 }

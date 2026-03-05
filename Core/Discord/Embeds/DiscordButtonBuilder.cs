@@ -1,4 +1,5 @@
-﻿using Discord;
+﻿using System.Collections.Concurrent;
+using Discord;
 using Discord.WebSocket;
 using PlexBot.Core.Services.LavaLink;
 using PlexBot.Utils;
@@ -96,7 +97,7 @@ namespace PlexBot.Core.Discord.Embeds
     /// <summary>Central management system for Discord buttons</summary>
     public class DiscordButtonBuilder
     {
-        private readonly Dictionary<string, (ButtonFlag Flags, int Priority, ButtonFactory Factory)> _buttonFactories = [];
+        private readonly ConcurrentDictionary<string, (ButtonFlag Flags, int Priority, ButtonFactory Factory)> _buttonFactories = new();
 
         public DiscordButtonBuilder()
         {
@@ -209,9 +210,11 @@ namespace PlexBot.Core.Discord.Embeds
         /// <returns>True if button was registered, false if it replaced an existing button</returns>
         public bool RegisterButton(string id, ButtonFlag flags, int priority, ButtonFactory factory)
         {
-            bool isNew = !_buttonFactories.ContainsKey(id);
-            _buttonFactories[id] = (flags, priority, factory);
-
+            bool isNew = _buttonFactories.TryAdd(id, (flags, priority, factory));
+            if (!isNew)
+            {
+                _buttonFactories[id] = (flags, priority, factory);
+            }
             Logs.Debug($"Button {(isNew ? "registered" : "updated")}: {id} with flags {flags} and priority {priority}");
             return isNew;
         }
@@ -221,7 +224,7 @@ namespace PlexBot.Core.Discord.Embeds
         /// <returns>True if button was found and removed, otherwise false</returns>
         public bool UnregisterButton(string id)
         {
-            bool result = _buttonFactories.Remove(id);
+            bool result = _buttonFactories.TryRemove(id, out _);
             if (result)
             {
                 Logs.Debug($"Button unregistered: {id}");

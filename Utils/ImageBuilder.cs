@@ -118,7 +118,7 @@ public static class ImageBuilder
     /// <param name="player">Optional player object to get current state (volume and repeat mode)</param>
     /// <returns>The generated image</returns>
     /// <summary>Creates a visually appealing player image by downloading album art and overlaying track details</summary>
-    public static async Task<Image> BuildPlayerImageAsync(CustomTrackQueueItem track, CustomLavaLinkPlayer? player = null, List<CustomTrackQueueItem>? upcomingTracks = null)
+    public static async Task<Image> BuildPlayerImageAsync(CustomTrackQueueItem track, CustomLavaLinkPlayer? player = null, List<CustomTrackQueueItem>? upcomingTracks = null, ITrackPrefetchService? prefetchService = null)
     {
         try
         {
@@ -131,13 +131,20 @@ public static class ImageBuilder
             Image<Rgba32> albumArt;
             try
             {
-                // Use HttpClientWrapper to download the image
-                string tempFilePath = Path.GetTempFileName();
-                await _httpClient.DownloadFileAsync(artworkUrl, tempFilePath);
-                // Load the image from the temp file
-                albumArt = Image.Load<Rgba32>(tempFilePath);
-                // Delete the temp file
-                try { File.Delete(tempFilePath); } catch { /* Ignore cleanup errors */ }
+                // Check prefetch cache first for pre-downloaded artwork
+                byte[]? prefetchedBytes = prefetchService?.GetCachedArtwork(artworkUrl);
+                if (prefetchedBytes != null)
+                {
+                    albumArt = Image.Load<Rgba32>(prefetchedBytes);
+                }
+                else
+                {
+                    // Fall back to downloading via HttpClientWrapper
+                    string tempFilePath = Path.GetTempFileName();
+                    await _httpClient.DownloadFileAsync(artworkUrl, tempFilePath);
+                    albumArt = Image.Load<Rgba32>(tempFilePath);
+                    try { File.Delete(tempFilePath); } catch { /* Ignore cleanup errors */ }
+                }
             }
             catch (Exception ex)
             {
