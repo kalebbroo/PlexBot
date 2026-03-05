@@ -75,6 +75,15 @@ visualPlayer:
             bar_right_filled:
 
 # ============================================
+# Plex Settings
+# ============================================
+plex:
+    # Max concurrent track resolves when loading playlists/albums
+    # Lower this if tracks fail to load (Plex drops connections under heavy concurrency)
+    # Higher values load playlists faster but may overwhelm your Plex server
+    maxConcurrentResolves: 3
+
+# ============================================
 # Logging Settings
 # ============================================
 logging:

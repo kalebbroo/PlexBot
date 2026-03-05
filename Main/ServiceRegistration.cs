@@ -98,13 +98,15 @@ namespace PlexBot.Main
             {
                 string password = EnvConfig.Get("LAVALINK_SERVER_PASSWORD", "youshallnotpass");
                 string host = EnvConfig.Get("LAVALINK_HOST", "lavalink");
-                string port = EnvConfig.Get("SERVER_PORT", "2333"); // Match your .env file
+                string port = EnvConfig.Get("LAVALINK_SERVER_PORT", "2333");
+                bool secure = EnvConfig.GetBool("LAVALINK_SECURE", false);
+                string scheme = secure ? "https" : "http";
 
                 options.Label = "PlexBot";
                 options.Passphrase = password;
                 options.HttpClientName = host;
                 options.BufferSize = 1024 * 1024 * 4;
-                options.BaseAddress = new Uri($"http://{host}:{port}");
+                options.BaseAddress = new Uri($"{scheme}://{host}:{port}");
                 options.ResumptionOptions = new LavalinkSessionResumptionOptions(TimeSpan.FromSeconds(60));
             });
 

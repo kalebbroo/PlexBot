@@ -163,7 +163,7 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
                 // Use a lock to ensure thread-safe queue insertion
                 using SemaphoreSlim queueLock = new(1, 1);
 
-                int successCount = await trackResolver.ResolveTracksParallelAsync(
+                TrackResolveResult resolveResult = await trackResolver.ResolveTracksParallelAsync(
                     remaining,
                     onResolved: async (Track track, LavalinkTrack resolved, int index) =>
                     {
@@ -184,10 +184,10 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
                             queueLock.Release();
                         }
                     },
-                    maxConcurrency: 5,
+                    maxConcurrency: BotConfig.GetInt("plex.maxConcurrentResolves", 3),
                     cancellationToken: cancellationToken);
 
-                int totalSuccess = successCount + 1; // +1 for the first track
+                int totalSuccess = resolveResult.SuccessCount + 1; // +1 for the first track
 
                 // Rebuild the player image now that the queue is fully populated (for Next Up display)
                 if (player is CustomLavaLinkPlayer customPlayerRefresh)
@@ -197,16 +197,27 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
                     await visualPlayer.AddOrUpdateVisualPlayerAsync(refreshComponents, recreateImage: true);
                 }
 
-                // Final status message
-                string message = totalSuccess == totalCount
-                    ? $"Added {totalSuccess} tracks to the queue"
-                    : $"Added {totalSuccess} of {totalCount} tracks to the queue";
-                await interaction.ModifyOriginalResponseAsync(msg =>
+                // Final status message — include failed track names if any
+                if (resolveResult.FailedTracks.Count > 0)
                 {
-                    msg.Components = ComponentV2Builder.Success("Tracks Added", message);
-                    msg.Embed = null;
-                    msg.Flags = MessageFlags.ComponentsV2;
-                });
+                    string failedList = string.Join("\n", resolveResult.FailedTracks.Select(t => $"• {t}"));
+                    string message = $"Added {totalSuccess} of {totalCount} tracks to the queue\n\n**Failed to load:**\n{failedList}";
+                    await interaction.ModifyOriginalResponseAsync(msg =>
+                    {
+                        msg.Components = ComponentV2Builder.Info("Tracks Added", message);
+                        msg.Embed = null;
+                        msg.Flags = MessageFlags.ComponentsV2;
+                    });
+                }
+                else
+                {
+                    await interaction.ModifyOriginalResponseAsync(msg =>
+                    {
+                        msg.Components = ComponentV2Builder.Success("Tracks Added", $"Added {totalSuccess} tracks to the queue");
+                        msg.Embed = null;
+                        msg.Flags = MessageFlags.ComponentsV2;
+                    });
+                }
             }
             else
             {

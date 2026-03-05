@@ -53,13 +53,7 @@ PlexBot offers two distinct player UIs:
 - **Traditional Discord embed**: Familiar, compact, and works anywhere.
 - **Great for multi-purpose channels**: Shows album art as a thumbnail.
 
-#### Player Style Configuration
-- Set the player style in your `.env` file:
-  - `PLAYER_STYLE_VISUAL=true` (Modern Visual)
-  - `PLAYER_STYLE_VISUAL=false` (Classic Embed)
-- To use a static player channel, set:
-  - `USE_STATIC_PLAYER_CHANNEL=true`
-  - `STATIC_PLAYER_CHANNEL_ID=<channel_id>`
+All player settings are in `config.fds` (see [Configuration](#-configuration) below).
 
 For more, see the [Player UI Guide](./Docs/Guides/Player-UI-Guide.md).
 
@@ -97,30 +91,134 @@ Show an interactive help menu with all commands and usage tips.
 See the [Installation Guide](./Docs/Setup/Installation.md) and [Configuration Guide](./Docs/Setup/Configuration.md) for full details.
 
 ### Prerequisites
-- Docker (Required)
-- Discord bot token
-- Plex server credentials (token & base URL)
+- Docker & Docker Compose (Docker Desktop recommended)
+- Discord bot token ([Developer Portal](https://discord.com/developers/applications))
+- Plex server URL and token ([How to get a Plex token](https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/))
 
 ### Quick Install
 ```bash
 git clone https://github.com/kalebbroo/PlexBot.git
 cd PlexBot
 ```
-Config the .env and run the install_win.bat/install_linux.sh. This will build the Docker image, install dependencies, and start the container. 
 
-### Basic Configuration
-Rename `.envrename.txt` to `.env` and fill in your credentials. Example:
-```env
-DISCORD_TOKEN=your-discord-bot-token
-PLEX_TOKEN=your-plex-token
-PLEX_BASE_URL=your-plex-base-url
-```
+1. **Secrets** — Copy `RenameMe.env.txt` to `.env` and fill in your credentials:
+   ```env
+   DISCORD_TOKEN=your-discord-bot-token
+   PLEX_URL=http://your-plex-ip:32400
+   PLEX_TOKEN=your-plex-token
+   ```
+
+2. **App settings** — Copy `RenameMe.config.fds` to `config.fds`. All player, logging, and behavior settings live here (see [Configuration](#-configuration) below).
+
+3. **Run the install script** — `Install/win-install.bat` (Windows) or `Install/linux-install.sh` (Linux). This builds the Docker images, installs dependencies, and starts the bot.
+
+---
+
+## 🔧 Configuration
+
+PlexBot uses **two config files**:
+
+| File | Purpose | Template |
+|------|---------|----------|
+| `.env` | Secrets & infrastructure (tokens, URLs, passwords) | `RenameMe.env.txt` |
+| `config.fds` | Application settings (player UI, logging, behavior) | `RenameMe.config.fds` |
+
+### `.env` — Secrets & Infrastructure
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `DISCORD_TOKEN` | Discord bot token | Yes |
+| `PLEX_URL` | Plex server URL with port (e.g. `http://192.168.1.50:32400`) | Yes |
+| `PLEX_TOKEN` | Plex authentication token | Yes |
+| `LAVALINK_HOST` | Lavalink hostname — `Lavalink` for Docker, or IP/hostname for remote (default: `Lavalink`) | No |
+| `LAVALINK_SERVER_PORT` | Lavalink port (default: `2333`) | No |
+| `LAVALINK_SERVER_PASSWORD` | Lavalink password (default: `youshallnotpass`) | No |
+| `LAVALINK_SECURE` | Use HTTPS/WSS for Lavalink connection — set `true` for remote servers behind SSL (default: `false`) | No |
+
+### `config.fds` — Application Settings
+
+Uses [Frenetic Data Syntax](https://github.com/FreneticLLC/FreneticUtilities) (YAML-like format). All settings have sensible defaults — you only need to change what you want to customize.
+
+#### Visual Player
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `visualPlayer.useModernPlayer` | bool | `true` | `true` = album art image player, `false` = classic Discord embed |
+| `visualPlayer.inactivityTimeout` | float | `2.0` | Minutes of silence before the bot auto-disconnects from voice |
+| `visualPlayer.staticChannel.enabled` | bool | `false` | Lock the player to one specific channel |
+| `visualPlayer.staticChannel.channelId` | int | `0` | Discord channel ID (right-click channel > Copy Channel ID) |
+| `visualPlayer.progressBar.enabled` | bool | `true` | Show a live-updating progress bar (updates every second). Disable to reduce Discord API calls |
+| `visualPlayer.progressBar.emoji.*` | int | _(empty)_ | Custom Discord emoji IDs for smooth-fill progress bar. Leave empty for unicode fallback (`▓░`) |
+
+#### Plex
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `plex.maxConcurrentResolves` | int | `3` | Max parallel track resolves when loading playlists/albums. Lower if tracks fail to load; higher loads faster but may overwhelm Plex |
+
+#### Logging
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `logging.level` | string | `INFO` | Console log level: `VERBOSE`, `DEBUG`, `INFO`, `WARN`, `ERROR`. Log files always save all levels |
+| `logging.saveToFile` | bool | `true` | Save log files to disk |
+| `logging.path` | string | `logs/plex-bot-[year]-[month]-[day].log` | Log file path (supports `[year]`, `[month]`, `[day]`, `[hour]`, `[minute]`, `[second]`, `[pid]`) |
+
+#### Bot
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `bot.environment` | string | _(empty)_ | Set to `Development` for guild-scoped slash commands (faster updates during dev) |
+
+### Custom Progress Bar Emoji
+
+PlexBot includes 30 custom emoji for a smooth-fill progress bar. Without them, the bar uses unicode block characters (`▓░`) which work everywhere but look less polished.
+
+<details>
+<summary><b>Setup instructions</b></summary>
+
+1. Go to the [Discord Developer Portal](https://discord.com/developers/applications) and select your bot application
+2. Click **Emojis** in the left sidebar
+3. Upload all 30 `.png` files from `Images/Icons/progress/` — the filenames become the emoji names automatically
+4. Copy each emoji's numeric ID and paste it into `config.fds` under `visualPlayer.progressBar.emoji`
+
+The 30 emoji are organized into three groups:
+
+| Group | Count | Keys |
+|-------|-------|------|
+| Left cap | 8 | `bar_left_empty`, `bar_left_filled_1` – `bar_left_filled_6`, `bar_left_filled` |
+| Middle | 14 | `bar_mid_empty`, `bar_filled_1` – `bar_filled_12`, `bar_mid_filled` |
+| Right cap | 8 | `bar_right_empty`, `bar_right_filled_1` – `bar_right_filled_6`, `bar_right_filled` |
+
+All 30 IDs must be provided for custom emoji to activate. If any are missing, the bot falls back to unicode.
+
+See the [Configuration Guide](./Docs/Setup/Configuration.md) for a detailed walkthrough with screenshots.
+</details>
 
 ---
 
 ## 🐳 Docker Support
 
 PlexBot supports Docker for easy deployment. See the [Docker Guide](./Docs/Setup/Docker-Guide.md).
+
+The default install runs both PlexBot and Lavalink together in Docker — no extra setup needed.
+
+---
+
+## 🌐 Remote Lavalink (Advanced)
+
+By default, the install scripts run Lavalink alongside PlexBot in Docker. If you want to run Lavalink on a separate machine (e.g. a dedicated audio server, or a shared Lavalink instance), you can point PlexBot to it by changing three values in your `.env`:
+
+```env
+LAVALINK_HOST=192.168.1.100        # IP or hostname of your Lavalink server
+LAVALINK_SERVER_PORT=2333          # Must match Lavalink's application.yml
+LAVALINK_SERVER_PASSWORD=mypassword  # Must match Lavalink's application.yml
+LAVALINK_SECURE=false              # Set true if behind a reverse proxy with SSL
+```
+
+Then remove or comment out the `lavalink` service and `depends_on` block in `Install/Docker/docker-compose.yml` — PlexBot will connect to your remote Lavalink instead.
+
+> **Note:** When running Lavalink separately, you are responsible for installing Java 17+, downloading the [Lavalink server jar](https://github.com/lavalink-devs/Lavalink/releases), configuring its `application.yml`, and keeping it updated. See the [Lavalink docs](https://lavalink.dev) for setup instructions.
 
 ---
 
@@ -145,13 +243,13 @@ If you experience brief audio stuttering or "CD skip" sounds during playback —
 
 **How audio streaming works:** Lavalink (a Java process) must send an Opus audio frame to Discord exactly every 20 milliseconds. When your CPU is under load, the OS scheduler can preempt Lavalink's thread, causing a missed frame and an audible glitch. PlexBot itself does not touch the audio stream — it only handles commands and UI.
 
-Two optional settings in [`Install/Docker/docker-compose.yml`](./Install/Docker/docker-compose.yml) can help:
+Two optional settings can help:
 
 ### JVM Garbage Collection Tuning
-Uncomment the `_JAVA_OPTIONS` line in the Lavalink service environment to switch Java from its default garbage collector to **ZGC**, which keeps GC pauses under 1ms (the default can pause for 10-50ms).
+Uncomment `_JAVA_OPTIONS` in your `.env` file to switch Java from its default garbage collector to **ZGC**, which keeps GC pauses under 1ms (the default can pause for 10-50ms).
 
-```yaml
-- _JAVA_OPTIONS=-XX:+UseZGC -XX:+ZGenerational -Xms256m -Xmx512m
+```env
+_JAVA_OPTIONS=-XX:+UseZGC -XX:+ZGenerational -Xms256m -Xmx512m
 ```
 
 | Pros | Cons |
@@ -160,7 +258,7 @@ Uncomment the `_JAVA_OPTIONS` line in the Lavalink service environment to switch
 | Sub-millisecond pause times | Requires Java 21+ (included in the Lavalink 4 Docker image) |
 
 ### CPU Pinning & Priority
-Uncomment the `cpuset` and `cpu_shares` lines to reserve dedicated CPU cores for Lavalink so other processes cannot starve it.
+Uncomment `cpuset` and `cpu_shares` in [`Install/Docker/docker-compose.yml`](./Install/Docker/docker-compose.yml) to reserve dedicated CPU cores for Lavalink so other processes cannot starve it. These are Docker Compose directives and can only be configured in the YAML file.
 
 ```yaml
 cpuset: "0,1"
