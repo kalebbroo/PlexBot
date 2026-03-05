@@ -403,7 +403,8 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
             }
             else
             {
-                await FollowupAsync(components: ComponentV2Builder.Error("YouTube Error", $"Error playing YouTube track: {ex.Message}"), ephemeral: true);
+                await FollowupAsync(components: ComponentV2Builder.Error("YouTube Error",
+                    "An error occurred while playing this YouTube track. It may be unavailable or restricted."), ephemeral: true);
             }
         }
     }
