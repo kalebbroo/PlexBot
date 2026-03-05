@@ -12,19 +12,20 @@ public class PlexBotMain
     {
         try
         {
-            // Initialize configuration
+            // Initialize configuration (.env for secrets/infra, config.fds for app settings)
             EnvConfig.Initialize();
+            BotConfig.Initialize();
 
             // Initialize logging (file always saves ALL levels; this controls console output only)
             Dictionary<string, string> logSettings = new()
             {
-                ["SaveToFile"] = EnvConfig.Get("LOG_SAVE_TO_FILE", "true"),
-                ["LogPath"] = EnvConfig.Get("LOG_PATH", "logs/plex-bot-[year]-[month]-[day].log")
+                ["SaveToFile"] = BotConfig.GetBool("logging.saveToFile", true).ToString().ToLowerInvariant(),
+                ["LogPath"] = BotConfig.GetString("logging.path", "logs/plex-bot-[year]-[month]-[day].log")
             };
 
             Logs.StartLogSaving(logSettings);
 
-            string logLevel = EnvConfig.Get("LOGGING_LEVEL_ROOT", "Info");
+            string logLevel = BotConfig.GetString("logging.level", "Info");
             Logs.MinimumLevel = logLevel.ToLowerInvariant() switch
             {
                 "verbose" => Logs.LogLevel.Verbose,

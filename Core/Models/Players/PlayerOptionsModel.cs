@@ -61,13 +61,16 @@ public class VisualPlayerStateManager
     private IUserMessage? _currentPlayerMessage;
 
     /// <summary>Controls whether to use visual album art display vs text-only player</summary>
-    public bool UseModernPlayer { get; set; } = EnvConfig.GetBool("USE_MODERN_PLAYER", true);
+    public bool UseModernPlayer { get; set; } = BotConfig.GetBool("visualPlayer.useModernPlayer", true);
+
+    /// <summary>Controls whether the live-updating progress bar is shown on the visual player</summary>
+    public bool UseProgressBar { get; set; } = BotConfig.GetBool("visualPlayer.progressBar.enabled", true);
 
     /// <summary>Controls whether to use a dedicated channel for player messages</summary>
-    public bool UseStaticChannel { get; set; } = EnvConfig.GetBool("USE_STATIC_PLAYER_CHANNEL", false);
+    public bool UseStaticChannel { get; set; } = BotConfig.GetBool("visualPlayer.staticChannel.enabled", false);
 
     /// <summary>Optional channel ID to use as static player channel</summary>
-    public ulong? StaticChannelId { get; set; } = EnvConfig.GetLong("STATIC_PLAYER_CHANNEL_ID", 0);
+    public ulong? StaticChannelId { get; set; } = BotConfig.GetULong("visualPlayer.staticChannel.channelId", 0);
 
     /// <summary>Gets the current player channel in a thread-safe manner</summary>
     public ITextChannel? CurrentPlayerChannel

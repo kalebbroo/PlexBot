@@ -125,15 +125,14 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
         }
     }
 
-    /// <summary>Handles queue option button clicks.
+    /// <summary>Handles queue option button clicks via ephemeral messages.
     /// Displays and manages queue options like viewing, clearing, or shuffling.</summary>
     /// <param name="action">The specific queue action (options, view, etc.)</param>
     /// <param name="pageStr">The current page number (for pagination)</param>
-    /// <returns>A task representing the asynchronous operation</returns>
     [ComponentInteraction("queue_options:*:*")]
     public async Task HandleQueueOptionsAsync(string action, string pageStr)
     {
-        await DeferAsync();
+        await DeferAsync(ephemeral: true);
         if (IsOnCooldown(Context.User.Id, $"queue_options:{action}"))
         {
             await FollowupAsync(components: ComponentV2Builder.Error("Cooldown", "Please wait a moment before clicking again."), ephemeral: true);
@@ -142,7 +141,6 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
         SocketInteraction interaction = Context.Interaction;
         try
         {
-            // Get the player
             if (await playerService.GetPlayerAsync(interaction, false) is not CustomLavaLinkPlayer player)
             {
                 await FollowupAsync(components: ComponentV2Builder.Error("No Player", "No active player found."), ephemeral: true);
@@ -157,27 +155,29 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
             switch (action.ToLowerInvariant())
             {
                 case "options":
-                    // Show queue option buttons
+                    // Send ephemeral queue management panel
+                    string nowPlaying = (player.CurrentItem as CustomTrackQueueItem)?.Title ?? "Nothing";
+                    string artist = (player.CurrentItem as CustomTrackQueueItem)?.Artist ?? "";
+                    string displayNow = string.IsNullOrEmpty(artist) ? nowPlaying : $"{nowPlaying} - {artist}";
                     context.CustomData["currentPage"] = currentPage;
                     ComponentBuilder optionsComponents = buttonBuilder.BuildButtons(ButtonFlag.QueueOptions, context);
-                    await visualPlayer.AddOrUpdateVisualPlayerAsync(optionsComponents);
+                    await FollowupAsync(components: ComponentV2Builder.BuildQueueOptions(
+                        displayNow, player.Queue.Count, optionsComponents), ephemeral: true);
                     break;
                 case "view":
-                    // Show the queue
                     await ShowQueueAsync(player, currentPage);
                     break;
                 case "shuffle":
-                    // Shuffle the queue
+                    int countBefore = player.Queue.Count;
                     await player.Queue.ShuffleAsync();
+                    await FollowupAsync(components: ComponentV2Builder.Success(
+                        "Queue Shuffled", $"Shuffled {countBefore} tracks."), ephemeral: true);
                     break;
                 case "clear":
-                    // Clear the queue
+                    int cleared = player.Queue.Count;
                     await player.Queue.ClearAsync();
-                    break;
-                case "back":
-                    // Restore default player buttons
-                    ComponentBuilder defaultComponents = buttonBuilder.BuildButtons(ButtonFlag.VisualPlayer, context);
-                    await visualPlayer.AddOrUpdateVisualPlayerAsync(defaultComponents);
+                    await FollowupAsync(components: ComponentV2Builder.Success(
+                        "Queue Cleared", $"Removed {cleared} tracks from the queue."), ephemeral: true);
                     break;
                 default:
                     await FollowupAsync(components: ComponentV2Builder.Error("Unknown Action", $"Unrecognized queue action: {action}"), ephemeral: true);
@@ -191,13 +191,52 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
         }
     }
 
-    /// <summary>Handles the repeat mode button click.
-    /// Displays a select menu for choosing repeat mode.</summary>
-    /// <returns>A task representing the asynchronous operation</returns>
+    /// <summary>Handles volume up/down button clicks.
+    /// Adjusts volume by 10% increments.</summary>
+    /// <param name="direction">The direction (up/down)</param>
+    [ComponentInteraction("volume:*")]
+    public async Task HandleVolumeAsync(string direction)
+    {
+        await DeferAsync();
+        if (IsOnCooldown(Context.User.Id, "volume"))
+        {
+            await FollowupAsync(components: ComponentV2Builder.Error("Cooldown", "Please wait a moment before clicking again."), ephemeral: true);
+            return;
+        }
+        try
+        {
+            if (await playerService.GetPlayerAsync(Context.Interaction, false) is not CustomLavaLinkPlayer player)
+            {
+                await FollowupAsync(components: ComponentV2Builder.Error("No Player", "No active player found."), ephemeral: true);
+                return;
+            }
+            float currentVolume = player.Volume;
+            float step = 0.1f;
+            float newVolume = direction.ToLowerInvariant() == "up"
+                ? Math.Min(1.0f, currentVolume + step)
+                : Math.Max(0.0f, currentVolume - step);
+
+            await player.SetVolumeAsync(newVolume);
+            Logs.Debug($"Volume set to {newVolume * 100:F0}% by {Context.User.Username}");
+
+            // Update player UI (recreate image to update volume bar overlay)
+            ButtonContext context = new() { Player = player, Interaction = Context.Interaction };
+            ComponentBuilder components = buttonBuilder.BuildButtons(ButtonFlag.VisualPlayer, context);
+            await visualPlayer.AddOrUpdateVisualPlayerAsync(components, recreateImage: true);
+        }
+        catch (Exception ex)
+        {
+            Logs.Error($"Error handling volume: {ex.Message}");
+            await FollowupAsync(components: ComponentV2Builder.Error("Volume Error", "An error occurred while adjusting volume."), ephemeral: true);
+        }
+    }
+
+    /// <summary>Handles the repeat button click.
+    /// Cycles through repeat modes: None → Queue → Track → None.</summary>
     [ComponentInteraction("repeat:*")]
     public async Task HandleRepeatAsync()
     {
-        await DeferAsync(ephemeral: true);
+        await DeferAsync();
         if (IsOnCooldown(Context.User.Id, "repeat"))
         {
             await FollowupAsync(components: ComponentV2Builder.Error("Cooldown", "Please wait a moment before clicking again."), ephemeral: true);
@@ -205,62 +244,25 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
         }
         try
         {
-            // Create a select menu for repeat options
-            SelectMenuBuilder selectMenu = new SelectMenuBuilder()
-                .WithCustomId("repeat_select")
-                .WithPlaceholder("Select repeat mode")
-                .WithMinValues(1)
-                .WithMaxValues(1)
-                .AddOption("No Repeat", "none", "Play each track once")
-                .AddOption("Repeat Track", "track", "Repeat the current track")
-                .AddOption("Repeat Queue", "queue", "Repeat the entire queue");
-            ComponentBuilder components = new ComponentBuilder()
-                .WithSelectMenu(selectMenu);
-            await FollowupAsync(components: ComponentV2Builder.InfoWithComponents("Repeat Options", "Select a repeat mode:", components), ephemeral: true);
-        }
-        catch (Exception ex)
-        {
-            Logs.Error($"Error handling repeat button: {ex.Message}");
-            await FollowupAsync(components: ComponentV2Builder.Error("Repeat Error", "An error occurred while showing repeat options. Please try again later."), ephemeral: true);
-        }
-    }
-
-    /// <summary>Handles repeat mode selection from the select menu.
-    /// Sets the player's repeat mode based on user selection.</summary>
-    /// <param name="values">The selected repeat mode</param>
-    /// <returns>A task representing the asynchronous operation</returns>
-    [ComponentInteraction("repeat_select")]
-    public async Task HandleRepeatSelectAsync(string[] values)
-    {
-        await DeferAsync(ephemeral: true);
-        try
-        {
-            if (values.Length == 0)
+            if (await playerService.GetPlayerAsync(Context.Interaction, false) is not CustomLavaLinkPlayer player)
             {
-                await FollowupAsync(components: ComponentV2Builder.Error("No Selection", "No selection made."), ephemeral: true);
+                await FollowupAsync(components: ComponentV2Builder.Error("No Player", "No active player found."), ephemeral: true);
                 return;
             }
-            string selectedMode = values[0];
-            // Convert to TrackRepeatMode
-            TrackRepeatMode repeatMode = selectedMode.ToLowerInvariant() switch
+            // Cycle: None → Queue → Track → None
+            TrackRepeatMode nextMode = player.RepeatMode switch
             {
-                "track" => TrackRepeatMode.Track,
-                "queue" => TrackRepeatMode.Queue,
+                TrackRepeatMode.None => TrackRepeatMode.Queue,
+                TrackRepeatMode.Queue => TrackRepeatMode.Track,
                 _ => TrackRepeatMode.None
             };
-            await playerService.SetRepeatModeAsync(Context.Interaction, repeatMode);
-            string modeDescription = repeatMode switch
-            {
-                TrackRepeatMode.None => "No repeat",
-                TrackRepeatMode.Track => "Repeating current track",
-                TrackRepeatMode.Queue => "Repeating the entire queue",
-                _ => "Unknown repeat mode"
-            };
+            await playerService.SetRepeatModeAsync(Context.Interaction, nextMode);
+            Logs.Debug($"Repeat mode cycled to {nextMode} by {Context.User.Username}");
         }
         catch (Exception ex)
         {
-            Logs.Error($"Error handling repeat selection: {ex.Message}");
-            await FollowupAsync(components: ComponentV2Builder.Error("Repeat Error", "An error occurred while setting repeat mode. Please try again later."), ephemeral: true);
+            Logs.Error($"Error handling repeat: {ex.Message}");
+            await FollowupAsync(components: ComponentV2Builder.Error("Repeat Error", "An error occurred while changing repeat mode."), ephemeral: true);
         }
     }
 
@@ -278,6 +280,7 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
         }
         try
         {
+            visualPlayer.StopProgressTimer();
             await playerService.StopAsync(Context.Interaction, true);
             Logs.Info($"Player killed by {Context.User.Username}");
         }
@@ -482,8 +485,6 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
                 components.WithButton("Next", $"queue_options:view:{Math.Min(totalPages, page + 1)}",
                                    ButtonStyle.Secondary, disabled: page >= totalPages);
             }
-            components.WithButton("Back", "queue_options:back:1", ButtonStyle.Secondary);
-
             await FollowupAsync(components: ComponentV2Builder.BuildQueueDisplay(
                 nowPlayingLine, queueText, footerLine, components), ephemeral: true);
         }

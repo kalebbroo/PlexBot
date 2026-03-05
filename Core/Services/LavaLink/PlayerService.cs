@@ -13,8 +13,6 @@ namespace PlexBot.Core.Services.LavaLink;
 public class PlayerService(VisualPlayerStateManager stateManager, IAudioService audioService, VisualPlayer visualPlayer, IServiceProvider serviceProvider, DiscordButtonBuilder buttonBuilder)
     : IPlayerService
 {
-    private readonly TimeSpan _inactivityTimeout = TimeSpan.FromMinutes(EnvConfig.GetDouble("PLAYER_INACTIVITY_TIMEOUT", 2.0));
-
     /// <inheritdoc />
     public async Task<QueuedLavalinkPlayer?> GetPlayerAsync(IDiscordInteraction interaction, bool connectToVoiceChannel = true,
         CancellationToken cancellationToken = default)
@@ -49,7 +47,6 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
                 TextChannel = interaction is SocketInteraction socketInteraction
                     ? socketInteraction.Channel as ITextChannel
                     : null,
-                InactivityTimeout = _inactivityTimeout,
                 DefaultVolume = defaultVolume,
             };
             // Wrap options for DI
@@ -338,6 +335,13 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
                         Logs.Error($"Error retrying track {track.Title}: {ex.Message}");
                     }
                 }
+            }
+            // Rebuild the player image now that the queue is fully populated (for Next Up display)
+            if (successCount > 0 && player is CustomLavaLinkPlayer customPlayerRefresh)
+            {
+                ButtonContext ctx = new() { Player = customPlayerRefresh, Interaction = interaction };
+                ComponentBuilder refreshComponents = buttonBuilder.BuildButtons(ButtonFlag.VisualPlayer, ctx);
+                await visualPlayer.AddOrUpdateVisualPlayerAsync(refreshComponents, recreateImage: true);
             }
             // Final message
             if (successCount > 0)
