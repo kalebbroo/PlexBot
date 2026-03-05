@@ -38,6 +38,7 @@ visualPlayer:
         channelId: 0             # Discord channel ID (right-click channel > Copy Channel ID)
     progressBar:
         enabled: true            # Show live progress bar (updates every second)
+        size: medium             # small (mobile), medium (default), large (wide displays)
         emoji:                   # See "Custom Progress Bar Emoji" section below
             bar_left_empty:
             # ... (30 emoji IDs total)
