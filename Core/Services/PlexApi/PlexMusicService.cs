@@ -34,13 +34,27 @@ public class PlexMusicService(IPlexApiService plexApiService, IMemoryCache cache
             SearchResults results = ParseSearchResults(response, query);
             Logs.Info($"Search complete. Found {results.Artists.Count} artists, {results.Albums.Count} albums, {results.Tracks.Count} tracks, {results.Playlists.Count} playlists");
             cache.Set(cacheKey, results, SearchCacheOptions);
+
+            // Side-populate individual caches so subsequent detail fetches are hits
+            foreach (Track track in results.Tracks)
+            {
+                if (!string.IsNullOrEmpty(track.SourceKey))
+                    cache.Set($"track:{track.SourceKey}", track, ListCacheOptions);
+            }
+            foreach (Album album in results.Albums)
+            {
+                if (!string.IsNullOrEmpty(album.SourceKey))
+                    cache.Set($"albums:{album.SourceKey}", new List<Album> { album }, ListCacheOptions);
+            }
+            foreach (Artist artist in results.Artists)
+            {
+                if (!string.IsNullOrEmpty(artist.SourceKey))
+                    cache.Set($"artist:{artist.SourceKey}", artist, ListCacheOptions);
+            }
+
             return results;
         }
-        catch (PlexApiException)
-        {
-            throw;
-        }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not PlexApiException)
         {
             Logs.Error($"Error searching Plex library: {ex.Message}");
             throw new PlexApiException($"Failed to search Plex library: {ex.Message}", ex);
@@ -50,6 +64,12 @@ public class PlexMusicService(IPlexApiService plexApiService, IMemoryCache cache
     /// <inheritdoc />
     public async Task<Track?> GetTrackDetailsAsync(string trackKey, CancellationToken cancellationToken = default)
     {
+        string cacheKey = $"track:{trackKey}";
+        if (cache.TryGetValue(cacheKey, out Track? cached) && cached != null)
+        {
+            Logs.Debug($"Track cache hit for: {trackKey}");
+            return cached;
+        }
         Logs.Debug($"Getting track details for key: {trackKey}");
         try
         {
@@ -68,14 +88,11 @@ public class PlexMusicService(IPlexApiService plexApiService, IMemoryCache cache
                 return null;
             }
             Track track = ParseTrack(metadataItems.First());
+            cache.Set(cacheKey, track, ListCacheOptions);
             Logs.Debug($"Retrieved track details: {track.Title} by {track.Artist}");
             return track;
         }
-        catch (PlexApiException)
-        {
-            throw;
-        }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not PlexApiException)
         {
             Logs.Error($"Error getting track details: {ex.Message}");
             throw new PlexApiException($"Failed to get track details: {ex.Message}", ex);
@@ -122,11 +139,7 @@ public class PlexMusicService(IPlexApiService plexApiService, IMemoryCache cache
             cache.Set(cacheKey, tracks, ListCacheOptions);
             return tracks;
         }
-        catch (PlexApiException)
-        {
-            throw;
-        }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not PlexApiException)
         {
             Logs.Error($"Error getting tracks: {ex.Message}");
             throw new PlexApiException($"Failed to get tracks: {ex.Message}", ex);
@@ -173,11 +186,7 @@ public class PlexMusicService(IPlexApiService plexApiService, IMemoryCache cache
             cache.Set(cacheKey, albums, ListCacheOptions);
             return albums;
         }
-        catch (PlexApiException)
-        {
-            throw;
-        }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not PlexApiException)
         {
             Logs.Error($"Error getting albums: {ex.Message}");
             throw new PlexApiException($"Failed to get albums: {ex.Message}", ex);
@@ -220,11 +229,7 @@ public class PlexMusicService(IPlexApiService plexApiService, IMemoryCache cache
             cache.Set(cacheKey, playlists, PlaylistListCacheOptions);
             return playlists;
         }
-        catch (PlexApiException)
-        {
-            throw;
-        }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not PlexApiException)
         {
             Logs.Error($"Error getting playlists: {ex.Message}");
             throw new PlexApiException($"Failed to get playlists: {ex.Message}", ex);
@@ -234,6 +239,12 @@ public class PlexMusicService(IPlexApiService plexApiService, IMemoryCache cache
     /// <inheritdoc />
     public async Task<Playlist> GetPlaylistDetailsAsync(string playlistKey, CancellationToken cancellationToken = default)
     {
+        string cacheKey = $"playlist:{playlistKey}";
+        if (cache.TryGetValue(cacheKey, out Playlist? cached) && cached != null)
+        {
+            Logs.Debug($"Playlist details cache hit for: {playlistKey}");
+            return cached;
+        }
         Logs.Debug($"Getting playlist details: {playlistKey}");
         try
         {
@@ -276,14 +287,11 @@ public class PlexMusicService(IPlexApiService plexApiService, IMemoryCache cache
             }
             // Extract tracks from Metadata array
             playlist.Tracks = ParsePlaylistTracks(metadata);
+            cache.Set(cacheKey, playlist, ListCacheOptions);
             Logs.Debug($"Retrieved playlist details: {playlist.Title} with {playlist.Tracks.Count} tracks");
             return playlist;
         }
-        catch (PlexApiException)
-        {
-            throw;
-        }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not PlexApiException)
         {
             Logs.Error($"Error getting playlist details: {ex.Message}");
             throw new PlexApiException($"Failed to get playlist details: {ex.Message}", ex);
@@ -471,20 +479,38 @@ public class PlexMusicService(IPlexApiService plexApiService, IMemoryCache cache
             PlaybackUrl = playableUrl,
             ArtistUrl = item["grandparentKey"]?.ToString() ?? "",
             DurationMs = duration,
-            DurationDisplay = FormatDuration(duration),
+            DurationDisplay = FormatHelper.FormatDuration(duration),
             Studio = item["studio"]?.ToString() ?? "N/A",
             SourceKey = item["key"]?.ToString() ?? "",
             SourceSystem = "plex"
         };
     }
 
-    /// <summary>Formats a duration in milliseconds as a human-readable string</summary>
-    private static string FormatDuration(long durationMs)
+    /// <inheritdoc />
+    public async Task<List<Track>> GetAllArtistTracksAsync(string artistKey, CancellationToken cancellationToken = default)
     {
-        TimeSpan timeSpan = TimeSpan.FromMilliseconds(durationMs);
-        return timeSpan.TotalHours >= 1
-            ? $"{(int)timeSpan.TotalHours}:{timeSpan.Minutes:D2}:{timeSpan.Seconds:D2}"
-            : $"{timeSpan.Minutes:D2}:{timeSpan.Seconds:D2}";
+        List<Album> albums = await GetAlbumsAsync(artistKey, cancellationToken);
+        if (albums.Count == 0) return [];
+
+        // Fetch tracks from each album in parallel with bounded concurrency
+        using SemaphoreSlim semaphore = new(4);
+        Task<List<Track>>[] tasks = albums.Select(async album =>
+        {
+            await semaphore.WaitAsync(cancellationToken);
+            try
+            {
+                return await GetTracksAsync(album.SourceKey, cancellationToken);
+            }
+            finally
+            {
+                semaphore.Release();
+            }
+        }).ToArray();
+
+        List<Track>[] results = await Task.WhenAll(tasks);
+        List<Track> allTracks = results.SelectMany(tracks => tracks).ToList();
+        Logs.Debug($"Retrieved {allTracks.Count} total tracks for artist from {albums.Count} albums");
+        return allTracks;
     }
 
     /// <summary>Extracts genre information from a JToken</summary>

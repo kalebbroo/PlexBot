@@ -34,25 +34,25 @@ A typical extension consists of:
 3. **Services**: Additional services that provide business logic
 4. **Handlers**: Event handlers for Discord events or custom events
 
-Extensions are loaded from subdirectories in the `extensions` folder of the PlexBot installation. Each extension should be in its own directory with its own assembly.
+Extensions are loaded from subdirectories in the `Extensions` folder of the PlexBot installation. Each extension should be in its own directory with its own assembly.
 
 ## Creating a Basic Extension
 
 ### Step 1: Create Extension Directory
 
-Create a directory for your extension inside the `extensions` folder:
+Create a directory for your extension inside the `Extensions` folder:
 
 ```
-/extensions/MyFirstExtension/
+/Extensions/MyFirstExtension/
 ```
 
 ### Step 2: Create Project
 
-Create a new C# Class Library project targeting .NET 7.0 or later:
+Create a new C# Class Library project targeting .NET 9.0 or later:
 
 ```bash
-cd extensions/MyFirstExtension
-dotnet new classlib -f net7.0
+cd Extensions/MyFirstExtension
+dotnet new classlib -f net9.0
 ```
 
 ### Step 3: Add References
@@ -248,7 +248,7 @@ extensions/
 ```xml
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net7.0</TargetFramework>
+    <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>

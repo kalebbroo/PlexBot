@@ -1,144 +1,114 @@
 # PlexBot Installation Guide
 
-This guide provides detailed instructions for installing and configuring PlexBot, a Discord music bot that integrates with Plex Media Server.
-
 ## Prerequisites
 
-- Docker and Docker Compose, We also recommend Docker Desktop for an easier UI and just a better experience all around.
-- A Discord Bot Token (see [Discord Developer Portal](https://discord.com/developers/applications))
-- Plex Media Server and a token (see [How to get a Plex token](http://))
-- A server or computer to host the bot
-- (Optional) YouTube Oauth refresh token (see [Here]()) 
+- **Docker & Docker Compose** — [Docker Desktop](https://www.docker.com/products/docker-desktop/) is recommended for an easier UI
+- **Discord bot token** — Create one at the [Discord Developer Portal](https://discord.com/developers/applications)
+- **Plex server** with a music library and an authentication token — [How to get a Plex token](https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/)
+- A machine to host the bot (can be the same machine as Plex)
 
 ## Installation
 
-#### Step 1: Clone the Repository
+### Step 1: Clone the Repository
 
 ```bash
 git clone https://github.com/kalebbroo/PlexBot.git
 cd PlexBot
 ```
 
-#### Step 2: Configure Environment Variables
+### Step 2: Configure Secrets
 
-1. Copy the example environment file:
+Copy the template and fill in your credentials:
 
 ```bash
 cp RenameMe.env.txt .env
 ```
 
-2. Edit the `.env` file with your credentials:
+Edit `.env` with your values:
 
-```bash
-# Required Discord Configuration
-DISCORD_TOKEN=your_discord_token_here
-DISCORD_APPLICATION_ID=your_application_id_here
-
-# Required Plex Configuration
-PLEX_SERVER=http://your-plex-server:32400
-PLEX_TOKEN=your_plex_token_here
-
-# Visual Player Configuration (How the player looks in Discord)
-PLAYER_STYLE_VISUAL=true
-USE_STATIC_PLAYER_CHANNEL=false
-STATIC_PLAYER_CHANNEL_ID=
+```env
+DISCORD_TOKEN=your_discord_bot_token
+PLEX_URL=http://your-plex-ip:32400
+PLEX_TOKEN=your_plex_token
 ```
 
-#### Step 3: Install PlexBot
+These three are required. All other `.env` values have working defaults. See the [Configuration Guide](./Configuration.md) for the full list.
 
-For Windows users:
+### Step 3: Configure Application Settings
+
+Copy the template:
+
 ```bash
-# Navigate to the Install directory
+cp RenameMe.config.fds config.fds
+```
+
+The defaults work out of the box. Customize player style, progress bar, logging, etc. in `config.fds` as needed. See the [Configuration Guide](./Configuration.md) for all options.
+
+### Step 4: Run the Install Script
+
+**Windows:**
+```bash
 cd Install
-
-# Simply run the Windows installation script
-win-inatall.bat
+win-install.bat
 ```
 
-For Linux users:
+**Linux:**
 ```bash
-# Make the installation script executable if needed
 chmod +x ./Install/linux-install.sh
-
-# Run the Linux installation script
 ./Install/linux-install.sh
 ```
 
-This script will:
-1. Build the PlexBot Docker image with all required dependencies including lavalink
-2. Run a setup script that creates the config yml and starts the bot and Lavalink service
-3. Downloads and installs the YouTube plugin (Oauth refresh token needed)
-4. Checks for issues or missing cridentials
+The script will:
+1. Build the PlexBot Docker image (includes .NET 9 SDK, fonts, dependencies)
+2. Pull the Lavalink 4 image
+3. Start both containers on a shared Docker network
 
-#### Step 4: Verify Installation
+### Step 5: Verify Installation
 
-After the installation script completes, check the logs to ensure the bot started correctly:
-
-In Docker Desktop just click the container named PlexBot and it will display both logs for lavalink and the bot. 
-
-or
+Check the logs to make sure the bot started successfully:
 
 ```bash
 docker-compose logs -f
 ```
 
-You should see output indicating the bot has connected to Discord and is ready to use.
+Or open **Docker Desktop** and click the PlexBot container group to see logs from both services.
 
-#### Step 5: Run the Bot
+You should see:
+- "Lavalink services initialized"
+- "Bot is ready"
+- The bot appearing online in your Discord server
 
-The bot should now be running but if you stop it and need to restart just cliock the start button next to the container in Docker Desktop.
+## Updating
 
-or
+Run the install script again — it pulls the latest code from GitHub and rebuilds the Docker image:
 
 ```bash
-dotnet run
+# Windows
+cd Install && win-install.bat
+
+# Linux
+./Install/linux-install.sh
 ```
-
-## Updating PlexBot
-
-### Docker Update
-
-Updating is done by running the install script again This will pull the update from GitHub and rebuild the project and Docker container. 
 
 ## Troubleshooting
 
-### Common Issues
+### Bot Doesn't Start
+- Check the logs: `docker-compose logs plexbot`
+- Verify `DISCORD_TOKEN` is correct in `.env`
+- Make sure both `.env` and `config.fds` exist at the project root
 
-#### Bot Doesn't Start
+### No Audio
+- Check Lavalink is running: `docker-compose logs lavalink`
+- Ensure the bot has **Connect** and **Speak** permissions in the voice channel
+- Verify Plex is reachable from the Docker host
 
-**Check the logs:**
-```bash
-docker-compose logs -f
-```
+### No Text on Player Images
+- Rebuild the container to ensure fonts are installed: `docker-compose up -d --build`
 
-**Common solutions:**
-- Ensure your DISCORD_TOKEN is correct
-- Verify network connectivity
-- Check Discord bot permissions
+For more detailed troubleshooting, see the [Troubleshooting Guide](../Guides/Troubleshooting.md).
 
-#### No Audio Output
+## Additional Resources
 
-**Common solutions:**
-- Ensure Lavalink is running and check the logs
-- Check that the bot has the necessary permissions in your Discord server
-- Verify the bot is in a voice channel
-
-#### Font Issues in Docker
-
-If the player image shows but no text appears:
-
-```bash
-# Rebuild the container to ensure font packages are installed
-docker-compose up -d --build
-```
-
-## Additional Configuration
-
-For more advanced configuration options and features, refer to the [Configuration Guide](./Configuration.md).
-
-## Need Help?
-
-If you encounter issues not covered in this guide:
-- Check the [Troubleshooting Guide](../Guides/Troubleshooting.md)
-- Open an issue on our [GitHub repository](https://github.com/kalebbroo/plex_music_bot)
-- Join our [Discord support server](https://discord.gg/plexbot)
+- [Configuration Guide](./Configuration.md) — All `.env` and `config.fds` options
+- [Docker Guide](./Docker-Guide.md) — Container management and customization
+- [Player UI Guide](../Guides/Player-UI-Guide.md) — Player styles and progress bar setup

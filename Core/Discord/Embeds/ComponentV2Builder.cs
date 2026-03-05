@@ -230,9 +230,20 @@ public static class ComponentV2Builder
     private static readonly string[]? MidLevels;
     private static readonly string[]? RightCapLevels;
     private static readonly bool UseCustomEmoji;
+    private static readonly int MiddleSegmentCount;
 
     static ComponentV2Builder()
     {
+        // Progress bar size from config
+        string size = BotConfig.GetString("visualPlayer.progressBar.size").ToLowerInvariant();
+        MiddleSegmentCount = size switch
+        {
+            "small" => 8,
+            "large" => 20,
+            _ => 14, // medium (default)
+        };
+        Logs.Info($"Progress bar size: {size switch { "small" => "small (10 segments)", "large" => "large (22 segments)", _ => "medium (16 segments)" }}");
+
         // All 30 emoji names across the three groups
         string[][] allGroups = [LeftCapNames, MidNames, RightCapNames];
         string[] allNames = allGroups.SelectMany(g => g).ToArray();
@@ -302,8 +313,8 @@ public static class ComponentV2Builder
     /// <summary>Smooth-fill progress bar using custom Discord emoji with partial fill levels</summary>
     private static string BuildCustomEmojiBar(TimeSpan? position, TimeSpan? duration)
     {
-        const int middleSegments = 14;
-        const int totalSegments = middleSegments + 2; // left cap + middle + right cap
+        int middleSegments = MiddleSegmentCount;
+        int totalSegments = middleSegments + 2; // left cap + middle + right cap
 
         if (position == null || duration == null || duration.Value.TotalSeconds < 1)
         {
@@ -346,7 +357,7 @@ public static class ComponentV2Builder
     /// <summary>Simple unicode block-character progress bar fallback</summary>
     private static string BuildUnicodeBar(TimeSpan? position, TimeSpan? duration)
     {
-        const int barLength = 16;
+        int barLength = MiddleSegmentCount + 2;
         const char filled = '\u2593'; // ▓
         const char empty = '\u2591';  // ░
 

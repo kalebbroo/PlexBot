@@ -58,15 +58,10 @@ public class Album
     /// <summary>Extracts the year from the ReleaseDate property and updates the Year property</summary>
     public void ExtractYear()
     {
-        if (string.IsNullOrEmpty(ReleaseDate))
-        {
-            Year = 0;
-            return;
-        }
-
-        // Try to parse the first 4 digits as a year
-        string yearStr = new string(ReleaseDate.Where(char.IsDigit).Take(4).ToArray());
-        if (int.TryParse(yearStr, out int year) && year >= 1000 && year <= 9999)
+        // Plex dates are ISO format (e.g., "2023-10-15") — grab the first 4 chars
+        if (ReleaseDate is { Length: >= 4 }
+            && int.TryParse(ReleaseDate.AsSpan(0, 4), out int year)
+            && year is >= 1000 and <= 9999)
         {
             Year = year;
         }

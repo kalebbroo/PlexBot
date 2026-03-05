@@ -2,221 +2,125 @@
 
 ## Overview
 
-PlexBot offers seamless integration with your Plex Media Server, allowing you to stream your personal music library directly to Discord voice channels. This guide will walk you through setting up and using this integration.
-
-![Plex Integration](../images/plex-integration.png)
+PlexBot streams music from your Plex Media Server into Discord voice channels via Lavalink. Plex serves the audio files, Lavalink decodes and streams them to Discord, and PlexBot handles the UI and commands.
 
 ## Setup
 
 ### Prerequisites
 
-- A running Plex Media Server
+- A running Plex Media Server with a music library
 - A Plex authentication token
-- Music library configured in Plex
+- PlexBot and Lavalink running (see [Installation Guide](../Setup/Installation.md))
 
 ### Configuration
 
-Add the following variables to your `.env` file:
+Add these to your `.env` file:
 
-```bash
-# Plex Configuration
-PLEX_SERVER=http://your-plex-server:32400
+```env
+PLEX_URL=http://192.168.1.100:32400
 PLEX_TOKEN=your_plex_token_here
-PLEX_LIBRARY_SECTION=Music
 ```
 
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `PLEX_SERVER` | URL to your Plex server including port | `http://192.168.1.100:32400` |
-| `PLEX_TOKEN` | Your Plex authentication token | `tH1s1sAn3xAmpL3pL3xT0k3n` |
-| `PLEX_LIBRARY_SECTION` | Name of your music library in Plex | `Music` |
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `PLEX_URL` | Full URL to your Plex server including port | Yes |
+| `PLEX_TOKEN` | Your Plex authentication token | Yes |
 
 ### Finding Your Plex Token
 
-1. Sign in to Plex web app
-2. Select any media item and click the ⋮ (three dots) menu
-3. Click "Get Info"
-4. Click the "View XML" link
-5. In the URL that opens, your token is the `X-Plex-Token` parameter
+See [Plex's official guide](https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/).
 
-## Using Plex With PlexBot
+Quick method:
+1. Sign in to the Plex web app
+2. Open any media item, click the three-dot menu, then **Get Info**
+3. Click **View XML** — your token is the `X-Plex-Token` parameter in the URL
 
-### Searching Plex Library
+## Searching Your Library
 
-Use the `/plex search` command to find music in your Plex library:
-
-```
-/plex search query:<search term>
-```
-
-Example:
-```
-/plex search query:The Beatles
-```
-
-### Playing from Plex
-
-#### Play a Specific Track
+Use `/search` to find music in your Plex library:
 
 ```
-/plex play track:<track name> artist:<artist name>
+/search query:The Beatles source:plex
 ```
 
-Example:
-```
-/plex play track:Hey Jude artist:The Beatles
-```
+This returns interactive select menus for:
+- **Artists** — select to browse their albums and tracks
+- **Albums** — select to queue the full album
+- **Tracks** — select to play or queue individual tracks
 
-#### Play an Album
-
+The `source` parameter defaults to `plex`, so you can also just use:
 ```
-/plex play album:<album name> artist:<artist name>
-```
-
-Example:
-```
-/plex play album:Abbey Road artist:The Beatles
+/search query:The Beatles
 ```
 
-#### Play an Artist's Music
+## Playing Music
+
+### Quick Play
+
+`/play` searches your Plex library and plays the first match:
 
 ```
-/plex play artist:<artist name>
+/play query:Bohemian Rhapsody
 ```
 
-Example:
-```
-/plex play artist:The Beatles
-```
+Searches tracks first, then albums, then artists.
 
-### Managing Plex Playback
+### Playlists
 
-The standard playback commands work with Plex content:
-
-- `/pause` - Pause current playback
-- `/resume` - Resume playback
-- `/skip` - Skip to next track
-- `/stop` - Stop playback completely
-- `/queue` - View current queue
-
-## Advanced Features
-
-### Plex Playlists
-
-Play playlists directly from your Plex server:
+`/playlist` loads a full Plex playlist:
 
 ```
-/plex playlist name:<playlist name>
+/playlist playlist:Summer Hits shuffle:true
 ```
 
-Example:
-```
-/plex playlist name:My Workout Mix
+The `playlist` parameter autocompletes from your Plex playlists. Shuffle is enabled by default.
+
+### Playback Controls
+
+All playback is controlled through buttons on the player message — not slash commands. See the [Commands Guide](./Commands.md) for the full button reference.
+
+## Playlist Loading & Concurrency
+
+When loading large playlists, PlexBot resolves tracks in parallel through Lavalink. The concurrency is configurable in `config.fds`:
+
+```yaml
+plex:
+    maxConcurrentResolves: 3
 ```
 
-### Shuffle Mode
+- **Lower values** (1-2): Safer for Plex servers with limited resources, but slower
+- **Higher values** (4-5): Faster loading, but may overwhelm Plex — you'll see "Failed to load" messages if Plex drops connections
+- **Default (3)**: Good balance for most setups
 
-Enable shuffle mode for Plex playback:
-
-```
-/plex shuffle artist:<artist name>
-```
-
-Example:
-```
-/plex shuffle artist:The Beatles
-```
-
-### Limiting Results
-
-Limit the number of tracks played:
-
-```
-/plex play artist:<artist name> limit:10
-```
-
-Example:
-```
-/plex play artist:The Beatles limit:5
-```
+Failed tracks are automatically retried once after a delay. Any permanently failed tracks are listed in the status embed.
 
 ## Troubleshooting
 
 ### Cannot Connect to Plex Server
 
-**Check server URL and port:**
-- Ensure the server address in your `.env` file is correct
-- Verify the server is accessible from the machine running PlexBot
+- Verify `PLEX_URL` in `.env` is correct and includes the port (default: `32400`)
+- Make sure the Plex server is reachable from the machine running PlexBot
+- Test: `curl -H "X-Plex-Token: YOUR_TOKEN" http://your-plex-ip:32400`
 
-**Test connection:**
-```bash
-curl -H "X-Plex-Token: YOUR_TOKEN" http://your-plex-server:32400
-```
+### Tracks Fail to Load from Playlists
 
-### Authentication Issues
+- Lower `plex.maxConcurrentResolves` in `config.fds` — Plex drops connections under heavy concurrent load
+- Check `logs/` for detailed error messages
+- Ensure Plex is serving files directly (Direct Play) — transcoding adds load
 
-If you see "Unauthorized" or "Invalid token" errors:
-- Verify your Plex token is correct
-- Ensure your Plex account has access to the server
-- Try generating a new token
+### Authentication Errors
 
-### Track Not Found
-
-If PlexBot cannot find requested tracks:
-- Check if the track exists in your Plex library
-- Verify the library section name in your configuration
-- Try using more specific search terms
-
-### Playback Issues
-
-If tracks are found but won't play:
-- Check if your Plex server is configured for remote access
-- Ensure the network allows connections between PlexBot and your Plex server
-- Verify that direct play is enabled for your music files
+- Regenerate your Plex token and update `.env`
+- Make sure the token belongs to an account with access to the music library
 
 ## Best Practices
 
-1. **Local Network:** For best performance, run PlexBot on the same network as your Plex server
-
-2. **Library Organization:** Keep your Plex music library well-organized with proper metadata
-
-3. **Remote Access:** If accessing Plex remotely, ensure your server has adequate upload bandwidth
-
-4. **Regular Updates:** Keep both Plex and PlexBot updated to ensure compatibility
-
-## Example Usage Scenarios
-
-### Discord Party with Your Music
-
-```
-# Join a voice channel first
-/join
-
-# Start playing from your favorite playlist
-/plex playlist name:Party Mix
-
-# Adjust volume as needed
-/volume 80
-
-# Skip tracks that don't fit the mood
-/skip
-```
-
-### Music Discovery Session
-
-```
-# Join a voice channel
-/join
-
-# Play random tracks from an artist
-/plex shuffle artist:Radiohead limit:10
-
-# Share track information with friends
-/np
-```
+- **Same network**: Run PlexBot on the same network as Plex for fastest file serving
+- **Direct Play**: Ensure Plex serves raw audio files (no transcoding) to minimize server load
+- **Library metadata**: Well-tagged music with proper artist/album/title metadata improves search results
 
 ## Related Guides
 
-- [Basic Commands Guide](./Commands.md)
+- [Commands Guide](./Commands.md)
 - [Player UI Guide](./Player-UI-Guide.md)
 - [Troubleshooting Guide](./Troubleshooting.md)
