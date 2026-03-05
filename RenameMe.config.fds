@@ -1,0 +1,93 @@
+# ============================================
+# PlexBot Application Configuration
+# ============================================
+# This file controls bot behavior and UI settings.
+# Secrets and infrastructure (tokens, Lavalink, Plex URLs) stay in .env
+#
+# Format: Frenetic Data Syntax (FDS) - similar to YAML
+# Docs: https://github.com/FreneticLLC/FreneticUtilities
+
+# ============================================
+# Visual Player Settings
+# ============================================
+visualPlayer:
+    # Choose between the modern visual player with album artwork background (true)
+    # or the classic embed style with thumbnail (false)
+    # The modern player uses more CPU resources but looks much better
+    useModernPlayer: true
+
+    # Minutes of inactivity before the bot auto-disconnects from voice
+    inactivityTimeout: 2.0
+
+    # Static player channel - locks the player to one channel regardless of where commands are used
+    staticChannel:
+        enabled: false
+        # Paste the Discord channel ID here (right-click channel > Copy Channel ID)
+        channelId: 0
+        
+    # Progress bar - shows a live-updating bar on the visual player (updates every second)
+    # Disable to reduce Discord API calls
+    progressBar:
+        enabled: true
+        # Custom Discord emoji for a smooth-fill progress bar
+        # If all IDs are empty, falls back to unicode block characters that work everywhere
+        #
+        # To use custom emoji:
+        #   1. Upload each image from /Images/Icons/progress/ as an Application Emoji
+        #      in your Discord Developer Portal (https://discord.com/developers/applications)
+        #   2. Copy each emoji's numeric ID and paste it next to the matching name below
+        #   3. See Docs/Setup/Configuration.md for a detailed walkthrough
+        #
+        # Paste each emoji's numeric ID next to its name (leave empty to use unicode fallback)
+        emoji:
+            # Left cap (8 levels: empty → partial fills → fully filled)
+            bar_left_empty:
+            bar_left_filled_1:
+            bar_left_filled_2:
+            bar_left_filled_3:
+            bar_left_filled_4:
+            bar_left_filled_5:
+            bar_left_filled_6:
+            bar_left_filled:
+            # Middle segment (14 levels: empty → partial fills → fully filled)
+            bar_mid_empty:
+            bar_filled_1:
+            bar_filled_2:
+            bar_filled_3:
+            bar_filled_4:
+            bar_filled_5:
+            bar_filled_6:
+            bar_filled_7:
+            bar_filled_8:
+            bar_filled_9:
+            bar_filled_10:
+            bar_filled_11:
+            bar_filled_12:
+            bar_mid_filled:
+            # Right cap (8 levels: empty → partial fills → fully filled)
+            bar_right_empty:
+            bar_right_filled_1:
+            bar_right_filled_2:
+            bar_right_filled_3:
+            bar_right_filled_4:
+            bar_right_filled_5:
+            bar_right_filled_6:
+            bar_right_filled:
+
+# ============================================
+# Logging Settings
+# ============================================
+logging:
+    # Console log level: VERBOSE, DEBUG, INFO, WARN, ERROR
+    # Log files ALWAYS save all levels regardless of this setting
+    level: INFO
+    saveToFile: true
+    # Log file path template (supports: [year], [month], [day], [hour], [minute], [second], [pid])
+    path: logs/plex-bot-[year]-[month]-[day].log
+
+# ============================================
+# Bot Settings
+# ============================================
+bot:
+    # Environment mode - set to "Development" for guild-scoped slash commands (faster updates)
+    environment: 

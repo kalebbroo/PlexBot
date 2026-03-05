@@ -13,7 +13,7 @@ namespace PlexBot.Core.Services.LavaLink;
 public class PlayerService(VisualPlayerStateManager stateManager, IAudioService audioService, VisualPlayer visualPlayer, IServiceProvider serviceProvider, DiscordButtonBuilder buttonBuilder)
     : IPlayerService
 {
-    private readonly TimeSpan _inactivityTimeout = TimeSpan.FromMinutes(EnvConfig.GetDouble("PLAYER_INACTIVITY_TIMEOUT", 2.0));
+    private readonly TimeSpan _inactivityTimeout = TimeSpan.FromMinutes(BotConfig.GetDouble("visualPlayer.inactivityTimeout", 2.0));
 
     /// <inheritdoc />
     public async Task<QueuedLavalinkPlayer?> GetPlayerAsync(IDiscordInteraction interaction, bool connectToVoiceChannel = true,

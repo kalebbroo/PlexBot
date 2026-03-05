@@ -1,125 +1,139 @@
 # PlexBot Configuration Guide
 
-This guide provides comprehensive information about all available configuration options for PlexBot.
+PlexBot uses two configuration files:
 
-## Environment Variables
+- **`.env`** — Secrets and infrastructure (tokens, server URLs, Lavalink connection). Never commit this file.
+- **`config.fds`** — Application settings (player UI, logging, progress bar). Uses [Frenetic Data Syntax](https://github.com/FreneticLLC/FreneticUtilities) (YAML-like format).
 
-PlexBot uses environment variables for configuration. These can be set in the `.env` file in the root directory.
+Template files are provided: `RenameMe.env.txt` → `.env` and `RenameMe.config.fds` → `config.fds`.
 
-### Core Configuration
+---
+
+## .env — Secrets & Infrastructure
 
 | Variable | Description | Required | Default |
 |----------|-------------|----------|---------|
 | `DISCORD_TOKEN` | Your Discord bot token | Yes | N/A |
-| `DISCORD_APPLICATION_ID` | Your Discord application ID | Yes | N/A |
-| `PREFIX` | Command prefix for text commands | No | `!` |
-| `LOG_LEVEL` | Determines the verbosity of logs | No | `INFO` |
+| `PLEX_URL` | Plex server URL with port | Yes | N/A |
+| `PLEX_TOKEN` | Plex authentication token | Yes | N/A |
+| `PLEX_CLIENT_IDENTIFIER` | Unique app identifier | No | Auto-generated |
+| `PLEX_APP_NAME` | Display name for Plex | No | `PlexBot` |
+| `LAVALINK_HOST` | Lavalink server hostname | No | `lavalink` |
+| `LAVALINK_SERVER_PORT` | Lavalink server port | No | `2333` |
+| `LAVALINK_SERVER_PASSWORD` | Lavalink password | No | `youshallnotpass` |
+| `LOGGING_LEVEL_LAVALINK` | Lavalink container log level | No | `INFO` |
 
-### Plex Integration
+---
 
-| Variable | Description | Required | Default |
-|----------|-------------|----------|---------|
-| `PLEX_SERVER` | URL to your Plex server including port | For Plex features | N/A |
-| `PLEX_TOKEN` | Authentication token for your Plex server | For Plex features | N/A |
-| `PLEX_LIBRARY_SECTION` | Name of the music library section | No | `Music` |
+## config.fds — Application Settings
 
-### Player UI Configuration
-
-| Variable | Description | Required | Default |
-|----------|-------------|----------|---------|
-| `PLAYER_STYLE_VISUAL` | Use visual player with album art background | No | `true` |
-| `USE_STATIC_PLAYER_CHANNEL` | Maintain player in a fixed channel | No | `false` |
-| `STATIC_PLAYER_CHANNEL_ID` | Channel ID for static player | If static player enabled | N/A |
-
-### Lavalink Configuration
-
-| Variable | Description | Required | Default |
-|----------|-------------|----------|---------|
-| `LAVALINK_HOST` | Hostname for Lavalink server | No | `lavalink` |
-| `LAVALINK_PORT` | Port for Lavalink server | No | `2333` |
-| `LAVALINK_PASSWORD` | Password for Lavalink server | No | `youshallnotpass` |
-
-## Example .env File
-
-Below is a complete example of an `.env` file with all available configuration options:
-
-```bash
-# Core Discord Configuration
-DISCORD_TOKEN=your_discord_token_here
-DISCORD_APPLICATION_ID=your_application_id_here
-PREFIX=!
-LOG_LEVEL=INFO
-
-# Plex Configuration
-PLEX_SERVER=http://your-plex-server:32400
-PLEX_TOKEN=your_plex_token_here
-PLEX_LIBRARY_SECTION=Music
-
-# Player UI Configuration
-PLAYER_STYLE_VISUAL=true
-USE_STATIC_PLAYER_CHANNEL=false
-STATIC_PLAYER_CHANNEL_ID=
-
-# Lavalink Configuration
-LAVALINK_HOST=lavalink
-LAVALINK_PORT=2333
-LAVALINK_PASSWORD=youshallnotpass
-```
-
-## Advanced Configuration
-
-### Docker Compose Configuration
-
-The default `docker-compose.yml` file includes configuration for both the PlexBot and Lavalink services. You can modify this file to change container names, port mappings, or volume mounts.
-
-Example modifications:
+### Player Settings
 
 ```yaml
-version: '3'
-services:
-  plexbot:
-    build:
-      context: .
-      dockerfile: ./Install/Docker/dockerfile
-    restart: unless-stopped
-    volumes:
-      - ./data:/app/data
-      - ./custom_fonts:/app/custom_fonts  # Add a volume for custom fonts
-    depends_on:
-      - lavalink
-    env_file:
-      - .env
-
-  lavalink:
-    image: fredboat/lavalink:latest
-    restart: unless-stopped
-    volumes:
-      - ./Install/Lavalink/application.yml:/opt/Lavalink/application.yml
+player:
+    useModernPlayer: true        # true = album art image player, false = classic text embed
+    inactivityTimeout: 2.0       # Minutes before auto-disconnect from voice
+    staticChannel:
+        enabled: false           # Lock the player to one specific channel
+        channelId: 0             # Discord channel ID (right-click channel > Copy Channel ID)
+    progressBar:
+        enabled: true            # Show live progress bar (updates every second)
+        emoji:                   # See "Custom Progress Bar Emoji" section below
+            bar_left_empty:
+            # ... (30 emoji IDs total)
 ```
 
-### Font Configuration
+### Logging Settings
 
-PlexBot needs system fonts to display text on player images. In Docker environments, these fonts are automatically installed in the container.
+```yaml
+logging:
+    level: INFO                  # Console output: VERBOSE, DEBUG, INFO, WARN, ERROR
+    saveToFile: true             # Log files always save ALL levels regardless
+    path: logs/plex-bot-[year]-[month]-[day].log
+```
 
-If you experience issues with missing fonts, ensure your Docker image has the following packages:
-- fontconfig
-- fonts-dejavu
-- fonts-liberation
-- fonts-noto
+Supported path placeholders: `[year]`, `[month]`, `[day]`, `[hour]`, `[minute]`, `[second]`, `[pid]`
 
-The default Dockerfile already includes these packages.
+### Bot Settings
 
-## Configuration File Locations
+```yaml
+bot:
+    environment:                 # Set to "Development" for guild-scoped commands (faster updates)
+```
 
-| File | Location | Purpose |
-|------|----------|---------|
-| `.env` | Root directory | Main configuration |
-| `docker-compose.yml` | Root directory | Docker services configuration |
-| `application.yml` | `Install/Lavalink/` | Lavalink server configuration |
+---
+
+## Custom Progress Bar Emoji
+
+PlexBot includes a smooth-fill progress bar made of 30 custom Discord emoji. Without these, the player falls back to unicode block characters (`▓░`) which work everywhere but look less polished.
+
+### Setup Steps
+
+1. **Open the Discord Developer Portal**
+   Go to [discord.com/developers/applications](https://discord.com/developers/applications) and select your bot application.
+
+2. **Navigate to Emojis**
+   In the left sidebar, click **Emojis** (under the application settings, not a server).
+
+3. **Upload all 30 images**
+   Upload each `.png` file from the `Images/Icons/progress/` folder in the PlexBot project. The filenames are the emoji names — Discord will use them automatically.
+
+   The 30 images are organized into three groups:
+
+   | Group | Files | Count |
+   |-------|-------|-------|
+   | Left cap | `bar_left_empty`, `bar_left_filled_1` through `bar_left_filled_6`, `bar_left_filled` | 8 |
+   | Middle | `bar_mid_empty`, `bar_filled_1` through `bar_filled_12`, `bar_mid_filled` | 14 |
+   | Right cap | `bar_right_empty`, `bar_right_filled_1` through `bar_right_filled_6`, `bar_right_filled` | 8 |
+
+4. **Copy each emoji's ID**
+   After uploading, hover over each emoji in the Developer Portal and copy its numeric ID (or use the Discord API).
+
+5. **Paste IDs into `config.fds`**
+   Find the `player.progressBar.emoji` section and paste each ID next to its matching name:
+
+   ```yaml
+   emoji:
+       bar_left_empty: 1478623138618150993
+       bar_left_filled_1: 1478623139972780063
+       bar_left_filled_2: 1478623140966957197
+       # ... continue for all 30 emoji
+   ```
+
+6. **Restart the bot**
+   The bot will log whether custom emoji loaded successfully or fell back to unicode.
+
+### Troubleshooting
+
+- **"Progress bar emoji missing: bar_xxx"** — That emoji ID is empty in config.fds. All 30 must be provided.
+- **"Invalid ID: 'abc'"** — The value isn't a numeric Discord emoji ID. Copy just the number, not the full `<:name:id>` format.
+- **Emoji show as broken squares in Discord** — The emoji were deleted from the application, or the bot doesn't own them. Re-upload and update the IDs.
+- **Unicode fallback is fine** — If you don't want to set up custom emoji, just leave all the IDs empty. The unicode `▓░` bar works in all Discord clients.
+
+---
+
+## Docker Configuration
+
+The `docker-compose.yml` mounts both config files into the container:
+
+```yaml
+volumes:
+  - ../../.env:/app/.env
+  - ../../config.fds:/app/config.fds
+```
+
+After changing either file, restart the bot:
+
+```bash
+docker-compose down
+docker-compose up -d
+```
+
+---
 
 ## Permissions
 
-The Discord bot requires the following permissions to function properly:
+The Discord bot requires the following permissions:
 
 ```
 - Read Messages/View Channels
@@ -134,33 +148,4 @@ The Discord bot requires the following permissions to function properly:
 - Speak (in voice channels)
 ```
 
-These permissions translate to the permission integer: `277062627904`
-
-## After Changing Configuration
-
-After modifying any configuration, you need to restart the bot:
-
-**With Docker:**
-```bash
-docker-compose down
-docker-compose up -d
-```
-
-**Without Docker:**
-```bash
-# Stop the running process with Ctrl+C and then
-dotnet run
-```
-
-## Validating Configuration
-
-To validate that your configuration is working:
-
-1. Check the bot's logs:
-   ```bash
-   docker-compose logs -f plexbot
-   ```
-
-2. Use the `/ping` command in Discord to verify the bot is responsive
-
-3. Use the `/play` command with a song title to test audio playback
+Permission integer: `277062627904`

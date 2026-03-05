@@ -52,7 +52,7 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
             }
 
             // In development, use guild commands (faster updates)
-            if (EnvConfig.Get("ENVIRONMENT") == "Development")
+            if (BotConfig.GetString("bot.environment") == "Development")
             {
                 // Register to specific test guild if needed
                 // ulong testGuildId = 123456789012345678;
