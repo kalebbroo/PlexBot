@@ -16,6 +16,7 @@ services:
       - ../../data:/app/data
       - ../../logs:/app/logs
       - ../../.env:/app/.env  # Mount directly to app root
+      - ../../config.fds:/app/config.fds  # Application settings
       - ../../Images:/app/Images
     environment:
       - DOTNET_ENVIRONMENT=Production

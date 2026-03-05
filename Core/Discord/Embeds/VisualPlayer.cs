@@ -24,7 +24,7 @@ public class VisualPlayer(
                 ? await audioService.Players.GetPlayerAsync(guildId) as CustomLavaLinkPlayer
                 : null;
 
-            string statusLine = BuildStatusLine(player);
+            string? statusLine = stateManager.UseProgressBar ? BuildStatusLine(player) : null;
 
             // Button/status-only update (no image regeneration needed)
             if (!recreateImage && stateManager.CurrentPlayerMessage != null)
@@ -49,8 +49,9 @@ public class VisualPlayer(
                 return;
             }
 
-            // Start progress timer on new track
-            StartProgressTimer();
+            // Start progress timer on new track (only when progress bar is enabled)
+            if (stateManager.UseProgressBar)
+                StartProgressTimer();
 
             // Get upcoming tracks from the queue for the "Next Up" display
             var upcomingTracks = player.Queue
@@ -212,7 +213,7 @@ public class VisualPlayer(
             duration);
     }
 
-    private static MessageComponent BuildClassicCV2(CustomLavaLinkPlayer? player, string statusLine, ComponentBuilder buttons)
+    private static MessageComponent BuildClassicCV2(CustomLavaLinkPlayer? player, string? statusLine, ComponentBuilder buttons)
     {
         CustomTrackQueueItem? currentTrack = player?.CurrentItem as CustomTrackQueueItem;
         string trackInfo = currentTrack != null
