@@ -75,8 +75,10 @@ if not exist "%DOCKER_DIR%\lavalink.application.yml" (
         echo     allowDirectVideoIds: true
         echo     allowDirectPlaylistIds: true
         echo     clients:
-        echo       - TVHTML5EMBEDDED
-        echo       - TV
+        echo       - MUSIC
+        echo       - ANDROID_VR
+        echo       - WEB
+        echo       - WEBEMBEDDED
         echo     oauth:
         echo       enabled: true
         echo       refreshToken: ""
