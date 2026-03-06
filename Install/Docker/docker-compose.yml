@@ -20,6 +20,7 @@ services:
       - ../../Images:/app/Images
     environment:
       - DOTNET_ENVIRONMENT=Production
+      - EXTENSIONS_SOURCE_DIR=/source/Extensions
     env_file:
       - ../../.env
     networks:

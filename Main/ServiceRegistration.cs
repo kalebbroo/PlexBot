@@ -1,9 +1,11 @@
 using PlexBot.Core.Discord.Embeds;
 using PlexBot.Core.Discord.Events;
-using PlexBot.Core.Models.Extensions;
+using PlexBot.Core.Extensions;
 using PlexBot.Core.Models.Players;
 using PlexBot.Core.Services;
 using PlexBot.Core.Services.LavaLink;
+using PlexBot.Core.Services.Music;
+using PlexBot.Core.Events;
 using PlexBot.Core.Services.PlexApi;
 using PlexBot.Utils;
 
@@ -31,7 +33,13 @@ namespace PlexBot.Main
             // Add player services
             AddPlayerServices(services);
 
-            // Add extension services
+            // Add music provider services
+            AddMusicProviderServices(services);
+
+            // Add event bus
+            services.AddSingleton<BotEventBus>();
+
+            // Add extension services (must be last — extensions may depend on all above)
             AddExtensionServices(services);
 
             Logs.Init("Services registered");
@@ -142,15 +150,35 @@ namespace PlexBot.Main
             services.AddMemoryCache();
         }
 
-        /// <summary>Sets up the extension system for plugin management and dynamic feature loading</summary>
+        /// <summary>Registers the music provider registry and built-in Plex provider.
+        /// Additional providers (YouTube, SoundCloud, etc.) are loaded via extensions.</summary>
+        private static void AddMusicProviderServices(IServiceCollection services)
+        {
+            services.AddSingleton<MusicProviderRegistry>();
+            services.AddSingleton<IMusicProvider, PlexMusicProvider>();
+        }
+
+        /// <summary>Sets up the extension system with two-phase startup: discover and register services
+        /// before the container is built, then initialize after</summary>
         /// <param name="services">The service collection to add services to</param>
         private static void AddExtensionServices(IServiceCollection services)
         {
-            // Get extensions directory
-            string extensionsDir = System.IO.Path.Combine(AppContext.BaseDirectory, "Extensions");
+            // Source: extension .csproj folders. Configurable for Docker where source is mounted elsewhere.
+            string extensionsSourceDir = System.IO.Path.GetFullPath(
+                EnvConfig.Get("EXTENSIONS_SOURCE_DIR", "Extensions"));
+            // Bin: compiled extension DLLs go next to the host output
+            string extensionsBinDir = System.IO.Path.Combine(AppContext.BaseDirectory, "Extensions");
 
-            // Add extension manager
-            services.AddSingleton(provider => new ExtensionManager(provider, extensionsDir));
+            ExtensionManager manager = new(extensionsSourceDir, extensionsBinDir);
+            services.AddSingleton(manager);
+
+            // Build, discover, and let extensions register services into THIS collection
+            IReadOnlyList<Extension> extensions = manager.DiscoverAndInstantiateAsync()
+                .GetAwaiter().GetResult();
+            foreach (Extension ext in extensions)
+            {
+                ext.RegisterServices(services);
+            }
         }
     }
 }

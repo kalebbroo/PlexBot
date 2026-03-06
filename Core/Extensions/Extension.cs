@@ -1,6 +1,6 @@
 using PlexBot.Utils;
 
-namespace PlexBot.Core.Models.Extensions;
+namespace PlexBot.Core.Extensions;
 
 /// <summary>Base class for all bot extensions providing the fundamental structure and lifecycle methods for extension management</summary>
 public abstract class Extension
@@ -35,6 +35,9 @@ public abstract class Extension
     /// <summary>Error message from initialization failures, null if no errors occurred or not yet initialized</summary>
     public string? ErrorMessage { get; private set; }
 
+    /// <summary>The assembly this extension was loaded from, used for command discovery</summary>
+    public Assembly? SourceAssembly { get; internal set; }
+
     /// <summary>Protected constructor ensuring only derived classes can be instantiated</summary>
     protected Extension()
     {
@@ -43,8 +46,7 @@ public abstract class Extension
 
     /// <summary>Initializes the extension with required services and prepares it for use in the bot system</summary>
     /// <param name="services">The service provider containing registered services</param>
-    /// <exception cref="Exception">Thrown if initialization fails</exception>
-    /// <returns>A task representing the asynchronous initialization operation</returns>
+    /// <returns>True if initialization was successful</returns>
     public async Task<bool> InitializeAsync(IServiceProvider services)
     {
         try
@@ -82,10 +84,9 @@ public abstract class Extension
     public virtual void RegisterServices(IServiceCollection services)
     {
         Logs.Debug($"Registering services for extension: {Name}");
-        // Base implementation does nothing - extensions should override as needed
     }
 
-    /// <summary>Cleans up resources when the extension is being unloaded to prevent memory leaks and resource conflicts</summary>
+    /// <summary>Cleans up resources when the extension is being unloaded</summary>
     /// <returns>A task representing the asynchronous shutdown operation</returns>
     public virtual Task ShutdownAsync()
     {
@@ -99,8 +100,23 @@ public abstract class Extension
     /// <returns>True if initialization was successful; otherwise, false</returns>
     protected abstract Task<bool> OnInitializeAsync(IServiceProvider services);
 
+    /// <summary>Read a config value from the extension's section in config.fds (extensions.{Id}.{key})</summary>
+    protected string GetConfig(string key, string defaultValue = "") =>
+        BotConfig.GetString($"extensions.{Id}.{key}", defaultValue);
+
+    /// <summary>Read a boolean config value from the extension's section in config.fds</summary>
+    protected bool GetConfigBool(string key, bool defaultValue = false) =>
+        BotConfig.GetBool($"extensions.{Id}.{key}", defaultValue);
+
+    /// <summary>Read an integer config value from the extension's section in config.fds</summary>
+    protected int GetConfigInt(string key, int defaultValue = 0) =>
+        BotConfig.GetInt($"extensions.{Id}.{key}", defaultValue);
+
+    /// <summary>Read a double config value from the extension's section in config.fds</summary>
+    protected double GetConfigDouble(string key, double defaultValue = 0) =>
+        BotConfig.GetDouble($"extensions.{Id}.{key}", defaultValue);
+
     /// <summary>Creates a human-readable representation of the extension for debugging and logging purposes</summary>
-    /// <returns>A string containing the extension name, version and status</returns>
     public override string ToString()
     {
         return $"{Name} v{Version} by {Author} [{(IsLoaded ? "Loaded" : "Unloaded")}]";
