@@ -5,6 +5,7 @@ using Discord.WebSocket;
 using PlexBot.Core.Discord.Embeds;
 using PlexBot.Core.Services;
 using PlexBot.Core.Services.LavaLink;
+using PlexBot.Core.Services.Music;
 
 namespace PlexBot.Core.Discord.Interactions;
 
@@ -16,9 +17,9 @@ namespace PlexBot.Core.Discord.Interactions;
 /// <param name="plexMusicService">Service for interacting with Plex music</param>
 /// <param name="playerService">Service for managing audio playback</param>
 /// <param name="audioService">Service for managing audio playback</param>
-public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayerService playerService,
+public class MusicInteractionHandler(IPlayerService playerService,
     VisualPlayer visualPlayer, DiscordButtonBuilder buttonBuilder,
-    ITrackResolverService trackResolver) : InteractionModuleBase<SocketInteractionContext>
+    MusicProviderRegistry providerRegistry) : InteractionModuleBase<SocketInteractionContext>
 {
 
     // Cooldown tracking to prevent spamming
@@ -26,15 +27,15 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
     private static readonly TimeSpan _cooldownPeriod = TimeSpan.FromSeconds(2);
 
     /// <summary>Handles search result selection from search command menu.
-    /// Processes the user's selection from search results and plays the selected content.</summary>
+    /// Routes through the music provider registry based on the encoded provider ID.</summary>
+    /// <param name="providerId">The music provider that produced these results</param>
     /// <param name="type">The type of content selected (artist, album, track)</param>
     /// <param name="values">The selected content IDs</param>
-    /// <returns>A task representing the asynchronous operation</returns>
-    [ComponentInteraction("search:*")]
-    public async Task HandleSearchSelectionAsync(string type, string[] values)
+    [ComponentInteraction("search:*:*")]
+    public async Task HandleSearchSelectionAsync(string providerId, string type, string[] values)
     {
         await DeferAsync(ephemeral: true);
-        if (IsOnCooldown(Context.User.Id, $"search:{type}"))
+        if (IsOnCooldown(Context.User.Id, $"search:{providerId}:{type}"))
         {
             await FollowupAsync(components: ComponentV2Builder.Error("Cooldown", "Please wait a moment before selecting another item."), ephemeral: true);
             return;
@@ -47,20 +48,25 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
                 return;
             }
             string selectedKey = values[0];
-            Logs.Debug($"Search selection: type={type}, key={selectedKey}");
+            Logs.Debug($"Search selection: provider={providerId}, type={type}, key={selectedKey}");
+
+            IMusicProvider? provider = providerRegistry.GetProvider(providerId);
+            if (provider == null)
+            {
+                await FollowupAsync(components: ComponentV2Builder.Error("Unknown Source", $"Music source '{providerId}' is no longer available."), ephemeral: true);
+                return;
+            }
+
             switch (type.ToLowerInvariant())
             {
                 case "track":
-                    await HandleTrackSelectionAsync(selectedKey);
+                    await HandleTrackSelectionAsync(provider, selectedKey);
                     break;
                 case "album":
-                    await HandleAlbumSelectionAsync(selectedKey);
+                    await HandleAlbumSelectionAsync(provider, selectedKey);
                     break;
                 case "artist":
-                    await HandleArtistSelectionAsync(selectedKey);
-                    break;
-                case "youtube":
-                    await HandleYouTubeSelectionAsync(selectedKey);
+                    await HandleArtistSelectionAsync(provider, selectedKey);
                     break;
                 default:
                     await FollowupAsync(components: ComponentV2Builder.Error("Unknown Type", $"Unrecognized selection type: {type}"), ephemeral: true);
@@ -126,16 +132,28 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
     }
 
     /// <summary>Handles queue option button clicks via ephemeral messages.
-    /// Displays and manages queue options like viewing, clearing, or shuffling.</summary>
+    /// "options" creates a new ephemeral panel; all other actions (view, shuffle, clear, pagination)
+    /// update that same panel in-place so the user sees a single coherent message.</summary>
     /// <param name="action">The specific queue action (options, view, etc.)</param>
     /// <param name="pageStr">The current page number (for pagination)</param>
     [ComponentInteraction("queue_options:*:*")]
     public async Task HandleQueueOptionsAsync(string action, string pageStr)
     {
-        await DeferAsync(ephemeral: true);
+        string normalizedAction = action.ToLowerInvariant();
+        bool isInitialOpen = normalizedAction == "options";
+
+        // "options" creates a new ephemeral panel from the main player;
+        // all other actions update the existing ephemeral panel in-place
+        if (isInitialOpen)
+            await DeferAsync(ephemeral: true);
+        else
+            await DeferAsync(); // DEFERRED_UPDATE_MESSAGE — edits the ephemeral panel
+
         if (IsOnCooldown(Context.User.Id, $"queue_options:{action}"))
         {
-            await FollowupAsync(components: ComponentV2Builder.Error("Cooldown", "Please wait a moment before clicking again."), ephemeral: true);
+            if (isInitialOpen)
+                await FollowupAsync(components: ComponentV2Builder.Error("Cooldown", "Please wait a moment before clicking again."), ephemeral: true);
+            // For updates, silently ignore the cooldown (don't replace the panel with an error)
             return;
         }
         SocketInteraction interaction = Context.Interaction;
@@ -143,7 +161,11 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
         {
             if (await playerService.GetPlayerAsync(interaction, false) is not CustomLavaLinkPlayer player)
             {
-                await FollowupAsync(components: ComponentV2Builder.Error("No Player", "No active player found."), ephemeral: true);
+                MessageComponent errorMsg = ComponentV2Builder.Error("No Player", "No active player found.");
+                if (isInitialOpen)
+                    await FollowupAsync(components: errorMsg, ephemeral: true);
+                else
+                    await interaction.ModifyOriginalResponseAsync(msg => { msg.Components = errorMsg; msg.Embed = null; msg.Flags = MessageFlags.ComponentsV2; });
                 return;
             }
             ButtonContext context = new()
@@ -152,10 +174,10 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
                 Interaction = interaction
             };
             int currentPage = int.TryParse(pageStr, out int page) ? page : 1;
-            switch (action.ToLowerInvariant())
+            switch (normalizedAction)
             {
                 case "options":
-                    // Send ephemeral queue management panel
+                    // Send new ephemeral queue management panel
                     string nowPlaying = (player.CurrentItem as CustomTrackQueueItem)?.Title ?? "Nothing";
                     string artist = (player.CurrentItem as CustomTrackQueueItem)?.Artist ?? "";
                     string displayNow = string.IsNullOrEmpty(artist) ? nowPlaying : $"{nowPlaying} - {artist}";
@@ -170,24 +192,44 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
                 case "shuffle":
                     int countBefore = player.Queue.Count;
                     await player.Queue.ShuffleAsync();
-                    await FollowupAsync(components: ComponentV2Builder.Success(
-                        "Queue Shuffled", $"Shuffled {countBefore} tracks."), ephemeral: true);
+                    await interaction.ModifyOriginalResponseAsync(msg =>
+                    {
+                        msg.Components = ComponentV2Builder.Success("Queue Shuffled", $"Shuffled {countBefore} tracks.");
+                        msg.Embed = null;
+                        msg.Flags = MessageFlags.ComponentsV2;
+                    });
                     break;
                 case "clear":
                     int cleared = player.Queue.Count;
                     await player.Queue.ClearAsync();
-                    await FollowupAsync(components: ComponentV2Builder.Success(
-                        "Queue Cleared", $"Removed {cleared} tracks from the queue."), ephemeral: true);
+                    await interaction.ModifyOriginalResponseAsync(msg =>
+                    {
+                        msg.Components = ComponentV2Builder.Success("Queue Cleared", $"Removed {cleared} tracks from the queue.");
+                        msg.Embed = null;
+                        msg.Flags = MessageFlags.ComponentsV2;
+                    });
                     break;
                 default:
-                    await FollowupAsync(components: ComponentV2Builder.Error("Unknown Action", $"Unrecognized queue action: {action}"), ephemeral: true);
+                    MessageComponent unknownMsg = ComponentV2Builder.Error("Unknown Action", $"Unrecognized queue action: {action}");
+                    if (isInitialOpen)
+                        await FollowupAsync(components: unknownMsg, ephemeral: true);
+                    else
+                        await interaction.ModifyOriginalResponseAsync(msg => { msg.Components = unknownMsg; msg.Embed = null; msg.Flags = MessageFlags.ComponentsV2; });
                     break;
             }
         }
         catch (Exception ex)
         {
             Logs.Error($"Error handling queue options: {ex.Message}");
-            await FollowupAsync(components: ComponentV2Builder.Error("Queue Error", "An error occurred while managing the queue. Please try again later."), ephemeral: true);
+            MessageComponent errorMsg = ComponentV2Builder.Error("Queue Error", "An error occurred while managing the queue. Please try again later.");
+            try
+            {
+                if (isInitialOpen)
+                    await FollowupAsync(components: errorMsg, ephemeral: true);
+                else
+                    await interaction.ModifyOriginalResponseAsync(msg => { msg.Components = errorMsg; msg.Embed = null; msg.Flags = MessageFlags.ComponentsV2; });
+            }
+            catch { /* Ignore if the error response itself fails */ }
         }
     }
 
@@ -291,126 +333,44 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
         }
     }
 
-    /// <summary>Handles track selection from search results.
-    /// Plays a single selected track.</summary>
-    /// <param name="trackKey">The track key to play</param>
-    /// <returns>A task representing the asynchronous operation</returns>
-    private async Task HandleTrackSelectionAsync(string trackKey)
+    /// <summary>Handles track selection from search results using the appropriate provider</summary>
+    private async Task HandleTrackSelectionAsync(IMusicProvider provider, string trackKey)
     {
-        try
+        Track? track = await provider.GetTrackDetailsAsync(trackKey);
+        if (track == null)
         {
-            // Get track details
-            Track? track = await plexMusicService.GetTrackDetailsAsync(trackKey);
-            if (track == null)
-            {
-                await FollowupAsync(components: ComponentV2Builder.Error("Track Error", "Failed to retrieve track details."), ephemeral: true);
-                return;
-            }
-            // Play the track
-            await playerService.AddToQueueAsync(Context.Interaction, [track]);
+            await FollowupAsync(components: ComponentV2Builder.Error("Track Error", "Failed to retrieve track details."), ephemeral: true);
+            return;
         }
-        catch (Exception ex)
-        {
-            Logs.Error($"Error handling track selection: {ex.Message}");
-            throw; // Rethrow for the caller to handle
-        }
+        await playerService.AddToQueueAsync(Context.Interaction, [track]);
     }
 
-    /// <summary>Handles album selection from search results.
-    /// Plays all tracks from the selected album.</summary>
-    /// <param name="albumKey">The album key to play</param>
-    /// <returns>A task representing the asynchronous operation</returns>
-    private async Task HandleAlbumSelectionAsync(string albumKey)
+    /// <summary>Handles album selection from search results using the appropriate provider</summary>
+    private async Task HandleAlbumSelectionAsync(IMusicProvider provider, string albumKey)
     {
-        try
+        List<Track> tracks = await provider.GetTracksAsync(albumKey);
+        if (tracks.Count == 0)
         {
-            // Get tracks from the album
-            List<Track> tracks = await plexMusicService.GetTracksAsync(albumKey);
-            if (tracks.Count == 0)
-            {
-                await FollowupAsync(components: ComponentV2Builder.Error("Empty Album", "The selected album has no tracks."), ephemeral: true);
-                return;
-            }
-            // Add tracks to queue
-            await playerService.AddToQueueAsync(Context.Interaction, tracks);
+            await FollowupAsync(components: ComponentV2Builder.Error("Empty Album", "The selected album has no tracks."), ephemeral: true);
+            return;
         }
-        catch (Exception ex)
-        {
-            Logs.Error($"Error handling album selection: {ex.Message}");
-            throw; // Rethrow for the caller to handle
-        }
+        await playerService.AddToQueueAsync(Context.Interaction, tracks);
     }
 
-    /// <summary>Handles artist selection from search results.
-    /// Plays all tracks from all albums by the selected artist.</summary>
-    /// <param name="artistKey">The artist key to play</param>
-    /// <returns>A task representing the asynchronous operation</returns>
-    private async Task HandleArtistSelectionAsync(string artistKey)
+    /// <summary>Handles artist selection from search results using the appropriate provider</summary>
+    private async Task HandleArtistSelectionAsync(IMusicProvider provider, string artistKey)
     {
-        try
+        List<Track> allTracks = await provider.GetAllArtistTracksAsync(artistKey);
+        if (allTracks.Count == 0)
         {
-            // Get all tracks from all albums in parallel
-            List<Track> allTracks = await plexMusicService.GetAllArtistTracksAsync(artistKey);
-            if (allTracks.Count == 0)
-            {
-                await FollowupAsync(components: ComponentV2Builder.Error("Empty Artist", "The selected artist has no tracks."), ephemeral: true);
-                return;
-            }
-            await playerService.AddToQueueAsync(Context.Interaction, allTracks);
+            await FollowupAsync(components: ComponentV2Builder.Error("Empty Artist", "The selected artist has no tracks."), ephemeral: true);
+            return;
         }
-        catch (Exception ex)
-        {
-            Logs.Error($"Error handling artist selection: {ex.Message}");
-            throw;
-        }
+        await playerService.AddToQueueAsync(Context.Interaction, allTracks);
     }
 
-    /// <summary>Handles YouTube track selection from search results.
-    /// Plays a YouTube track selected from search results.</summary>
-    /// <param name="trackUrl">The URL of the YouTube track to play</param>
-    /// <returns>A task representing the asynchronous operation</returns>
-    private async Task HandleYouTubeSelectionAsync(string videoUrl)
-    {
-        try
-        {
-            Logs.Debug($"Handling YouTube selection for URL: {videoUrl}");
-
-            // Create a track stub and resolve through the resolver (single Lavalink call)
-            Track track = Track.CreateFromUrl("Loading...", "YouTube", videoUrl, "", "youtube");
-            LavalinkTrack? resolved = await trackResolver.ResolveTrackAsync(track);
-
-            if (resolved == null)
-            {
-                await FollowupAsync(components: ComponentV2Builder.Error("YouTube Error", "This YouTube video cannot be played. It may be age-restricted or requires login."), ephemeral: true);
-                return;
-            }
-
-            // Update track metadata from what Lavalink found
-            track.Title = resolved.Title ?? "YouTube Track";
-            track.Artist = resolved.Author ?? "YouTube";
-            track.ArtworkUrl = resolved.ArtworkUri?.ToString() ?? "";
-
-            // Queue the track (resolver in AddToQueueAsync will resolve again, but the URL is the same
-            // and Lavalink handles this efficiently — the key win is removing the duplicate GetPlayerAsync call)
-            await playerService.AddToQueueAsync(Context.Interaction, [track]);
-        }
-        catch (Exception ex)
-        {
-            Logs.Error($"Error handling YouTube selection: {ex.Message}");
-            if (ex.Message.Contains("login") || ex.Message.Contains("This video requires login"))
-            {
-                await FollowupAsync(components: ComponentV2Builder.Error("YouTube Error", "This YouTube video cannot be played as it requires login or is age-restricted."), ephemeral: true);
-            }
-            else
-            {
-                await FollowupAsync(components: ComponentV2Builder.Error("YouTube Error",
-                    "An error occurred while playing this YouTube track. It may be unavailable or restricted."), ephemeral: true);
-            }
-        }
-    }
-
-    /// <summary>Shows the current queue as an embed.
-    /// Displays the currently playing track and upcoming tracks in the queue.</summary>
+    /// <summary>Shows the current queue by updating the existing ephemeral panel in-place.
+    /// Displays the currently playing track and upcoming tracks with pagination.</summary>
     /// <param name="player">The player to show the queue for</param>
     /// <param name="page">The page number to show</param>
     /// <returns>A task representing the asynchronous operation</returns>
@@ -458,13 +418,29 @@ public class MusicInteractionHandler(IPlexMusicService plexMusicService, IPlayer
                 components.WithButton("Next", $"queue_options:view:{Math.Min(totalPages, page + 1)}",
                                    ButtonStyle.Secondary, disabled: page >= totalPages);
             }
-            await FollowupAsync(components: ComponentV2Builder.BuildQueueDisplay(
-                nowPlayingLine, queueText, footerLine, components), ephemeral: true);
+
+            // Update the existing ephemeral panel in-place
+            await Context.Interaction.ModifyOriginalResponseAsync(msg =>
+            {
+                msg.Components = ComponentV2Builder.BuildQueueDisplay(
+                    nowPlayingLine, queueText, footerLine, components);
+                msg.Embed = null;
+                msg.Flags = MessageFlags.ComponentsV2;
+            });
         }
         catch (Exception ex)
         {
             Logs.Error($"Error showing queue: {ex.Message}");
-            await FollowupAsync(components: ComponentV2Builder.Error("Queue Error", "An error occurred while showing the queue. Please try again later."), ephemeral: true);
+            try
+            {
+                await Context.Interaction.ModifyOriginalResponseAsync(msg =>
+                {
+                    msg.Components = ComponentV2Builder.Error("Queue Error", "An error occurred while showing the queue.");
+                    msg.Embed = null;
+                    msg.Flags = MessageFlags.ComponentsV2;
+                });
+            }
+            catch { /* Ignore if the error response itself fails */ }
         }
     }
 
