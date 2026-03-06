@@ -1,36 +1,23 @@
 ﻿using PlexBot.Core.Models.Media;
 using PlexBot.Core.Services;
+using PlexBot.Core.Services.Music;
 using PlexBot.Utils;
 
 namespace PlexBot.Core.Discord.Autocomplete;
 
 /// <summary>Provides autocomplete suggestions for music sources.
-/// This handler dynamically generates source options based on the
-/// configured music sources in the environment variables.</summary>
+/// Dynamically lists all available providers from MusicProviderRegistry.</summary>
 public class SourceAutocompleteHandler : AutocompleteHandler
 {
-    /// <summary>Generates source suggestions based on the configured sources.
-    /// Checks environment variables to determine which sources are enabled
-    /// and provides them as autocomplete options.</summary>
-    /// <param name="context">The interaction context</param>
-    /// <param name="autocompleteInteraction">The autocomplete interaction</param>
-    /// <param name="parameter">The parameter to provide suggestions for</param>
-    /// <param name="service">The service provider</param>
-    /// <returns>Autocomplete results containing available sources</returns>
-    public override Task<AutocompletionResult> GenerateSuggestionsAsync(IInteractionContext context, 
+    public override Task<AutocompletionResult> GenerateSuggestionsAsync(IInteractionContext context,
         IAutocompleteInteraction autocompleteInteraction, IParameterInfo parameter, IServiceProvider service)
     {
         try
         {
-            Logs.Debug("Generating source suggestions for autocomplete");
-            // Start with Plex which is always available
-            List<AutocompleteResult> results =
-            [
-                new AutocompleteResult("Plex", "plex")
-            ];
-            results.Add(new AutocompleteResult("YouTube", "youtube"));
-
-            // TODO: Add more sources like Spotify, SoundCloud, etc.
+            MusicProviderRegistry registry = service.GetRequiredService<MusicProviderRegistry>();
+            List<AutocompleteResult> results = registry.GetAvailableProviders()
+                .Select(p => new AutocompleteResult(p.DisplayName, p.Id))
+                .ToList();
 
             return Task.FromResult(AutocompletionResult.FromSuccess(results));
         }

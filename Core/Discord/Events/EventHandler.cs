@@ -1,5 +1,7 @@
 using PlexBot.Utils;
 using PlexBot.Core.Discord.Embeds;
+using PlexBot.Core.Events;
+using PlexBot.Core.Extensions;
 
 namespace PlexBot.Core.Discord.Events;
 
@@ -10,6 +12,7 @@ namespace PlexBot.Core.Discord.Events;
 /// <param name="services">The service provider for dependency injection</param>
 public class DiscordEventHandler(DiscordSocketClient client, InteractionService interactions, IServiceProvider services)
 {
+    private bool _modulesRegistered;
 
     /// <summary>Initializes Discord event handlers for logging, ready events, and interactions</summary>
     /// <returns>A task representing the asynchronous operation</returns>
@@ -36,8 +39,26 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
     {
         try
         {
-            // Register modules first
-            await interactions.AddModulesAsync(Assembly.GetEntryAssembly(), services);
+            // Only register modules once — ReadyAsync fires on every reconnect
+            // but AddModulesAsync would create duplicate handlers
+            if (!_modulesRegistered)
+            {
+                // Register modules from main assembly
+                await interactions.AddModulesAsync(Assembly.GetEntryAssembly(), services);
+
+                // Register modules from extension assemblies
+                ExtensionManager extensionManager = services.GetRequiredService<ExtensionManager>();
+                foreach (Extension ext in extensionManager.GetAllExtensions())
+                {
+                    if (ext.SourceAssembly != null && ext.SourceAssembly != Assembly.GetEntryAssembly())
+                    {
+                        await interactions.AddModulesAsync(ext.SourceAssembly, services);
+                        Logs.Info($"Registered commands from extension: {ext.Name}");
+                    }
+                }
+
+                _modulesRegistered = true;
+            }
 
             // Log discovered modules
             var modules = interactions.Modules.ToList();
@@ -83,6 +104,17 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
             await client.SetGameAsync("/help", type: ActivityType.Listening);
 
             Logs.Init($"Bot is ready. Connected to {client.Guilds.Count} guilds");
+
+            // Publish bot ready event for extensions
+            BotEventBus eventBus = services.GetRequiredService<BotEventBus>();
+            _ = eventBus.PublishAsync(new BotEvent
+            {
+                EventType = BotEvents.BotReady,
+                Data = new Dictionary<string, object>
+                {
+                    ["guildCount"] = client.Guilds.Count
+                }
+            });
         }
         catch (Exception ex)
         {
@@ -98,6 +130,10 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
     {
         try
         {
+            // Log how much of the 3-second interaction deadline has already elapsed
+            TimeSpan elapsed = DateTimeOffset.UtcNow - interaction.CreatedAt;
+            Logs.Debug($"Interaction received: type={interaction.Type}, elapsed={elapsed.TotalMilliseconds:F0}ms since creation");
+
             // Create an execution context for the interaction
             SocketInteractionContext context = new(client, interaction);
 
