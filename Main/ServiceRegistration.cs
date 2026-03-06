@@ -63,7 +63,13 @@ namespace PlexBot.Main
                     | GatewayIntents.MessageContent,
                 AlwaysDownloadUsers = false,
                 MessageCacheSize = 100,
-                LogLevel = LogSeverity.Debug
+                LogLevel = LogSeverity.Debug,
+                // Use Discord's server time instead of the system clock for rate limit
+                // calculations. Prevents clock skew in Docker from causing mismatches.
+                UseSystemClock = false,
+                // Disable local 3-second interaction deadline check that uses snowflake
+                // timestamps — Docker clock drift can cause false rejections.
+                UseInteractionSnowflakeDate = false
             }));
 
             // Configure interaction service
