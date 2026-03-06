@@ -144,6 +144,12 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
             {
                 Logs.Warning($"Interaction failed: {result.Error} - {result.ErrorReason}");
 
+                // Autocomplete interactions cannot receive component/embed responses.
+                // Superseded autocomplete interactions (user kept typing) fail with 40060
+                // which is normal — just log and move on to avoid blocking the gateway.
+                if (interaction is SocketAutocompleteInteraction)
+                    return;
+
                 // Create a standardized error using our CV2 utility
                 var errorComponents = result.Error.HasValue
                     ? ComponentV2Builder.CommandError(result.Error.Value, result.ErrorReason)
@@ -162,6 +168,14 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
         }
         catch (Exception ex)
         {
+            // Autocomplete failures (superseded by newer keystrokes) are expected — don't
+            // block the gateway with doomed HTTP retries.
+            if (interaction is SocketAutocompleteInteraction)
+            {
+                Logs.Debug($"Autocomplete interaction failed (likely superseded): {ex.Message}");
+                return;
+            }
+
             Logs.Error($"Error handling interaction: {ex.Message}");
 
             // Create a standardized error for exceptions
@@ -169,13 +183,20 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
                 "An unexpected error occurred while processing your command. Please try again later.");
 
             // Try to respond with an error message if we haven't already
-            if (!interaction.HasResponded)
+            try
             {
-                await interaction.RespondAsync(components: exceptionComponents, ephemeral: true);
+                if (!interaction.HasResponded)
+                {
+                    await interaction.RespondAsync(components: exceptionComponents, ephemeral: true);
+                }
+                else
+                {
+                    await interaction.FollowupAsync(components: exceptionComponents, ephemeral: true);
+                }
             }
-            else
+            catch (Exception responseEx)
             {
-                await interaction.FollowupAsync(components: exceptionComponents, ephemeral: true);
+                Logs.Debug($"Failed to send error response (interaction likely expired): {responseEx.Message}");
             }
         }
     }

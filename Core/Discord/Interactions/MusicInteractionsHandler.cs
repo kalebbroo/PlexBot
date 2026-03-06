@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Discord.Net;
 using PlexBot.Core.Models.Media;
 using PlexBot.Utils;
 using Discord.WebSocket;
@@ -34,14 +35,15 @@ public class MusicInteractionHandler(IPlayerService playerService,
     [ComponentInteraction("search:*:*")]
     public async Task HandleSearchSelectionAsync(string providerId, string type, string[] values)
     {
-        await DeferAsync(ephemeral: true);
-        if (IsOnCooldown(Context.User.Id, $"search:{providerId}:{type}"))
-        {
-            await FollowupAsync(components: ComponentV2Builder.Error("Cooldown", "Please wait a moment before selecting another item."), ephemeral: true);
-            return;
-        }
         try
         {
+            await DeferAsync(ephemeral: true);
+            if (IsOnCooldown(Context.User.Id, $"search:{providerId}:{type}"))
+            {
+                await FollowupAsync(components: ComponentV2Builder.Error("Cooldown", "Please wait a moment before selecting another item."), ephemeral: true);
+                return;
+            }
+
             if (values.Length == 0)
             {
                 await FollowupAsync(components: ComponentV2Builder.Error("No Selection", "No selection made."), ephemeral: true);
@@ -73,10 +75,15 @@ public class MusicInteractionHandler(IPlayerService playerService,
                     break;
             }
         }
+        catch (HttpException httpEx) when (httpEx.DiscordCode == DiscordErrorCode.UnknownInteraction)
+        {
+            Logs.Warning($"Search selection hit 10062 (Unknown interaction) — Discord-side timing issue");
+        }
         catch (Exception ex)
         {
             Logs.Error($"Error handling search selection: {ex.Message}");
-            await FollowupAsync(components: ComponentV2Builder.Error("Error", "An error occurred while processing your selection. Please try again later."), ephemeral: true);
+            try { await FollowupAsync(components: ComponentV2Builder.Error("Error", "An error occurred while processing your selection. Please try again later."), ephemeral: true); }
+            catch { /* interaction may be dead */ }
         }
     }
 

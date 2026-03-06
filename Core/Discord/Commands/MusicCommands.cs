@@ -1,3 +1,4 @@
+using Discord.Net;
 using PlexBot.Core.Models;
 using PlexBot.Core.Models.Media;
 using PlexBot.Core.Discord.Autocomplete;
@@ -27,10 +28,10 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
     [Autocomplete(typeof(SourceAutocompleteHandler))]
     string source = "plex")
     {
-        // Defer the response to give us time to search
-        await DeferAsync(ephemeral: true);
         try
         {
+            // Defer the response to give us time to search
+            await DeferAsync(ephemeral: true);
             Logs.Debug($"Searching for '{query}' in {source}");
             if (string.IsNullOrWhiteSpace(query))
             {
@@ -54,10 +55,17 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
             }
             await DisplaySearchResults(query, results, provider);
         }
+        catch (HttpException httpEx) when (httpEx.DiscordCode == DiscordErrorCode.UnknownInteraction)
+        {
+            // 10062: Known intermittent Discord API issue — interaction token wasn't propagated in time.
+            // Nothing we can do; the token is dead. Just log and let Discord show the default failure.
+            Logs.Warning($"Search command hit 10062 (Unknown interaction) — Discord-side timing issue");
+        }
         catch (Exception ex)
         {
-            Logs.Error($"Error in search command: {ex.Message}");
-            await FollowupAsync(components: ComponentV2Builder.Error("Search Error", "An error occurred while searching. Please try again later."), ephemeral: true);
+            Logs.Error($"Error in search command: {ex.Message}\n{ex.StackTrace}");
+            try { await FollowupAsync(components: ComponentV2Builder.Error("Search Error", "An error occurred while searching. Please try again later."), ephemeral: true); }
+            catch { /* interaction may be dead */ }
         }
     }
 
@@ -88,7 +96,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         }
 
         // Add album select menu if we have albums
-        if (results.Albums.Count > 0 && builder.ActionRows.Count < 5)
+        if (results.Albums.Count > 0 && (builder.ActionRows?.Count ?? 0) < 5)
         {
             SelectMenuBuilder albumMenu = new SelectMenuBuilder()
                 .WithPlaceholder("Select an album")
@@ -106,7 +114,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         }
 
         // Add track select menu if we have tracks
-        if (results.Tracks.Count > 0 && builder.ActionRows.Count < 5)
+        if (results.Tracks.Count > 0 && (builder.ActionRows?.Count ?? 0) < 5)
         {
             SelectMenuBuilder trackMenu = new SelectMenuBuilder()
                 .WithPlaceholder("Select a track")
@@ -303,6 +311,16 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
     /// <summary>Shows information about the bot and available commands.
     /// Provides a user-friendly help interface with command examples.</summary>
     /// <returns>A task representing the asynchronous operation</returns>
+    /// <summary>Diagnostic command to test interaction response timing</summary>
+    [SlashCommand("ping", "Test if interactions are working")]
+    public async Task PingCommand()
+    {
+        Logs.Info($"Ping: about to DeferAsync");
+        await DeferAsync(ephemeral: true);
+        Logs.Info($"Ping: DeferAsync succeeded");
+        await FollowupAsync(components: ComponentV2Builder.Info("Pong", "Interaction pipeline is healthy."), ephemeral: true);
+    }
+
     [SlashCommand("help", "Shows information about the bot and available commands")]
     public async Task HelpCommand()
     {
