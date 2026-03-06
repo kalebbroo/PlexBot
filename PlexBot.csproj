@@ -7,6 +7,14 @@
 		<Nullable>enable</Nullable>
 	</PropertyGroup>
 
+	<!-- Exclude extension source code from host compilation — extensions are separate projects -->
+	<ItemGroup>
+		<Compile Remove="Extensions\**" />
+		<Content Remove="Extensions\**" />
+		<EmbeddedResource Remove="Extensions\**" />
+		<None Remove="Extensions\**" />
+	</ItemGroup>
+
 	<ItemGroup>
 		<PackageReference Include="Discord.Net" Version="3.19.0" />
 		<PackageReference Include="DotNetEnv" Version="3.1.1" />
