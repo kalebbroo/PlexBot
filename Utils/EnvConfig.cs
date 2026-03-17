@@ -19,15 +19,21 @@ public static class EnvConfig
 
         // Load from .env file - search multiple locations
         string? filePath = envFilePath ?? FindEnvFile();
-        if (filePath != null)
+        if (filePath is null)
         {
-            Logs.Init($"Loading configuration from {filePath}");
-            LoadEnvFile(filePath);
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine("\n[FATAL] .env file not found!");
+            Console.ResetColor();
+            Console.WriteLine("Copy the template and fill in your credentials before starting the bot:");
+            Console.WriteLine("  cp RenameMe.env.txt .env");
+            Console.WriteLine("\nSearched locations:");
+            Console.WriteLine($"  - {Path.Combine(Directory.GetCurrentDirectory(), ".env")}");
+            Console.WriteLine($"  - {Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ".env")}");
+            Environment.Exit(1);
         }
-        else
-        {
-            Logs.Warning(".env file not found in any expected location");
-        }
+
+        Logs.Init($"Loading configuration from {filePath}");
+        LoadEnvFile(filePath);
 
         // Load from environment variables (overriding .env file)
         foreach (var entry in Environment.GetEnvironmentVariables())

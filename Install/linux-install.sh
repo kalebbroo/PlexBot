@@ -91,7 +91,20 @@ fi
 if [ ! -f "$ROOT_DIR/.env" ]; then
     echo ""
     echo "No .env file found at: $ROOT_DIR/.env"
-    echo "Please create a .env file with your Discord token and Plex server details."
+    echo "Please create one from the template:"
+    echo "  cp RenameMe.env.txt .env"
+    echo "Then fill in your Discord token and Plex server details."
+    echo ""
+    exit 1
+fi
+
+# Check if config.fds file exists
+if [ ! -f "$ROOT_DIR/config.fds" ]; then
+    echo ""
+    echo "No config.fds file found at: $ROOT_DIR/config.fds"
+    echo "Please create one from the template:"
+    echo "  cp RenameMe.config.fds config.fds"
+    echo "The defaults work out of the box. Edit it to customize player settings."
     echo ""
     exit 1
 fi

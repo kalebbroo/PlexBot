@@ -14,16 +14,21 @@ public static class BotConfig
         if (_initialized) return;
 
         string? filePath = configPath ?? FindConfigFile();
-        if (filePath != null)
+        if (filePath is null)
         {
-            Logs.Init($"Loading bot config from {filePath}");
-            _config = FDSUtility.ReadFile(filePath);
-        }
-        else
-        {
-            Logs.Warning("config.fds not found in any expected location, using defaults");
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine("\n[FATAL] config.fds not found!");
+            Console.ResetColor();
+            Console.WriteLine("Copy the template and edit it before starting the bot:");
+            Console.WriteLine("  cp RenameMe.config.fds config.fds");
+            Console.WriteLine("\nSearched locations:");
+            Console.WriteLine($"  - {Path.Combine(Directory.GetCurrentDirectory(), "config.fds")}");
+            Console.WriteLine($"  - {Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "config.fds")}");
+            Environment.Exit(1);
         }
 
+        Logs.Init($"Loading bot config from {filePath}");
+        _config = FDSUtility.ReadFile(filePath);
         _initialized = true;
     }
 
