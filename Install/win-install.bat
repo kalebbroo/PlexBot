@@ -96,7 +96,21 @@ REM Check if .env file exists
 if not exist "%ROOT_DIR%\.env" (
     echo.
     echo No .env file found at: %ROOT_DIR%\.env
-    echo Please create a .env file with your Discord token and Plex server details.
+    echo Please create one from the template:
+    echo   copy RenameMe.env.txt .env
+    echo Then fill in your Discord token and Plex server details.
+    echo.
+    pause
+    exit /b 1
+)
+
+REM Check if config.fds file exists
+if not exist "%ROOT_DIR%\config.fds" (
+    echo.
+    echo No config.fds file found at: %ROOT_DIR%\config.fds
+    echo Please create one from the template:
+    echo   copy RenameMe.config.fds config.fds
+    echo The defaults work out of the box. Edit it to customize player settings.
     echo.
     pause
     exit /b 1
