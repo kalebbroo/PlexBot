@@ -16,7 +16,9 @@ services:
       - ../../data:/app/data
       - ../../logs:/app/logs
       - ../../.env:/app/.env  # Mount directly to app root
-      - ../../config.fds:/app/config.fds  # Application settings
+      # config.fds is auto-created from template by startup.sh if missing.
+      # Uncomment to persist custom settings across container rebuilds:
+      # - ../../config.fds:/app/config.fds
       - ../../Images:/app/Images
     environment:
       - DOTNET_ENVIRONMENT=Production

@@ -19,6 +19,8 @@ if [ -d "$SOURCE_DIR/.git" ]; then
     cd "$APP_DIR"
 fi
 
+BUILD_MARKER="$APP_DIR/.last-build"
+
 # Check if rebuild is needed
 need_rebuild() {
     # No DLL = need build
@@ -32,12 +34,19 @@ need_rebuild() {
         return 1
     fi
 
-    # Compare newest source file to newest binary
-    NEWEST_SOURCE=$(find "$SOURCE_DIR" -type f \( -name "*.cs" -o -name "*.csproj" \) -printf '%T@\n' 2>/dev/null | sort -nr | head -n 1)
-    NEWEST_BINARY=$(find "$APP_DIR" -maxdepth 1 -type f -name "*.dll" -printf '%T@\n' 2>/dev/null | sort -nr | head -n 1)
+    # No build marker = need build (first run or marker was cleared)
+    if [ ! -f "$BUILD_MARKER" ]; then
+        echo "No build marker found, rebuild needed."
+        return 0
+    fi
 
-    if [ -z "$NEWEST_BINARY" ] || [ "${NEWEST_SOURCE%.*}" -gt "${NEWEST_BINARY%.*}" ] 2>/dev/null; then
-        echo "Source is newer than binaries, rebuild needed."
+    # Compare newest source file to build marker (not DLL timestamps, which are
+    # unreliable across Windows host / Linux container volume mounts)
+    # Exclude bin/obj dirs which contain auto-generated files from builds
+    NEWEST_SOURCE=$(find "$SOURCE_DIR" -type d \( -name bin -o -name obj \) -prune -o -type f \( -name "*.cs" -o -name "*.csproj" \) -newer "$BUILD_MARKER" -print -quit 2>/dev/null)
+
+    if [ -n "$NEWEST_SOURCE" ]; then
+        echo "Source is newer than last build, rebuild needed."
         return 0
     fi
 
@@ -50,7 +59,19 @@ if need_rebuild; then
     cd "$SOURCE_DIR"
     dotnet restore
     dotnet publish -c Release -o "$APP_DIR"
+    touch "$BUILD_MARKER"
     echo "Rebuild complete."
+fi
+
+# Create config.fds from template if it doesn't exist (after rebuild so publish doesn't delete it)
+if [ ! -f "$APP_DIR/config.fds" ]; then
+    TEMPLATE="$SOURCE_DIR/RenameMe.config.fds"
+    if [ -f "$TEMPLATE" ]; then
+        echo "No config.fds found — creating from template with defaults..."
+        cp "$TEMPLATE" "$APP_DIR/config.fds"
+    else
+        echo "Warning: No config.fds found. Bot will use built-in defaults."
+    fi
 fi
 
 # Start the application (exec replaces shell for proper signal handling)

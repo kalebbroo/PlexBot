@@ -9,7 +9,9 @@ namespace PlexBot.Core.Extensions;
 
 /// <summary>Custom AssemblyLoadContext for extensions that falls back to the host (default ALC)
 /// for shared types. This ensures type identity is maintained for shared interfaces like
-/// Extension, IMusicProvider, etc. while allowing extension-private dependencies.</summary>
+/// Extension, IMusicProvider, etc. while allowing extension-private dependencies.
+/// Requires extensions to use EnableDynamicLoading which generates proper .deps.json
+/// and .runtimeconfig.json for AssemblyDependencyResolver to resolve NuGet packages.</summary>
 internal sealed class ExtensionLoadContext(string extensionDllPath) : AssemblyLoadContext(isCollectible: false)
 {
     private readonly AssemblyDependencyResolver _resolver = new(extensionDllPath);
@@ -23,7 +25,8 @@ internal sealed class ExtensionLoadContext(string extensionDllPath) : AssemblyLo
                 return null;
         }
 
-        // Try to resolve from the extension's deps.json for private dependencies
+        // Resolve from the extension's deps.json + runtimeconfig.json for private dependencies.
+        // EnableDynamicLoading ensures these files are generated with correct package resolution paths.
         string? resolved = _resolver.ResolveAssemblyToPath(assemblyName);
         if (resolved != null)
             return LoadFromAssemblyPath(resolved);
@@ -154,7 +157,7 @@ public class ExtensionManager
         try
         {
             string hostOutputDir = Path.GetFullPath(AppContext.BaseDirectory);
-            ProcessStartInfo psi = new("dotnet", $"build \"{csprojPath}\" -c {configuration} -o \"{outputDir}\" -p:HostOutputDir=\"{hostOutputDir}\"")
+            ProcessStartInfo psi = new("dotnet", $"build \"{csprojPath}\" -c {configuration} -o \"{outputDir}\" -p:HostOutputDir=\"{hostOutputDir}\" -p:EnableDynamicLoading=true")
             {
                 WorkingDirectory = Path.GetFullPath(extensionDir),
                 RedirectStandardOutput = true,
