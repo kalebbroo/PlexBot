@@ -1,0 +1,94 @@
+name: Bug Report
+description: Report a bug or unexpected behavior
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug! Please fill out the details below so we can reproduce and fix the issue.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear description of what the bug is.
+      placeholder: "When I do X, Y happens instead of Z."
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: How can we reproduce this issue?
+      placeholder: |
+        1. Join a voice channel
+        2. Use /play query:"..."
+        3. Click the skip button
+        4. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: What actually happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        Paste any relevant bot logs here. You can get logs with:
+        - `docker-compose logs plexbot`
+        - Check `logs/` directory for log files
+      render: text
+
+  - type: dropdown
+    id: player-style
+    attributes:
+      label: Player Style
+      description: Which player UI are you using?
+      options:
+        - Modern (image-based)
+        - Classic (embed)
+        - Both / Not applicable
+    validations:
+      required: true
+
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment Method
+      description: How is PlexBot running?
+      options:
+        - Docker (install script)
+        - Docker (manual)
+        - Bare metal (.NET SDK)
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating System
+      placeholder: "e.g. Ubuntu 22.04, Windows 11, macOS 14"
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Any other context, screenshots, or details that might help.

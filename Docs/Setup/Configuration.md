@@ -48,7 +48,8 @@ visualPlayer:
 
 ```yaml
 plex:
-    maxConcurrentResolves: 3     # Max parallel resolves when loading playlists (lower = safer for Plex)
+    maxConcurrentResolves: 3     # Max parallel resolves when loading playlists from Plex (lower = safer)
+    maxConcurrentYouTubeResolves: 5  # Max parallel resolves for YouTube sources
 ```
 
 ### Logging Settings

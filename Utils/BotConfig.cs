@@ -22,8 +22,8 @@ public static class BotConfig
             Console.WriteLine("Copy the template and edit it before starting the bot:");
             Console.WriteLine("  cp RenameMe.config.fds config.fds");
             Console.WriteLine("\nSearched locations:");
-            Console.WriteLine($"  - {Path.Combine(Directory.GetCurrentDirectory(), "config.fds")}");
-            Console.WriteLine($"  - {Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "config.fds")}");
+            Console.WriteLine($"  - {System.IO.Path.Combine(Directory.GetCurrentDirectory(), "config.fds")}");
+            Console.WriteLine($"  - {System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "config.fds")}");
             Environment.Exit(1);
         }
 

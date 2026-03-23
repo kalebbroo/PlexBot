@@ -27,8 +27,8 @@ public static class EnvConfig
             Console.WriteLine("Copy the template and fill in your credentials before starting the bot:");
             Console.WriteLine("  cp RenameMe.env.txt .env");
             Console.WriteLine("\nSearched locations:");
-            Console.WriteLine($"  - {Path.Combine(Directory.GetCurrentDirectory(), ".env")}");
-            Console.WriteLine($"  - {Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ".env")}");
+            Console.WriteLine($"  - {System.IO.Path.Combine(Directory.GetCurrentDirectory(), ".env")}");
+            Console.WriteLine($"  - {System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ".env")}");
             Environment.Exit(1);
         }
 
