@@ -98,15 +98,15 @@ if [ ! -f "$ROOT_DIR/.env" ]; then
     exit 1
 fi
 
-# Check if config.fds file exists
+# Create config.fds from template if it doesn't exist
 if [ ! -f "$ROOT_DIR/config.fds" ]; then
-    echo ""
-    echo "No config.fds file found at: $ROOT_DIR/config.fds"
-    echo "Please create one from the template:"
-    echo "  cp RenameMe.config.fds config.fds"
-    echo "The defaults work out of the box. Edit it to customize player settings."
-    echo ""
-    exit 1
+    if [ -f "$ROOT_DIR/RenameMe.config.fds" ]; then
+        echo "No config.fds found — creating from template with defaults..."
+        cp "$ROOT_DIR/RenameMe.config.fds" "$ROOT_DIR/config.fds"
+        echo "Edit config.fds to customize player settings."
+    else
+        echo "Warning: No config.fds or RenameMe.config.fds found. Bot will use built-in defaults."
+    fi
 fi
 
 # Make sure data and logs directories exist

@@ -104,16 +104,15 @@ if not exist "%ROOT_DIR%\.env" (
     exit /b 1
 )
 
-REM Check if config.fds file exists
+REM Create config.fds from template if it doesn't exist
 if not exist "%ROOT_DIR%\config.fds" (
-    echo.
-    echo No config.fds file found at: %ROOT_DIR%\config.fds
-    echo Please create one from the template:
-    echo   copy RenameMe.config.fds config.fds
-    echo The defaults work out of the box. Edit it to customize player settings.
-    echo.
-    pause
-    exit /b 1
+    if exist "%ROOT_DIR%\RenameMe.config.fds" (
+        echo No config.fds found — creating from template with defaults...
+        copy "%ROOT_DIR%\RenameMe.config.fds" "%ROOT_DIR%\config.fds" >nul
+        echo Edit config.fds to customize player settings.
+    ) else (
+        echo Warning: No config.fds or RenameMe.config.fds found. Bot will use built-in defaults.
+    )
 )
 
 REM Make sure data and logs directories exist
