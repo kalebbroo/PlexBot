@@ -84,6 +84,11 @@ Quickly play a track, album, or artist by search term.
 Show an interactive help menu with all commands and usage tips.
 </details>
 
+<details>
+<summary><b>/ping</b></summary>
+Test if the bot is responding to interactions.
+</details>
+
 ---
 
 ## 🚀 Getting Started
@@ -155,7 +160,8 @@ Uses [Frenetic Data Syntax](https://github.com/FreneticLLC/FreneticUtilities) (Y
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `plex.maxConcurrentResolves` | int | `3` | Max parallel track resolves when loading playlists/albums. Lower if tracks fail to load; higher loads faster but may overwhelm Plex |
+| `plex.maxConcurrentResolves` | int | `3` | Max parallel track resolves when loading playlists/albums from Plex. Lower if tracks fail to load; higher loads faster but may overwhelm Plex |
+| `plex.maxConcurrentYouTubeResolves` | int | `5` | Max parallel track resolves when loading from YouTube. Separate limit allows higher concurrency for YouTube sources |
 
 #### Logging
 

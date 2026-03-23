@@ -84,6 +84,8 @@ plex:
     # Lower this if tracks fail to load (Plex drops connections under heavy concurrency)
     # Higher values load playlists faster but may overwhelm your Plex server
     maxConcurrentResolves: 3
+    # Max concurrent track resolves for YouTube sources (separate from Plex)
+    maxConcurrentYouTubeResolves: 5
 
 # ============================================
 # Logging Settings

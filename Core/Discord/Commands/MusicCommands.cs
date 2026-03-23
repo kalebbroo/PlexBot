@@ -142,17 +142,17 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         await FollowupAsync(components: ComponentV2Builder.BuildSearchResults(query, summary, builder), ephemeral: true);
     }
 
-    /// <summary>Plays music from a Plex playlist.
-    /// Allows users to quickly play entire playlists with optional shuffling.</summary>
-    /// <param name="playlist">The playlist to play</param>
+    /// <summary>Plays music from a Plex or custom playlist.
+    /// Routes to the appropriate provider based on the playlist key prefix.</summary>
+    /// <param name="playlist">The playlist to play (Plex key or custom:id)</param>
     /// <param name="shuffle">Whether to shuffle the playlist</param>
     /// <returns>A task representing the asynchronous operation</returns>
-    [SlashCommand("playlist", "Play a Plex playlist")]
+    [SlashCommand("playlist", "Play a playlist")]
     public async Task PlaylistCommand([Summary("playlist", "The playlist to play")]
     [Autocomplete(typeof(PlaylistAutocompleteHandler))]
     string playlist, [Summary("shuffle", "Shuffle the playlist")] bool shuffle = true)
     {
-        await RespondAsync(components: ComponentV2Builder.Info("Loading", "Loading playlist..."), ephemeral: true); // Respond to acknowledge the command
+        await RespondAsync(components: ComponentV2Builder.Info("Loading", "Loading playlist..."), ephemeral: true);
         IUserMessage ackMessage = await GetOriginalResponseAsync();
         try
         {
@@ -162,13 +162,32 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
                 await ackMessage.ModifyAsync(msg => { msg.Components = ComponentV2Builder.Error("Invalid Playlist", "Please select a playlist."); msg.Embed = null; msg.Flags = MessageFlags.ComponentsV2; });
                 return;
             }
-            Playlist playlistDetails = await plexMusicService.GetPlaylistDetailsAsync(playlist);
+
+            Playlist? playlistDetails = null;
+
+            // Route to custom playlist provider if prefixed with "custom:"
+            if (playlist.StartsWith("custom:", StringComparison.OrdinalIgnoreCase))
+            {
+                IMusicProvider? customProvider = providerRegistry.GetProvider("playlists");
+                if (customProvider is not null)
+                    playlistDetails = await customProvider.GetPlaylistDetailsAsync(playlist);
+
+                if (playlistDetails is null)
+                {
+                    await ackMessage.ModifyAsync(msg => { msg.Components = ComponentV2Builder.Error("Not Found", "Custom playlist not found."); msg.Embed = null; msg.Flags = MessageFlags.ComponentsV2; });
+                    return;
+                }
+            }
+            else
+            {
+                playlistDetails = await plexMusicService.GetPlaylistDetailsAsync(playlist);
+            }
+
             if (playlistDetails.Tracks.Count == 0)
             {
                 await ackMessage.ModifyAsync(msg => { msg.Components = ComponentV2Builder.Info("Empty Playlist", $"Playlist '{playlistDetails.Title}' is empty."); msg.Embed = null; msg.Flags = MessageFlags.ComponentsV2; });
                 return;
             }
-            // Get a list of tracks from the playlist to add to the queue
             List<Track> tracks = playlistDetails.Tracks;
             if (shuffle)
             {

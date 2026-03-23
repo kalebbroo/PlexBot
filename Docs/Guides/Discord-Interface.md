@@ -39,7 +39,7 @@ The player message includes a row of buttons for playback control:
 | Shuffle | Shuffle queue | Randomizes remaining queue order |
 | Volume Up | +10% volume | Capped at 100% |
 | Volume Down | -10% volume | Minimum 0% |
-| Stop | Disconnect | Stops playback, clears queue, leaves voice |
+| Kill | Disconnect | Stops playback, clears queue, leaves voice |
 | Queue | Queue panel | Opens queue view with additional options |
 
 ### Queue Panel
