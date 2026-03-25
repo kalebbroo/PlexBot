@@ -63,12 +63,16 @@ if need_rebuild; then
     echo "Rebuild complete."
 fi
 
-# Create config.fds from template if it doesn't exist (after rebuild so publish doesn't delete it)
+# Copy config.fds into the app directory (after rebuild so publish doesn't delete it)
 if [ ! -f "$APP_DIR/config.fds" ]; then
-    TEMPLATE="$SOURCE_DIR/RenameMe.config.fds"
-    if [ -f "$TEMPLATE" ]; then
+    if [ -f "$SOURCE_DIR/config.fds" ]; then
+        # User has a custom config in the project root — use it
+        echo "Found user config.fds — copying to app directory..."
+        cp "$SOURCE_DIR/config.fds" "$APP_DIR/config.fds"
+    elif [ -f "$SOURCE_DIR/RenameMe.config.fds" ]; then
+        # No user config — create from template with defaults
         echo "No config.fds found — creating from template with defaults..."
-        cp "$TEMPLATE" "$APP_DIR/config.fds"
+        cp "$SOURCE_DIR/RenameMe.config.fds" "$APP_DIR/config.fds"
     else
         echo "Warning: No config.fds found. Bot will use built-in defaults."
     fi

@@ -24,7 +24,7 @@ Thanks for your interest in contributing to PlexBot! This guide covers how to ge
    cp RenameMe.env.txt .env
    ```
 
-3. **Configure app settings** — Copy `RenameMe.config.fds` to `config.fds`:
+3. **Configure app settings** *(optional)* — `config.fds` is auto-created from the template if missing. To customize, copy and edit it:
    ```bash
    cp RenameMe.config.fds config.fds
    ```
