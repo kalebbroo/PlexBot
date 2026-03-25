@@ -75,6 +75,7 @@ if not exist "%DOCKER_DIR%\lavalink.application.yml" (
         echo     allowDirectVideoIds: true
         echo     allowDirectPlaylistIds: true
         echo     clients:
+        echo       - TVHTML5_SIMPLY
         echo       - MUSIC
         echo       - ANDROID_VR
         echo       - WEB
