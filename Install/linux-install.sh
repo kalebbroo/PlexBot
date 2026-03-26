@@ -70,8 +70,11 @@ plugins:
     allowDirectVideoIds: true
     allowDirectPlaylistIds: true
     clients:
-      - TVHTML5EMBEDDED
-      - TV
+      - TVHTML5_SIMPLY
+      - MUSIC
+      - ANDROID_VR
+      - WEB
+      - WEBEMBEDDED
     oauth:
       enabled: true
       refreshToken: ""
@@ -89,9 +92,22 @@ fi
 if [ ! -f "$ROOT_DIR/.env" ]; then
     echo ""
     echo "No .env file found at: $ROOT_DIR/.env"
-    echo "Please create a .env file with your Discord token and Plex server details."
+    echo "Please create one from the template:"
+    echo "  cp RenameMe.env.txt .env"
+    echo "Then fill in your Discord token and Plex server details."
     echo ""
     exit 1
+fi
+
+# Create config.fds from template if it doesn't exist
+if [ ! -f "$ROOT_DIR/config.fds" ]; then
+    if [ -f "$ROOT_DIR/RenameMe.config.fds" ]; then
+        echo "No config.fds found — creating from template with defaults..."
+        cp "$ROOT_DIR/RenameMe.config.fds" "$ROOT_DIR/config.fds"
+        echo "Edit config.fds to customize player settings."
+    else
+        echo "Warning: No config.fds or RenameMe.config.fds found. Bot will use built-in defaults."
+    fi
 fi
 
 # Make sure data and logs directories exist

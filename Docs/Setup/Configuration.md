@@ -5,7 +5,7 @@ PlexBot uses two configuration files:
 - **`.env`** — Secrets and infrastructure (tokens, server URLs, Lavalink connection). Never commit this file.
 - **`config.fds`** — Application settings (player UI, logging, progress bar). Uses [Frenetic Data Syntax](https://github.com/FreneticLLC/FreneticUtilities) (YAML-like format).
 
-Template files are provided: `RenameMe.env.txt` → `.env` and `RenameMe.config.fds` → `config.fds`.
+Template files are provided: `RenameMe.env.txt` must be manually copied to `.env`. `config.fds` is **auto-created** from `RenameMe.config.fds` with sensible defaults if it doesn't exist when the bot starts.
 
 ---
 
@@ -48,7 +48,8 @@ visualPlayer:
 
 ```yaml
 plex:
-    maxConcurrentResolves: 3     # Max parallel resolves when loading playlists (lower = safer for Plex)
+    maxConcurrentResolves: 3     # Max parallel resolves when loading playlists from Plex (lower = safer)
+    maxConcurrentYouTubeResolves: 5  # Max parallel resolves for YouTube sources
 ```
 
 ### Logging Settings
@@ -122,13 +123,7 @@ PlexBot includes a smooth-fill progress bar made of 30 custom Discord emoji. Wit
 
 ## Docker Configuration
 
-The `docker-compose.yml` mounts both config files into the container:
-
-```yaml
-volumes:
-  - ../../.env:/app/.env
-  - ../../config.fds:/app/config.fds
-```
+In Docker, `.env` is mounted directly into the container. `config.fds` is handled automatically by the startup script — if you have a `config.fds` at the project root, it's copied into the container. If not, one is created from the template with defaults.
 
 After changing either file, restart the bot:
 

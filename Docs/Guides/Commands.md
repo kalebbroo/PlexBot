@@ -46,6 +46,14 @@ Searches in order: tracks, then albums, then artists. Plays the first match foun
 
 Displays an interactive help embed with all available commands and player controls.
 
+### `/ping`
+
+A simple test command to verify the bot is responding to interactions.
+
+**Example:** `/ping`
+
+Returns a response confirming the bot is online and interactions are working.
+
 ## Player Controls (Buttons)
 
 All playback controls are buttons on the player message itself — no slash commands needed.
@@ -58,7 +66,7 @@ All playback controls are buttons on the player message itself — no slash comm
 | Shuffle | Shuffle the current queue |
 | Volume Up | Increase volume by 10% |
 | Volume Down | Decrease volume by 10% |
-| Stop | Stop playback and disconnect from voice |
+| Kill | Stop playback, clear queue, and disconnect from voice |
 | Queue | View and manage the queue |
 
 ### Queue Options

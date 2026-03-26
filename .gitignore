@@ -155,3 +155,4 @@ Extensions/**/*.cs
 Install/Docker/lavalink.application.yml
 /.claude
 config.fds
+/Extensions

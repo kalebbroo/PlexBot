@@ -34,15 +34,17 @@ PLEX_TOKEN=your_plex_token
 
 These three are required. All other `.env` values have working defaults. See the [Configuration Guide](./Configuration.md) for the full list.
 
-### Step 3: Configure Application Settings
+### Step 3: Configure Application Settings *(Optional)*
 
-Copy the template:
+`config.fds` is **auto-created** from the template with sensible defaults when the bot starts for the first time. You don't need to do anything for default settings.
+
+To customize before first run, copy the template and edit it:
 
 ```bash
 cp RenameMe.config.fds config.fds
 ```
 
-The defaults work out of the box. Customize player style, progress bar, logging, etc. in `config.fds` as needed. See the [Configuration Guide](./Configuration.md) for all options.
+Customize player style, progress bar, logging, etc. as needed. See the [Configuration Guide](./Configuration.md) for all options.
 
 ### Step 4: Run the Install Script
 
@@ -95,7 +97,7 @@ cd Install && win-install.bat
 ### Bot Doesn't Start
 - Check the logs: `docker-compose logs plexbot`
 - Verify `DISCORD_TOKEN` is correct in `.env`
-- Make sure both `.env` and `config.fds` exist at the project root
+- Verify `.env` exists at the project root (`config.fds` is auto-created if missing)
 
 ### No Audio
 - Check Lavalink is running: `docker-compose logs lavalink`

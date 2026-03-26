@@ -8,17 +8,20 @@ namespace PlexBot.Core.Services.LavaLink;
 public class TrackResolverService(IAudioService audioService) : ITrackResolverService
 {
     // Cache resolved tracks by PlaybackUrl to avoid redundant Lavalink calls (replays, repeat mode)
-    private readonly ConcurrentDictionary<string, LavalinkTrack> _resolveCache = new();
-    private const int MaxResolveCacheEntries = 50;
+    // Values are (LavalinkTrack, Ticks) for LRU eviction
+    private readonly ConcurrentDictionary<string, (LavalinkTrack Track, long Ticks)> _resolveCache = new();
+    private readonly int _maxResolveCacheEntries = BotConfig.GetInt("plex.resolveCacheSize", 500);
 
     /// <inheritdoc />
     public async Task<LavalinkTrack?> ResolveTrackAsync(Track track, CancellationToken cancellationToken = default)
     {
         // Check cache first
-        if (!string.IsNullOrEmpty(track.PlaybackUrl) && _resolveCache.TryGetValue(track.PlaybackUrl, out LavalinkTrack? cached))
+        if (!string.IsNullOrEmpty(track.PlaybackUrl) && _resolveCache.TryGetValue(track.PlaybackUrl, out var cached))
         {
+            // Update timestamp for LRU behavior
+            _resolveCache[track.PlaybackUrl] = (cached.Track, DateTime.UtcNow.Ticks);
             Logs.Debug($"Resolve cache hit: {track.Title}");
-            return cached;
+            return cached.Track;
         }
 
         TrackLoadOptions loadOptions = new() { SearchMode = TrackSearchMode.None };
@@ -38,16 +41,11 @@ public class TrackResolverService(IAudioService audioService) : ITrackResolverSe
                 cancellationToken: cancellationToken);
         }
 
-        // Cache the result
+        // Cache the result with LRU timestamp
         if (lavalinkTrack != null && !string.IsNullOrEmpty(track.PlaybackUrl))
         {
-            // Evict oldest entries if cache is full
-            while (_resolveCache.Count >= MaxResolveCacheEntries)
-            {
-                string? keyToRemove = _resolveCache.Keys.FirstOrDefault();
-                if (keyToRemove != null) _resolveCache.TryRemove(keyToRemove, out _);
-            }
-            _resolveCache[track.PlaybackUrl] = lavalinkTrack;
+            EvictOldestIfFull();
+            _resolveCache[track.PlaybackUrl] = (lavalinkTrack, DateTime.UtcNow.Ticks);
         }
 
         return lavalinkTrack;
@@ -56,17 +54,17 @@ public class TrackResolverService(IAudioService audioService) : ITrackResolverSe
     /// <inheritdoc />
     public async Task<TrackResolveResult> ResolveTracksParallelAsync(
         IReadOnlyList<Track> tracks,
-        Func<Track, LavalinkTrack, int, Task> onResolved,
         int maxConcurrency = 5,
+        IProgress<int>? progress = null,
         CancellationToken cancellationToken = default)
     {
         int successCount = 0;
-        ConcurrentBag<Track> failedFirstPass = [];
-        ConcurrentDictionary<int, Track> trackIndexMap = new();
+        ConcurrentDictionary<int, Track> failedIndexMap = new();
+        ConcurrentDictionary<int, (Track Track, LavalinkTrack Resolved)> resolvedMap = new();
 
         using SemaphoreSlim semaphore = new(maxConcurrency);
 
-        // First pass — resolve all tracks in parallel
+        // First pass — resolve all tracks in parallel, collecting results by index
         Task[] tasks = tracks.Select(async (Track track, int index) =>
         {
             await semaphore.WaitAsync(cancellationToken);
@@ -75,14 +73,14 @@ public class TrackResolverService(IAudioService audioService) : ITrackResolverSe
                 LavalinkTrack? resolved = await ResolveTrackAsync(track, cancellationToken);
                 if (resolved != null)
                 {
-                    Interlocked.Increment(ref successCount);
-                    await onResolved(track, resolved, index);
+                    int count = Interlocked.Increment(ref successCount);
+                    resolvedMap[index] = (track, resolved);
+                    progress?.Report(count);
                 }
                 else
                 {
                     Logs.Warning($"Failed to resolve track (will retry): {track.Title}");
-                    trackIndexMap[index] = track;
-                    failedFirstPass.Add(track);
+                    failedIndexMap[index] = track;
                 }
             }
             catch (OperationCanceledException)
@@ -92,8 +90,7 @@ public class TrackResolverService(IAudioService audioService) : ITrackResolverSe
             catch (Exception ex)
             {
                 Logs.Warning($"Error resolving track (will retry): {track.Title} — {ex.Message}");
-                trackIndexMap[index] = track;
-                failedFirstPass.Add(track);
+                failedIndexMap[index] = track;
             }
             finally
             {
@@ -106,21 +103,21 @@ public class TrackResolverService(IAudioService audioService) : ITrackResolverSe
         // Retry pass — try failed tracks once more, sequentially with a small delay
         List<string> permanentlyFailed = [];
 
-        if (!failedFirstPass.IsEmpty)
+        if (!failedIndexMap.IsEmpty)
         {
-            Logs.Info($"Retrying {failedFirstPass.Count} failed tracks...");
+            Logs.Info($"Retrying {failedIndexMap.Count} failed tracks...");
             await Task.Delay(2000, cancellationToken);
 
-            foreach (Track track in failedFirstPass)
+            foreach (var (index, track) in failedIndexMap.OrderBy(kvp => kvp.Key))
             {
                 try
                 {
                     LavalinkTrack? resolved = await ResolveTrackAsync(track, cancellationToken);
                     if (resolved != null)
                     {
-                        Interlocked.Increment(ref successCount);
-                        int index = trackIndexMap.First(kvp => kvp.Value == track).Key;
-                        await onResolved(track, resolved, index);
+                        int count = Interlocked.Increment(ref successCount);
+                        resolvedMap[index] = (track, resolved);
+                        progress?.Report(count);
                         Logs.Info($"Retry succeeded: {track.Title}");
                     }
                     else
@@ -145,6 +142,25 @@ public class TrackResolverService(IAudioService audioService) : ITrackResolverSe
             }
         }
 
-        return new TrackResolveResult(successCount, permanentlyFailed);
+        // Build ordered list preserving original playlist order
+        List<(int Index, Track Track, LavalinkTrack Resolved)> ordered = resolvedMap
+            .OrderBy(kvp => kvp.Key)
+            .Select(kvp => (kvp.Key, kvp.Value.Track, kvp.Value.Resolved))
+            .ToList();
+
+        return new TrackResolveResult(successCount, permanentlyFailed, ordered);
+    }
+
+    /// <summary>Evicts the oldest cache entry (by timestamp) when the cache is full</summary>
+    private void EvictOldestIfFull()
+    {
+        while (_resolveCache.Count >= _maxResolveCacheEntries)
+        {
+            var oldest = _resolveCache.OrderBy(kvp => kvp.Value.Ticks).FirstOrDefault();
+            if (oldest.Key != null)
+                _resolveCache.TryRemove(oldest.Key, out _);
+            else
+                break;
+        }
     }
 }

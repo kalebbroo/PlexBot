@@ -14,14 +14,26 @@ public static class BotConfig
         if (_initialized) return;
 
         string? filePath = configPath ?? FindConfigFile();
-        if (filePath != null)
+
+        if (filePath is null)
+        {
+            // Try to create config.fds from the template
+            filePath = TryCreateFromTemplate();
+        }
+
+        if (filePath is not null)
         {
             Logs.Init($"Loading bot config from {filePath}");
             _config = FDSUtility.ReadFile(filePath);
         }
         else
         {
-            Logs.Warning("config.fds not found in any expected location, using defaults");
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine("\n[WARN] config.fds not found — using built-in defaults.");
+            Console.WriteLine("To customize settings, copy the template:");
+            Console.WriteLine("  cp RenameMe.config.fds config.fds");
+            Console.ResetColor();
+            _config = new FDSSection();
         }
 
         _initialized = true;
@@ -72,6 +84,34 @@ public static class BotConfig
     private static void EnsureInitialized()
     {
         if (!_initialized) Initialize();
+    }
+
+    /// <summary>Attempts to copy RenameMe.config.fds to config.fds and returns the new path, or null on failure</summary>
+    private static string? TryCreateFromTemplate()
+    {
+        string[] searchDirs = [Directory.GetCurrentDirectory(), AppDomain.CurrentDomain.BaseDirectory];
+        foreach (string dir in searchDirs)
+        {
+            string template = System.IO.Path.Combine(dir, "RenameMe.config.fds");
+            if (!File.Exists(template)) continue;
+
+            string destination = System.IO.Path.Combine(dir, "config.fds");
+            try
+            {
+                File.Copy(template, destination);
+                Console.ForegroundColor = ConsoleColor.Cyan;
+                Console.WriteLine($"[Init] No config.fds found — created from template at {destination}");
+                Console.ResetColor();
+                return destination;
+            }
+            catch (Exception ex)
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine($"[WARN] Found template but failed to copy: {ex.Message}");
+                Console.ResetColor();
+            }
+        }
+        return null;
     }
 
     /// <summary>Searches for config.fds in standard locations: cwd, base directory, and up the directory tree</summary>

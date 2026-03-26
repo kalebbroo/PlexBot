@@ -1,0 +1,68 @@
+name: Feature Request
+description: Suggest a new feature or improvement
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have an idea for PlexBot? We'd love to hear it! Please describe the feature and why it would be useful.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Feature Description
+      description: A clear description of the feature you'd like.
+      placeholder: "I'd like PlexBot to support..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Use Case
+      description: Why would this feature be valuable? What problem does it solve?
+      placeholder: "This would be useful because..."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      description: What area does this feature relate to?
+      options:
+        - Music playback
+        - New music source / provider
+        - Player UI / visual
+        - Commands
+        - Queue management
+        - Extensions / plugin system
+        - Configuration
+        - Docker / deployment
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: extension-candidate
+    attributes:
+      label: Could this be an extension?
+      description: Would this feature work as a standalone extension rather than a core change?
+      options:
+        - "Yes — this could be an extension"
+        - "No — this needs core changes"
+        - "Not sure"
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Have you considered any workarounds or alternative approaches?
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Any mockups, screenshots, examples, or other context.

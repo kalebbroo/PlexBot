@@ -84,6 +84,11 @@ Quickly play a track, album, or artist by search term.
 Show an interactive help menu with all commands and usage tips.
 </details>
 
+<details>
+<summary><b>/ping</b></summary>
+Test if the bot is responding to interactions.
+</details>
+
 ---
 
 ## 🚀 Getting Started
@@ -108,7 +113,7 @@ cd PlexBot
    PLEX_TOKEN=your-plex-token
    ```
 
-2. **App settings** — Copy `RenameMe.config.fds` to `config.fds`. All player, logging, and behavior settings live here (see [Configuration](#-configuration) below).
+2. **App settings** *(optional)* — `config.fds` is auto-created from the template with sensible defaults if it doesn't exist. To customize player style, logging, or behavior, copy `RenameMe.config.fds` to `config.fds` and edit it before starting (see [Configuration](#-configuration) below).
 
 3. **Run the install script** — `Install/win-install.bat` (Windows) or `Install/linux-install.sh` (Linux). This builds the Docker images, installs dependencies, and starts the bot.
 
@@ -120,8 +125,8 @@ PlexBot uses **two config files**:
 
 | File | Purpose | Template |
 |------|---------|----------|
-| `.env` | Secrets & infrastructure (tokens, URLs, passwords) | `RenameMe.env.txt` |
-| `config.fds` | Application settings (player UI, logging, behavior) | `RenameMe.config.fds` |
+| `.env` | Secrets & infrastructure (tokens, URLs, passwords) | `RenameMe.env.txt` (manual copy required) |
+| `config.fds` | Application settings (player UI, logging, behavior) | `RenameMe.config.fds` (auto-created if missing) |
 
 ### `.env` — Secrets & Infrastructure
 
@@ -155,7 +160,8 @@ Uses [Frenetic Data Syntax](https://github.com/FreneticLLC/FreneticUtilities) (Y
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `plex.maxConcurrentResolves` | int | `3` | Max parallel track resolves when loading playlists/albums. Lower if tracks fail to load; higher loads faster but may overwhelm Plex |
+| `plex.maxConcurrentResolves` | int | `3` | Max parallel track resolves when loading playlists/albums from Plex. Lower if tracks fail to load; higher loads faster but may overwhelm Plex |
+| `plex.maxConcurrentYouTubeResolves` | int | `5` | Max parallel track resolves when loading from YouTube. Separate limit allows higher concurrency for YouTube sources |
 
 #### Logging
 

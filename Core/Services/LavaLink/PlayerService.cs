@@ -160,32 +160,57 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
                     });
                 }
 
-                // Use a lock to ensure thread-safe queue insertion
-                using SemaphoreSlim queueLock = new(1, 1);
+                // Progressive feedback for large playlists (throttled to avoid Discord rate limits)
+                IProgress<int>? progress = null;
+                if (totalCount > 20)
+                {
+                    DateTime lastProgressUpdate = DateTime.MinValue;
+                    int totalRemaining = remaining.Count;
+                    progress = new Progress<int>(resolvedCount =>
+                    {
+                        // Throttle to at most once every 3 seconds
+                        if ((DateTime.UtcNow - lastProgressUpdate).TotalSeconds < 3) return;
+                        lastProgressUpdate = DateTime.UtcNow;
+                        _ = Task.Run(async () =>
+                        {
+                            try
+                            {
+                                await interaction.ModifyOriginalResponseAsync(msg =>
+                                {
+                                    msg.Components = ComponentV2Builder.Info("Loading Tracks",
+                                        $"Resolved {resolvedCount}/{totalRemaining} tracks...");
+                                    msg.Embed = null;
+                                    msg.Flags = MessageFlags.ComponentsV2;
+                                });
+                            }
+                            catch { /* Ignore update failures */ }
+                        });
+                    });
+                }
+
+                // Select concurrency based on source system
+                string sourceSystem = remaining.FirstOrDefault()?.SourceSystem ?? "plex";
+                int maxConcurrency = sourceSystem.Equals("youtube", StringComparison.OrdinalIgnoreCase)
+                    ? BotConfig.GetInt("plex.maxConcurrentYouTubeResolves", 5)
+                    : BotConfig.GetInt("plex.maxConcurrentResolves", 3);
 
                 TrackResolveResult resolveResult = await trackResolver.ResolveTracksParallelAsync(
                     remaining,
-                    onResolved: async (Track track, LavalinkTrack resolved, int index) =>
-                    {
-                        CustomTrackQueueItem item = new()
-                        {
-                            SourceTrack = track,
-                            RequestedBy = interaction.User.Username,
-                            Reference = new TrackReference(resolved)
-                        };
-
-                        await queueLock.WaitAsync(cancellationToken);
-                        try
-                        {
-                            await player.Queue.AddAsync(item, cancellationToken);
-                        }
-                        finally
-                        {
-                            queueLock.Release();
-                        }
-                    },
-                    maxConcurrency: BotConfig.GetInt("plex.maxConcurrentResolves", 3),
+                    maxConcurrency: maxConcurrency,
+                    progress: progress,
                     cancellationToken: cancellationToken);
+
+                // Add all resolved tracks to queue in original order
+                foreach (var (index, track, resolved) in resolveResult.ResolvedTracks)
+                {
+                    CustomTrackQueueItem item = new()
+                    {
+                        SourceTrack = track,
+                        RequestedBy = interaction.User.Username,
+                        Reference = new TrackReference(resolved)
+                    };
+                    await player.Queue.AddAsync(item, cancellationToken);
+                }
 
                 int totalSuccess = resolveResult.SuccessCount + 1; // +1 for the first track
 

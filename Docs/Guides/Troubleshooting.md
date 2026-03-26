@@ -114,7 +114,7 @@ When loading large playlists, Plex can drop connections under concurrent load.
 
 1. Check logs: `docker-compose logs plexbot`
 2. Verify all required environment variables are set in `.env` (`DISCORD_TOKEN`, `PLEX_URL`, `PLEX_TOKEN`)
-3. Make sure `config.fds` exists at the project root (copy from `RenameMe.config.fds`)
+3. `config.fds` is auto-created from the template if missing — check the logs for config-related warnings
 4. Try a clean rebuild:
    ```bash
    docker-compose down

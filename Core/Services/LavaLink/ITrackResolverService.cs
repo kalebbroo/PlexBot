@@ -9,14 +9,19 @@ public interface ITrackResolverService
     Task<LavalinkTrack?> ResolveTrackAsync(Track track, CancellationToken cancellationToken = default);
 
     /// <summary>Resolves multiple tracks in parallel with bounded concurrency and one retry for failures.
-    /// Calls onResolved for each track as it completes (with original index for ordered insertion).
-    /// Returns a result containing success/fail counts and names of failed tracks.</summary>
+    /// Returns results in original order for sequential queue insertion.</summary>
     Task<TrackResolveResult> ResolveTracksParallelAsync(
         IReadOnlyList<Track> tracks,
-        Func<Track, LavalinkTrack, int, Task> onResolved,
         int maxConcurrency = 5,
+        IProgress<int>? progress = null,
         CancellationToken cancellationToken = default);
 }
 
 /// <summary>Result of a parallel track resolution batch</summary>
-public record TrackResolveResult(int SuccessCount, List<string> FailedTracks);
+/// <param name="SuccessCount">Number of tracks successfully resolved</param>
+/// <param name="FailedTracks">Names of tracks that permanently failed resolution</param>
+/// <param name="ResolvedTracks">Successfully resolved tracks in original playlist order</param>
+public record TrackResolveResult(
+    int SuccessCount,
+    List<string> FailedTracks,
+    List<(int Index, Track Track, LavalinkTrack Resolved)> ResolvedTracks);

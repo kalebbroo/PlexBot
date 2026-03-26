@@ -21,7 +21,7 @@ PlexBot/
 │   ├── startup.sh              # Container entrypoint
 │   └── plugins/                # Lavalink plugins (YouTube, etc.)
 ├── .env                        # Secrets (tokens, passwords)
-├── config.fds                  # Application settings
+├── config.fds                  # Application settings (auto-created if missing)
 └── logs/                       # Persisted log files
     └── lavalink/               # Lavalink logs
 ```
@@ -38,8 +38,8 @@ PlexBot/
   - `../../data` → `/app/data` (persistent data)
   - `../../logs` → `/app/logs` (bot logs)
   - `../../.env` → `/app/.env` (secrets)
-  - `../../config.fds` → `/app/config.fds` (settings)
   - `../../Images` → `/app/Images` (player assets)
+  - `config.fds` is auto-managed by `startup.sh` — copies your custom config from the project root if it exists, otherwise creates one from the template
 - **Network**: `plexbot-network` (bridge)
 
 ### Lavalink Service

@@ -75,8 +75,11 @@ if not exist "%DOCKER_DIR%\lavalink.application.yml" (
         echo     allowDirectVideoIds: true
         echo     allowDirectPlaylistIds: true
         echo     clients:
-        echo       - TVHTML5EMBEDDED
-        echo       - TV
+        echo       - TVHTML5_SIMPLY
+        echo       - MUSIC
+        echo       - ANDROID_VR
+        echo       - WEB
+        echo       - WEBEMBEDDED
         echo     oauth:
         echo       enabled: true
         echo       refreshToken: ""
@@ -94,10 +97,23 @@ REM Check if .env file exists
 if not exist "%ROOT_DIR%\.env" (
     echo.
     echo No .env file found at: %ROOT_DIR%\.env
-    echo Please create a .env file with your Discord token and Plex server details.
+    echo Please create one from the template:
+    echo   copy RenameMe.env.txt .env
+    echo Then fill in your Discord token and Plex server details.
     echo.
     pause
     exit /b 1
+)
+
+REM Create config.fds from template if it doesn't exist
+if not exist "%ROOT_DIR%\config.fds" (
+    if exist "%ROOT_DIR%\RenameMe.config.fds" (
+        echo No config.fds found — creating from template with defaults...
+        copy "%ROOT_DIR%\RenameMe.config.fds" "%ROOT_DIR%\config.fds" >nul
+        echo Edit config.fds to customize player settings.
+    ) else (
+        echo Warning: No config.fds or RenameMe.config.fds found. Bot will use built-in defaults.
+    )
 )
 
 REM Make sure data and logs directories exist

@@ -1,0 +1,30 @@
+<Project>
+	<!-- Shared MSBuild properties for PlexBot extensions.
+	     Extensions import this instead of using a ProjectReference to PlexBot.
+	     This keeps extensions fully decoupled from the host build. -->
+	<PropertyGroup>
+		<TargetFramework>net9.0</TargetFramework>
+		<OutputType>Library</OutputType>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+		<GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
+		<CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<!-- Reference the pre-built host DLL directly. HostOutputDir is passed
+		     by ExtensionManager via -p:HostOutputDir="..." at build time.
+		     Private=false prevents copying it to the extension output. -->
+		<Reference Include="PlexBot">
+			<HintPath>$(HostOutputDir)/PlexBot.dll</HintPath>
+			<Private>false</Private>
+		</Reference>
+		<!-- Exclude non-source files that might interfere -->
+		<None Remove="**" />
+		<Content Remove="**" />
+	</ItemGroup>
+
+	<!-- Shared NuGet dependencies that extensions can use -->
+	<Import Project="PlexBot.deps.props" />
+</Project>
