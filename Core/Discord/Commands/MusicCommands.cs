@@ -1,3 +1,4 @@
+using Discord.Net;
 using PlexBot.Core.Models;
 using PlexBot.Core.Models.Media;
 using PlexBot.Core.Discord.Autocomplete;
@@ -6,14 +7,13 @@ using PlexBot.Utils;
 
 using PlexBot.Core.Models.Players;
 using PlexBot.Core.Services;
+using PlexBot.Core.Services.Music;
 
 namespace PlexBot.Core.Discord.Commands;
 
 /// <summary>Provides discord slash commands for music playback with interactive UI components to control playback and manage the music queue</summary>
-/// <param name="plexMusicService">Service that interfaces with Plex API to search and retrieve media from the library</param>
-/// <param name="playerService">Service that manages audio player lifecycle and provides playback controls</param>
-/// <param name="audioService">Lavalink audio service that handles the actual streaming and playback</param>
-public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService playerService, IAudioService audioService)
+public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService playerService,
+    IAudioService audioService, MusicProviderRegistry providerRegistry)
     : InteractionModuleBase<SocketInteractionContext>
 {
 
@@ -28,10 +28,10 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
     [Autocomplete(typeof(SourceAutocompleteHandler))]
     string source = "plex")
     {
-        // Defer the response to give us time to search
-        await DeferAsync(ephemeral: true);
         try
         {
+            // Defer the response to give us time to search
+            await DeferAsync(ephemeral: true);
             Logs.Debug($"Searching for '{query}' in {source}");
             if (string.IsNullOrWhiteSpace(query))
             {
@@ -40,49 +40,52 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
             }
             // Normalize source to lowercase
             source = source.ToLowerInvariant();
-            // Handle the search based on the selected source
-            switch (source)
+            // Route search through the provider registry
+            IMusicProvider? provider = providerRegistry.GetProvider(source);
+            if (provider == null)
             {
-                case "plex":
-                    await HandlePlexSearch(query);
-                    break;
-                case "youtube":
-                    await HandleYouTubeSearch(query);
-                    break;
-                default:
-                    await FollowupAsync(components: ComponentV2Builder.Error("Not Implemented", $"Search in {source} is not yet implemented."), ephemeral: true);
-                    break;
+                await FollowupAsync(components: ComponentV2Builder.Error("Unknown Source", $"Music source '{source}' is not available."), ephemeral: true);
+                return;
             }
+            SearchResults results = await provider.SearchAsync(query);
+            if (!results.HasResults)
+            {
+                await FollowupAsync(components: ComponentV2Builder.Info("No Results", $"No results found for '{query}' in {provider.DisplayName}."), ephemeral: true);
+                return;
+            }
+            await DisplaySearchResults(query, results, provider);
+        }
+        catch (HttpException httpEx) when (httpEx.DiscordCode == DiscordErrorCode.UnknownInteraction)
+        {
+            // 10062: Known intermittent Discord API issue — interaction token wasn't propagated in time.
+            // Nothing we can do; the token is dead. Just log and let Discord show the default failure.
+            Logs.Warning($"Search command hit 10062 (Unknown interaction) — Discord-side timing issue");
         }
         catch (Exception ex)
         {
-            Logs.Error($"Error in search command: {ex.Message}");
-            await FollowupAsync(components: ComponentV2Builder.Error("Search Error", "An error occurred while searching. Please try again later."), ephemeral: true);
+            Logs.Error($"Error in search command: {ex.Message}\n{ex.StackTrace}");
+            try { await FollowupAsync(components: ComponentV2Builder.Error("Search Error", "An error occurred while searching. Please try again later."), ephemeral: true); }
+            catch { /* interaction may be dead */ }
         }
     }
 
-    /// <summary>Searches Plex library for media matching the query and displays interactive select menus for artists, albums, and tracks</summary>
-    private async Task HandlePlexSearch(string query)
+    /// <summary>Displays search results from any music provider using select menus.
+    /// Builds menus dynamically based on what result types the provider returned.</summary>
+    private async Task DisplaySearchResults(string query, SearchResults results, IMusicProvider provider)
     {
-        // Perform the search
-        SearchResults results = await plexMusicService.SearchLibraryAsync(query);
-        if (!results.HasResults)
-        {
-            await FollowupAsync(components: ComponentV2Builder.Info("No Results", $"No results found for '{query}' in Plex."), ephemeral: true);
-            return;
-        }
-        Logs.Debug($"Found {results.Artists.Count} artists, {results.Albums.Count} albums, {results.Tracks.Count} tracks");
-        // Build response with select menus for each result type
+        Logs.Debug($"Found {results.Artists.Count} artists, {results.Albums.Count} albums, {results.Tracks.Count} tracks from {provider.DisplayName}");
+        string sourceId = provider.Id;
         ComponentBuilder builder = new();
+
         // Add artist select menu if we have artists
         if (results.Artists.Count > 0)
         {
             SelectMenuBuilder artistMenu = new SelectMenuBuilder()
                 .WithPlaceholder("Select an artist")
-                .WithCustomId("search:artist")
+                .WithCustomId($"search:{sourceId}:artist")
                 .WithMinValues(1)
                 .WithMaxValues(1);
-            foreach (Artist artist in results.Artists.Take(25)) // Discord limit of 25 options
+            foreach (Artist artist in results.Artists.Take(25))
             {
                 artistMenu.AddOption(
                     artist.Name,
@@ -91,108 +94,65 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
             }
             builder.WithSelectMenu(artistMenu);
         }
+
         // Add album select menu if we have albums
-        if (results.Albums.Count != 0)
+        if (results.Albums.Count > 0 && (builder.ActionRows?.Count ?? 0) < 5)
         {
             SelectMenuBuilder albumMenu = new SelectMenuBuilder()
                 .WithPlaceholder("Select an album")
-                .WithCustomId("search:album")
+                .WithCustomId($"search:{sourceId}:album")
                 .WithMinValues(1)
                 .WithMaxValues(1);
-            foreach (Album album in results.Albums.Take(25)) // Discord Limit of 25 options
+            foreach (Album album in results.Albums.Take(25))
             {
                 albumMenu.AddOption(
                     album.Title,
                     album.SourceKey,
-                    $"Album by {album.Artist}");
+                    TruncateDescription($"Album by {album.Artist}"));
             }
-            if (builder.ActionRows.Count < 5) // Discord limit of 5 action rows
-            {
-                builder.WithSelectMenu(albumMenu);
-            }
+            builder.WithSelectMenu(albumMenu);
         }
+
         // Add track select menu if we have tracks
-        if (results.Tracks.Count > 0)
+        if (results.Tracks.Count > 0 && (builder.ActionRows?.Count ?? 0) < 5)
         {
             SelectMenuBuilder trackMenu = new SelectMenuBuilder()
                 .WithPlaceholder("Select a track")
-                .WithCustomId("search:track")
+                .WithCustomId($"search:{sourceId}:track")
                 .WithMinValues(1)
                 .WithMaxValues(1);
             foreach (Track track in results.Tracks.Take(25))
             {
-                trackMenu.AddOption(track.Title, track.SourceKey, $"Track by {track.Artist}");
+                string title = track.Title.Length > 80 ? track.Title[..77] + "..." : track.Title;
+                string description = !string.IsNullOrEmpty(track.DurationDisplay)
+                    ? $"{track.Artist} | {track.DurationDisplay}"
+                    : $"Track by {track.Artist}";
+                trackMenu.AddOption(title, track.SourceKey, TruncateDescription(description));
             }
-            if (builder.ActionRows.Count < 5)
-            {
-                builder.WithSelectMenu(trackMenu);
-            }
+            builder.WithSelectMenu(trackMenu);
         }
-        // Build the response
-        string summary = $"Found {results.Artists.Count} artists, {results.Albums.Count} albums, and {results.Tracks.Count} tracks";
+
+        // Build summary
+        List<string> summaryParts = [];
+        if (results.Artists.Count > 0) summaryParts.Add($"{results.Artists.Count} artists");
+        if (results.Albums.Count > 0) summaryParts.Add($"{results.Albums.Count} albums");
+        if (results.Tracks.Count > 0) summaryParts.Add($"{results.Tracks.Count} tracks");
+        string summary = $"Found {string.Join(", ", summaryParts)} on {provider.DisplayName}";
+
         await FollowupAsync(components: ComponentV2Builder.BuildSearchResults(query, summary, builder), ephemeral: true);
     }
 
-    /// <summary>Searches YouTube for tracks matching the query and presents results in an interactive select menu for quick playback</summary>
-    private async Task HandleYouTubeSearch(string query)
-    {
-        try
-        {
-            Logs.Debug($"Searching YouTube for: {query}");
-            TrackLoadResult searchResults = await audioService.Tracks.LoadTracksAsync(
-                query, TrackSearchMode.YouTube, cancellationToken: CancellationToken.None);
-            List<LavalinkTrack> tracks = [.. searchResults.Tracks];
-            if (tracks.Count == 0)
-            {
-                await FollowupAsync(components: ComponentV2Builder.Info("No Results", $"No results found for '{query}' on YouTube."), ephemeral: true);
-                return;
-            }
-            Logs.Debug($"Found {tracks.Count} YouTube results");
-            // Create a select menu for YouTube results
-            SelectMenuBuilder selectMenu = new SelectMenuBuilder()
-                .WithPlaceholder("Select a YouTube track")
-                .WithCustomId("search:youtube")
-                .WithMinValues(1)
-                .WithMaxValues(1);
-            foreach (LavalinkTrack lavalinkTrack in tracks.Take(25))
-            {
-                // Get track information
-                string title = lavalinkTrack.Title ?? "Unknown Title";
-                string author = lavalinkTrack.Author ?? "Unknown";
-                string duration = FormatHelper.FormatDuration(lavalinkTrack.Duration);
-                string trackId = lavalinkTrack.Uri?.ToString() ?? lavalinkTrack.Identifier;
-                // Add to select menu
-                selectMenu.AddOption(
-                    // Limit title length for Discord UI
-                    title.Length > 80 ? title[..77] + "..." : title,
-                    trackId,
-                    $"{author} | {duration}");
-            }
-            // Build and send component
-            ComponentBuilder builder = new ComponentBuilder().WithSelectMenu(selectMenu);
-            await FollowupAsync(
-                components: ComponentV2Builder.BuildSearchResults(query,
-                    $"Found {Math.Min(tracks.Count, 25)} results on YouTube", builder),
-                ephemeral: true);
-        }
-        catch (Exception ex)
-        {
-            Logs.Error($"Error searching YouTube: {ex.Message}");
-            await FollowupAsync(components: ComponentV2Builder.Error("YouTube Search Error", "An error occurred while searching YouTube. Please try again later."), ephemeral: true);
-        }
-    }
-
-    /// <summary>Plays music from a Plex playlist.
-    /// Allows users to quickly play entire playlists with optional shuffling.</summary>
-    /// <param name="playlist">The playlist to play</param>
+    /// <summary>Plays music from a Plex or custom playlist.
+    /// Routes to the appropriate provider based on the playlist key prefix.</summary>
+    /// <param name="playlist">The playlist to play (Plex key or custom:id)</param>
     /// <param name="shuffle">Whether to shuffle the playlist</param>
     /// <returns>A task representing the asynchronous operation</returns>
-    [SlashCommand("playlist", "Play a Plex playlist")]
+    [SlashCommand("playlist", "Play a playlist")]
     public async Task PlaylistCommand([Summary("playlist", "The playlist to play")]
     [Autocomplete(typeof(PlaylistAutocompleteHandler))]
     string playlist, [Summary("shuffle", "Shuffle the playlist")] bool shuffle = true)
     {
-        await RespondAsync(components: ComponentV2Builder.Info("Loading", "Loading playlist..."), ephemeral: true); // Respond to acknowledge the command
+        await RespondAsync(components: ComponentV2Builder.Info("Loading", "Loading playlist..."), ephemeral: true);
         IUserMessage ackMessage = await GetOriginalResponseAsync();
         try
         {
@@ -202,13 +162,32 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
                 await ackMessage.ModifyAsync(msg => { msg.Components = ComponentV2Builder.Error("Invalid Playlist", "Please select a playlist."); msg.Embed = null; msg.Flags = MessageFlags.ComponentsV2; });
                 return;
             }
-            Playlist playlistDetails = await plexMusicService.GetPlaylistDetailsAsync(playlist);
+
+            Playlist? playlistDetails = null;
+
+            // Route to custom playlist provider if prefixed with "custom:"
+            if (playlist.StartsWith("custom:", StringComparison.OrdinalIgnoreCase))
+            {
+                IMusicProvider? customProvider = providerRegistry.GetProvider("playlists");
+                if (customProvider is not null)
+                    playlistDetails = await customProvider.GetPlaylistDetailsAsync(playlist);
+
+                if (playlistDetails is null)
+                {
+                    await ackMessage.ModifyAsync(msg => { msg.Components = ComponentV2Builder.Error("Not Found", "Custom playlist not found."); msg.Embed = null; msg.Flags = MessageFlags.ComponentsV2; });
+                    return;
+                }
+            }
+            else
+            {
+                playlistDetails = await plexMusicService.GetPlaylistDetailsAsync(playlist);
+            }
+
             if (playlistDetails.Tracks.Count == 0)
             {
                 await ackMessage.ModifyAsync(msg => { msg.Components = ComponentV2Builder.Info("Empty Playlist", $"Playlist '{playlistDetails.Title}' is empty."); msg.Embed = null; msg.Flags = MessageFlags.ComponentsV2; });
                 return;
             }
-            // Get a list of tracks from the playlist to add to the queue
             List<Track> tracks = playlistDetails.Tracks;
             if (shuffle)
             {
@@ -242,14 +221,14 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
                 await FollowupAsync(components: ComponentV2Builder.Error("Invalid Query", "Please enter a URL or search term."), ephemeral: true);
                 return;
             }
-            // Check if the query is a URL
-            bool isUrl = Uri.TryCreate(query, UriKind.Absolute, out _);
-            if (isUrl)
+            // Check if the query is a URL — route through Lavalink directly
+            if (Uri.TryCreate(query, UriKind.Absolute, out Uri? parsedUri) &&
+                (parsedUri.Scheme == "http" || parsedUri.Scheme == "https"))
             {
-                // URL handling would go here, but for now we'll treat it as a search
-                await FollowupAsync(components: ComponentV2Builder.Info("URL Playback", "Direct URL playback is not yet implemented. Treating as a search query."), ephemeral: true);
+                await HandleUrlPlaybackAsync(query, parsedUri);
+                return;
             }
-            // Search for the track
+            // Not a URL — search Plex library
             SearchResults results = await plexMusicService.SearchLibraryAsync(query);
             if (!results.HasResults)
             {
@@ -295,9 +274,72 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         }
     }
 
+    /// <summary>Handles playback of a direct URL by routing through registered providers first,
+    /// then falling back to generic Lavalink loading for unclaimed URLs.</summary>
+    private async Task HandleUrlPlaybackAsync(string url, Uri parsedUri)
+    {
+        try
+        {
+            // Check if any registered provider claims this URL
+            foreach (IMusicProvider provider in providerRegistry.GetAvailableProviders())
+            {
+                if (provider.CanHandleUrl(parsedUri))
+                {
+                    Logs.Debug($"Provider '{provider.DisplayName}' claims URL: {url}");
+                    List<Track> tracks = await provider.ResolveUrlAsync(url);
+                    if (tracks.Count > 0)
+                    {
+                        await playerService.AddToQueueAsync(Context.Interaction, tracks);
+                        return;
+                    }
+                }
+            }
+
+            // No provider claimed it — generic Lavalink fallback
+            using CancellationTokenSource cts = new(TimeSpan.FromSeconds(30));
+            TrackLoadResult loadResult = await audioService.Tracks.LoadTracksAsync(
+                url, TrackSearchMode.None, cancellationToken: cts.Token);
+
+            LavalinkTrack? lavalinkTrack = loadResult.Track;
+            if (lavalinkTrack == null)
+            {
+                await FollowupAsync(components: ComponentV2Builder.Error("Not Found",
+                    "Could not load a playable track from this URL."), ephemeral: true);
+                return;
+            }
+
+            Track track = Track.CreateFromUrl(
+                lavalinkTrack.Title ?? "Unknown Title",
+                lavalinkTrack.Author ?? "Unknown Artist",
+                url,
+                lavalinkTrack.ArtworkUri?.ToString() ?? "",
+                "external");
+            track.DurationMs = (long)lavalinkTrack.Duration.TotalMilliseconds;
+            track.DurationDisplay = FormatHelper.FormatDuration(lavalinkTrack.Duration);
+
+            await playerService.AddToQueueAsync(Context.Interaction, [track]);
+        }
+        catch (Exception ex)
+        {
+            Logs.Error($"Error playing URL: {ex.Message}");
+            await FollowupAsync(components: ComponentV2Builder.Error("Playback Error",
+                "An error occurred while loading this URL. Please try again."), ephemeral: true);
+        }
+    }
+
     /// <summary>Shows information about the bot and available commands.
     /// Provides a user-friendly help interface with command examples.</summary>
     /// <returns>A task representing the asynchronous operation</returns>
+    /// <summary>Diagnostic command to test interaction response timing</summary>
+    [SlashCommand("ping", "Test if interactions are working")]
+    public async Task PingCommand()
+    {
+        Logs.Info($"Ping: about to DeferAsync");
+        await DeferAsync(ephemeral: true);
+        Logs.Info($"Ping: DeferAsync succeeded");
+        await FollowupAsync(components: ComponentV2Builder.Info("Pong", "Interaction pipeline is healthy."), ephemeral: true);
+    }
+
     [SlashCommand("help", "Shows information about the bot and available commands")]
     public async Task HelpCommand()
     {

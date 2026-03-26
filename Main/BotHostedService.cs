@@ -1,8 +1,8 @@
 using PlexBot.Core.Discord.Embeds;
 using PlexBot.Core.Discord.Events;
 using PlexBot.Core.Extensions;
-using PlexBot.Core.Models.Extensions;
 using PlexBot.Core.Models.Players;
+using PlexBot.Core.Services.Music;
 using PlexBot.Utils;
 using PlexBot.Utils.Http;
 
@@ -33,17 +33,20 @@ public class BotHostedService(DiscordSocketClient client, DiscordEventHandler ev
             Logs.Init("Starting bot service");
             // Initialize event handlers
             await eventHandler.InitializeAsync();
-            ServiceCollection serviceDescriptors = new();
             // Initialize Lavalink services
             IAudioService lavalinkNode = serviceProvider.GetRequiredService<IAudioService>();
             await lavalinkNode.StartAsync(cancellationToken);
             Logs.Init("Lavalink services initialized");
-            // Initialize extension handler
-            string extensionsDir = System.IO.Path.Combine(AppContext.BaseDirectory, "Extensions");
-            Logs.Info($"Loading extensions from {extensionsDir}");
-            // Load user extensions from the Extensions directory
-            int extensionsLoaded = await ExtensionHandler.LoadAllExtensionsAsync(serviceDescriptors, serviceProvider);
-            Logs.Info($"Loaded {extensionsLoaded} extensions");
+            // Initialize extensions (Phase 2 of two-phase startup — services already registered)
+            int extensionsLoaded = await extensionManager.InitializeAllAsync(serviceProvider);
+            Logs.Info($"Initialized {extensionsLoaded} extensions");
+            // Register all music providers (built-in + any from extensions) with the registry
+            MusicProviderRegistry providerRegistry = serviceProvider.GetRequiredService<MusicProviderRegistry>();
+            foreach (IMusicProvider provider in serviceProvider.GetServices<IMusicProvider>())
+            {
+                providerRegistry.RegisterProvider(provider);
+            }
+            Logs.Init($"Registered {providerRegistry.GetAvailableProviders().Count} music providers");
             // Connect to Discord and start the bot
             Logs.Init("Connecting to Discord");
             await client.LoginAsync(TokenType.Bot, _discordToken);

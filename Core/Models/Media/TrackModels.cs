@@ -64,6 +64,7 @@ public class Track
             Title = title,
             Artist = artist,
             PlaybackUrl = playbackUrl,
+            SourceKey = playbackUrl,
             ArtworkUrl = artworkUrl,
             SourceSystem = sourceSystem
         };

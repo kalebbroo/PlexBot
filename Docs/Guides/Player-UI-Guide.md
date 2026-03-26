@@ -100,7 +100,7 @@ The player includes interactive buttons:
 | Repeat | Cycle: Off → Queue → Track |
 | Shuffle | Shuffle the current queue |
 | Volume Up/Down | Adjust volume by 10% |
-| Stop | Stop playback and disconnect |
+| Kill | Stop playback, clear queue, and disconnect |
 | Queue | View and manage the queue |
 
 ## Troubleshooting

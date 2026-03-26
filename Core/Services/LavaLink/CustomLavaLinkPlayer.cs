@@ -1,6 +1,7 @@
 ﻿using PlexBot.Utils;
 using Discord.WebSocket;
 using PlexBot.Core.Discord.Embeds;
+using PlexBot.Core.Events;
 using PlexBot.Core.Models.Players;
 
 namespace PlexBot.Core.Services.LavaLink;
@@ -32,6 +33,19 @@ public sealed class CustomLavaLinkPlayer(IPlayerProperties<CustomLavaLinkPlayer,
             // Prefetch next track's artwork in background (fire and forget)
             ITrackPrefetchService prefetch = serviceProvider.GetRequiredService<ITrackPrefetchService>();
             _ = prefetch.PrefetchNextAsync(this, cancellationToken);
+
+            // Publish track started event for extensions
+            BotEventBus eventBus = serviceProvider.GetRequiredService<BotEventBus>();
+            _ = eventBus.PublishAsync(new BotEvent
+            {
+                EventType = BotEvents.TrackStarted,
+                Data = new Dictionary<string, object>
+                {
+                    ["title"] = customTrack.Title ?? "Unknown",
+                    ["artist"] = customTrack.Artist ?? "Unknown",
+                    ["guildId"] = GuildId
+                }
+            });
         }
         catch (Exception ex)
         {
@@ -49,6 +63,26 @@ public sealed class CustomLavaLinkPlayer(IPlayerProperties<CustomLavaLinkPlayer,
 
         string trackTitle = (queueItem as CustomTrackQueueItem)?.Title ?? queueItem.Track?.Title ?? "Unknown Track";
         Logs.Debug($"Track ended: {trackTitle}, Reason: {endReason}");
+
+        // Publish track ended event for extensions
+        try
+        {
+            BotEventBus eventBus = serviceProvider.GetRequiredService<BotEventBus>();
+            _ = eventBus.PublishAsync(new BotEvent
+            {
+                EventType = BotEvents.TrackEnded,
+                Data = new Dictionary<string, object>
+                {
+                    ["title"] = trackTitle,
+                    ["guildId"] = GuildId,
+                    ["endReason"] = endReason.ToString()
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            Logs.Error($"Error publishing track ended event: {ex.Message}");
+        }
     }
 
     /// <summary>Called by Lavalink4NET inactivity tracking when the player becomes active again (users rejoin voice)</summary>

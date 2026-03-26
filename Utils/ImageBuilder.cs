@@ -1,4 +1,5 @@
-﻿using PlexBot.Utils.Http;
+﻿using System.Net.Http;
+using PlexBot.Utils.Http;
 
 using Path = System.IO.Path;
 using Color = SixLabors.ImageSharp.Color;
@@ -41,7 +42,13 @@ public static class ImageBuilder
             // Initialize HttpClientWrapper
             try
             {
-                HttpClient client = new();
+                SocketsHttpHandler handler = new()
+                {
+                    PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+                    PooledConnectionIdleTimeout = TimeSpan.FromMinutes(2),
+                    MaxConnectionsPerServer = 10
+                };
+                HttpClient client = new(handler);
                 _httpClient = new HttpClientWrapper(client, "ImageBuilder");
                 Logs.Debug("HttpClientWrapper initialized successfully");
             }
@@ -139,11 +146,9 @@ public static class ImageBuilder
                 }
                 else
                 {
-                    // Fall back to downloading via HttpClientWrapper
-                    string tempFilePath = Path.GetTempFileName();
-                    await _httpClient.DownloadFileAsync(artworkUrl, tempFilePath);
-                    albumArt = Image.Load<Rgba32>(tempFilePath);
-                    try { File.Delete(tempFilePath); } catch { /* Ignore cleanup errors */ }
+                    // Download artwork directly to memory (no temp file needed)
+                    byte[] imageBytes = await _httpClient!.DownloadBytesAsync(artworkUrl);
+                    albumArt = Image.Load<Rgba32>(imageBytes);
                 }
             }
             catch (Exception ex)

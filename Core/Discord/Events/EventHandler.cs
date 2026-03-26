@@ -1,5 +1,7 @@
 using PlexBot.Utils;
 using PlexBot.Core.Discord.Embeds;
+using PlexBot.Core.Events;
+using PlexBot.Core.Extensions;
 
 namespace PlexBot.Core.Discord.Events;
 
@@ -10,6 +12,7 @@ namespace PlexBot.Core.Discord.Events;
 /// <param name="services">The service provider for dependency injection</param>
 public class DiscordEventHandler(DiscordSocketClient client, InteractionService interactions, IServiceProvider services)
 {
+    private bool _modulesRegistered;
 
     /// <summary>Initializes Discord event handlers for logging, ready events, and interactions</summary>
     /// <returns>A task representing the asynchronous operation</returns>
@@ -36,8 +39,26 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
     {
         try
         {
-            // Register modules first
-            await interactions.AddModulesAsync(Assembly.GetEntryAssembly(), services);
+            // Only register modules once — ReadyAsync fires on every reconnect
+            // but AddModulesAsync would create duplicate handlers
+            if (!_modulesRegistered)
+            {
+                // Register modules from main assembly
+                await interactions.AddModulesAsync(Assembly.GetEntryAssembly(), services);
+
+                // Register modules from extension assemblies
+                ExtensionManager extensionManager = services.GetRequiredService<ExtensionManager>();
+                foreach (Extension ext in extensionManager.GetAllExtensions())
+                {
+                    if (ext.SourceAssembly != null && ext.SourceAssembly != Assembly.GetEntryAssembly())
+                    {
+                        await interactions.AddModulesAsync(ext.SourceAssembly, services);
+                        Logs.Info($"Registered commands from extension: {ext.Name}");
+                    }
+                }
+
+                _modulesRegistered = true;
+            }
 
             // Log discovered modules
             var modules = interactions.Modules.ToList();
@@ -83,6 +104,17 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
             await client.SetGameAsync("/help", type: ActivityType.Listening);
 
             Logs.Init($"Bot is ready. Connected to {client.Guilds.Count} guilds");
+
+            // Publish bot ready event for extensions
+            BotEventBus eventBus = services.GetRequiredService<BotEventBus>();
+            _ = eventBus.PublishAsync(new BotEvent
+            {
+                EventType = BotEvents.BotReady,
+                Data = new Dictionary<string, object>
+                {
+                    ["guildCount"] = client.Guilds.Count
+                }
+            });
         }
         catch (Exception ex)
         {
@@ -98,6 +130,10 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
     {
         try
         {
+            // Log how much of the 3-second interaction deadline has already elapsed
+            TimeSpan elapsed = DateTimeOffset.UtcNow - interaction.CreatedAt;
+            Logs.Debug($"Interaction received: type={interaction.Type}, elapsed={elapsed.TotalMilliseconds:F0}ms since creation");
+
             // Create an execution context for the interaction
             SocketInteractionContext context = new(client, interaction);
 
@@ -107,6 +143,12 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
             if (!result.IsSuccess)
             {
                 Logs.Warning($"Interaction failed: {result.Error} - {result.ErrorReason}");
+
+                // Autocomplete interactions cannot receive component/embed responses.
+                // Superseded autocomplete interactions (user kept typing) fail with 40060
+                // which is normal — just log and move on to avoid blocking the gateway.
+                if (interaction is SocketAutocompleteInteraction)
+                    return;
 
                 // Create a standardized error using our CV2 utility
                 var errorComponents = result.Error.HasValue
@@ -126,6 +168,14 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
         }
         catch (Exception ex)
         {
+            // Autocomplete failures (superseded by newer keystrokes) are expected — don't
+            // block the gateway with doomed HTTP retries.
+            if (interaction is SocketAutocompleteInteraction)
+            {
+                Logs.Debug($"Autocomplete interaction failed (likely superseded): {ex.Message}");
+                return;
+            }
+
             Logs.Error($"Error handling interaction: {ex.Message}");
 
             // Create a standardized error for exceptions
@@ -133,13 +183,20 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
                 "An unexpected error occurred while processing your command. Please try again later.");
 
             // Try to respond with an error message if we haven't already
-            if (!interaction.HasResponded)
+            try
             {
-                await interaction.RespondAsync(components: exceptionComponents, ephemeral: true);
+                if (!interaction.HasResponded)
+                {
+                    await interaction.RespondAsync(components: exceptionComponents, ephemeral: true);
+                }
+                else
+                {
+                    await interaction.FollowupAsync(components: exceptionComponents, ephemeral: true);
+                }
             }
-            else
+            catch (Exception responseEx)
             {
-                await interaction.FollowupAsync(components: exceptionComponents, ephemeral: true);
+                Logs.Debug($"Failed to send error response (interaction likely expired): {responseEx.Message}");
             }
         }
     }

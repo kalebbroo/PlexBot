@@ -1,0 +1,17 @@
+<Project>
+	<!-- Shared NuGet package references available to all extensions.
+	     These match the host's package versions to avoid version conflicts.
+	     All references use Private=false since the host already loads them. -->
+	<ItemGroup>
+		<PackageReference Include="Discord.Net" Version="3.19.0" PrivateAssets="all" />
+		<PackageReference Include="Lavalink4NET.Discord.NET" Version="4.2.0" PrivateAssets="all" />
+		<PackageReference Include="Lavalink4NET.InactivityTracking" Version="4.2.0" PrivateAssets="all" />
+		<PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="10.0.0" PrivateAssets="all" />
+		<PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" PrivateAssets="all" />
+		<PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.0" PrivateAssets="all" />
+		<PackageReference Include="FreneticLLC.FreneticUtilities" Version="1.1.4" PrivateAssets="all" />
+		<PackageReference Include="SixLabors.Fonts" Version="2.1.3" PrivateAssets="all" />
+		<PackageReference Include="SixLabors.ImageSharp" Version="3.1.11" PrivateAssets="all" />
+		<PackageReference Include="SixLabors.ImageSharp.Drawing" Version="2.1.7" PrivateAssets="all" />
+	</ItemGroup>
+</Project>
