@@ -39,59 +39,10 @@ echo Using compose command: %COMPOSE%
 REM Create plugins directory if it doesn't exist
 if not exist "%DOCKER_DIR%\plugins" mkdir "%DOCKER_DIR%\plugins"
 
-REM Check if we have a lavalink config file, create if not
-if not exist "%DOCKER_DIR%\lavalink.application.yml" (
-    echo Creating Lavalink configuration...
-    (
-        echo server:
-        echo # Port and address come from environment variables
-        echo lavalink:
-        echo   server:
-        echo     # Password comes from environment variables
-        echo     sources:
-        echo       youtube: false
-        echo       bandcamp: true
-        echo       soundcloud: true
-        echo       twitch: true
-        echo       vimeo: true
-        echo       http: true
-        echo       local: false
-        echo       nico: true
-        echo     bufferDurationMs: 400
-        echo     frameBufferDurationMs: 5000
-        echo     youtubePlaylistLoadLimit: 10
-        echo     playerUpdateInterval: 3
-        echo     trackStuckThresholdMs: 10000
-        echo     youtubeSearchEnabled: true
-        echo     soundcloudSearchEnabled: true
-        echo     gc-warnings: true
-        echo   plugins:
-        echo     - dependency: "dev.lavalink.youtube:youtube-plugin:1.18.0"
-        echo       snapshot: false
-        echo plugins:
-        echo   youtube:
-        echo     enabled: true
-        echo     allowSearch: true
-        echo     allowDirectVideoIds: true
-        echo     allowDirectPlaylistIds: true
-        echo     clients:
-        echo       - TVHTML5_SIMPLY
-        echo       - MUSIC
-        echo       - ANDROID_VR
-        echo       - WEB
-        echo       - WEBEMBEDDED
-        echo     oauth:
-        echo       enabled: true
-        echo       refreshToken: ""
-        echo logging:
-        echo   file:
-        echo     max-history: 30
-        echo     max-size: 1GB
-        echo   level:
-        echo     root: INFO
-        echo     lavalink: INFO
-    ) > "%DOCKER_DIR%\lavalink.application.yml"
-)
+REM Generate Lavalink config from base template + extension plugin fragments.
+REM Uses the same mikefarah/yq Docker image that docker-compose uses for the init container.
+echo Generating Lavalink configuration from base template + extension fragments...
+docker run --rm -v "%ROOT_DIR%\Extensions:/extensions:ro" -v "%DOCKER_DIR%\lavalink.base.yml:/config/base.yml:ro" -v "%DOCKER_DIR%\generate-lavalink-config.sh:/config/generate.sh:ro" -v "%DOCKER_DIR%:/output" mikefarah/yq:latest sh /config/generate.sh /extensions /output /config/base.yml
 
 REM Check if .env file exists
 if not exist "%ROOT_DIR%\.env" (

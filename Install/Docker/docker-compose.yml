@@ -1,5 +1,9 @@
 name: PlexBot
 
+volumes:
+  # Shared volume for generated Lavalink config (lavalink-init → lavalink)
+  lavalink-config:
+
 services:
   # PlexBot Service
   plexbot:
@@ -28,11 +32,29 @@ services:
     networks:
       - plexbot-network
 
+  # Generates Lavalink config from base template + extension plugin fragments.
+  # Runs once on every `docker compose up`, then exits. Lavalink waits for it.
+  lavalink-init:
+    container_name: LavaLink-Init
+    image: mikefarah/yq:latest
+    volumes:
+      - ../../Extensions:/extensions:ro
+      - ./lavalink.base.yml:/config/base.yml:ro
+      - ./generate-lavalink-config.sh:/config/generate.sh:ro
+      - lavalink-config:/output
+    entrypoint: ["sh", "/config/generate.sh", "/extensions", "/output", "/config/base.yml"]
+    restart: "no"
+    networks:
+      - plexbot-network
+
   # Lavalink Service
   lavalink:
     container_name: LavaLink
     image: ghcr.io/lavalink-devs/lavalink:4
     restart: unless-stopped
+    depends_on:
+      lavalink-init:
+        condition: service_completed_successfully
     env_file:
       - ../../.env
     environment:
@@ -42,8 +64,10 @@ services:
       - LAVALINK_SERVER_PASSWORD=${LAVALINK_SERVER_PASSWORD:-youshallnotpass}
       # JVM tuning — uncomment _JAVA_OPTIONS in .env to enable ZGC (reduces audio stuttering)
       - _JAVA_OPTIONS=${_JAVA_OPTIONS:-}
+      # Read generated config from the shared volume (written by lavalink-init)
+      - SPRING_CONFIG_LOCATION=file:///opt/Lavalink/config/lavalink.application.yml
     volumes:
-      - ./lavalink.application.yml:/opt/Lavalink/application.yml
+      - lavalink-config:/opt/Lavalink/config:ro
       - ./plugins:/opt/Lavalink/plugins
       - ../../logs/lavalink:/opt/Lavalink/logs
     ports:

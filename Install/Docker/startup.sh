@@ -19,6 +19,17 @@ if [ -d "$SOURCE_DIR/.git" ]; then
     cd "$APP_DIR"
 fi
 
+# Regenerate Lavalink config from base template + extension fragments.
+# In Docker, the lavalink-init container handles this before Lavalink starts.
+# This covers live-source-mount scenarios where extensions changed after initial startup.
+DOCKER_DIR="/source/Install/Docker"
+EXTENSIONS_DIR="${EXTENSIONS_SOURCE_DIR:-/source/Extensions}"
+if [ -f "$DOCKER_DIR/generate-lavalink-config.sh" ] && command -v yq >/dev/null 2>&1; then
+    echo "Regenerating Lavalink configuration..."
+    sh "$DOCKER_DIR/generate-lavalink-config.sh" "$EXTENSIONS_DIR" "$DOCKER_DIR" "$DOCKER_DIR/lavalink.base.yml"
+    echo "Note: Restart Lavalink container if plugin config changed."
+fi
+
 BUILD_MARKER="$APP_DIR/.last-build"
 
 # Check if rebuild is needed
