@@ -27,6 +27,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-ipafont-mincho \
     && rm -rf /var/lib/apt/lists/*
 
+# Install yq for Lavalink config generation (used by startup.sh for live-source-mount rebuilds)
+RUN curl -sL https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 \
+    -o /usr/local/bin/yq && chmod +x /usr/local/bin/yq
+
 # Copy build output (includes Images/ since it's part of the project)
 COPY --from=build /app .
 

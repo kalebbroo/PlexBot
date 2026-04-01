@@ -34,59 +34,16 @@ echo "Using compose command: $COMPOSE"
 # Create plugins directory for Lavalink
 mkdir -p "$DOCKER_DIR/plugins"
 
-# Create Lavalink application.yml if it doesn't exist
-if [ ! -f "$DOCKER_DIR/lavalink.application.yml" ]; then
-    echo "Creating Lavalink configuration..."
-    cat > "$DOCKER_DIR/lavalink.application.yml" << 'EOF'
-server:
-# Port and address come from environment variables
-lavalink:
-  server:
-    # Password comes from environment variables
-    sources:
-      youtube: false  # Disable built-in YouTube source as we're using the plugin
-      bandcamp: true
-      soundcloud: true
-      twitch: true
-      vimeo: true
-      http: true
-      local: false
-      nico: true
-    bufferDurationMs: 400
-    frameBufferDurationMs: 5000
-    youtubePlaylistLoadLimit: 10
-    playerUpdateInterval: 3
-    trackStuckThresholdMs: 10000
-    youtubeSearchEnabled: true
-    soundcloudSearchEnabled: true
-    gc-warnings: true
-  plugins:
-    - dependency: "dev.lavalink.youtube:youtube-plugin:1.18.0"
-      snapshot: false
-plugins:
-  youtube:
-    enabled: true
-    allowSearch: true
-    allowDirectVideoIds: true
-    allowDirectPlaylistIds: true
-    clients:
-      - TVHTML5_SIMPLY
-      - MUSIC
-      - ANDROID_VR
-      - WEB
-      - WEBEMBEDDED
-    oauth:
-      enabled: true
-      refreshToken: ""
-logging:
-  file:
-    max-history: 30
-    max-size: 1GB
-  level:
-    root: INFO
-    lavalink: INFO
-EOF
-fi
+# Generate Lavalink config from base template + extension plugin fragments.
+# Uses the same mikefarah/yq Docker image that docker-compose uses for the init container.
+# This always regenerates so adding/removing extensions is picked up on re-install.
+echo "Generating Lavalink configuration from base template + extension fragments..."
+docker run --rm \
+    -v "$ROOT_DIR/Extensions:/extensions:ro" \
+    -v "$DOCKER_DIR/lavalink.base.yml:/config/base.yml:ro" \
+    -v "$DOCKER_DIR/generate-lavalink-config.sh:/config/generate.sh:ro" \
+    -v "$DOCKER_DIR:/output" \
+    mikefarah/yq:latest sh /config/generate.sh /extensions /output /config/base.yml
 
 # Check if .env file exists
 if [ ! -f "$ROOT_DIR/.env" ]; then

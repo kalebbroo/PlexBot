@@ -1,0 +1,31 @@
+server:
+# Port and address come from environment variables
+lavalink:
+  server:
+    # Password comes from environment variables
+    sources:
+      youtube: true
+      bandcamp: true
+      soundcloud: true
+      twitch: true
+      vimeo: true
+      http: true
+      local: false
+      nico: true
+    bufferDurationMs: 400
+    frameBufferDurationMs: 5000
+    youtubePlaylistLoadLimit: 10
+    playerUpdateInterval: 3
+    trackStuckThresholdMs: 10000
+    youtubeSearchEnabled: true
+    soundcloudSearchEnabled: true
+    gc-warnings: true
+  plugins: []
+plugins: {}
+logging:
+  file:
+    max-history: 30
+    max-size: 1GB
+  level:
+    root: INFO
+    lavalink: INFO
