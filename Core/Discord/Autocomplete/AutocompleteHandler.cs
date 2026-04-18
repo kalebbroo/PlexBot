@@ -105,3 +105,34 @@ public class PlaylistAutocompleteHandler : AutocompleteHandler
         }
     }
 }
+
+/// <summary>Provides autocomplete suggestions for search modes.
+/// Lists available search modes: library, mood, genre, similar, radio, adventure.</summary>
+public class SearchModeAutocompleteHandler : AutocompleteHandler
+{
+    private static readonly List<(string Name, string Value)> Modes =
+    [
+        ("Library Search", "library"),
+        ("Find by Mood", "mood"),
+        ("Find by Genre", "genre"),
+        ("Similar Tracks", "similar"),
+        ("Radio Station", "radio"),
+        ("Sonic Adventure", "adventure")
+    ];
+
+    public override Task<AutocompletionResult> GenerateSuggestionsAsync(IInteractionContext context,
+        IAutocompleteInteraction autocompleteInteraction, IParameterInfo parameter, IServiceProvider service)
+    {
+        string input = autocompleteInteraction.Data.Current.Value as string ?? "";
+        IEnumerable<(string Name, string Value)> filtered = Modes.AsEnumerable();
+        if (!string.IsNullOrWhiteSpace(input))
+            filtered = filtered.Where(m => m.Name.Contains(input, StringComparison.OrdinalIgnoreCase)
+                || m.Value.Contains(input, StringComparison.OrdinalIgnoreCase));
+
+        List<AutocompleteResult> results = filtered
+            .Select(m => new AutocompleteResult(m.Name, m.Value))
+            .ToList();
+
+        return Task.FromResult(AutocompletionResult.FromSuccess(results));
+    }
+}

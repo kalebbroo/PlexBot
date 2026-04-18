@@ -141,6 +141,13 @@ namespace PlexBot.Core.Discord.Embeds
                     .WithCustomId("repeat:cycle")
                     .WithStyle(style);
             });
+            RegisterButton("radio", ButtonFlag.VisualPlayer, 45, _ =>
+            {
+                return new ButtonBuilder()
+                    .WithEmote(new Emoji("\uD83D\uDCFB"))
+                    .WithCustomId("radio:start")
+                    .WithStyle(ButtonStyle.Secondary);
+            });
             RegisterButton("queue_options", ButtonFlag.VisualPlayer, 50, _ =>
             {
                 return new ButtonBuilder()

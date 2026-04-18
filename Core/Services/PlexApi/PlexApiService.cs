@@ -1,3 +1,4 @@
+using Newtonsoft.Json.Linq;
 using PlexBot.Core.Exceptions;
 using PlexBot.Utils.Http;
 using PlexBot.Utils;
@@ -11,6 +12,7 @@ namespace PlexBot.Core.Services.PlexApi
         private readonly HttpClientWrapper _httpClient;
         private readonly string _plexUrl;
         private string? _plexToken;
+        private string? _machineIdentifier;
 
         /// <summary>Configures the service with required dependencies and validates essential configuration settings</summary>
         /// <param name="httpClientFactory">HTTP client factory for creating named HTTP clients</param>
@@ -127,6 +129,58 @@ namespace PlexBot.Core.Services.PlexApi
                 path = path.Substring(1);
             }
             return $"{_plexUrl}/{path}";
+        }
+
+        /// <inheritdoc />
+        public async Task<string> PerformPostRequestAsync(string uri, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                string fullUrl = uri.StartsWith("http") ? uri : $"{_plexUrl}{uri}";
+                if (!fullUrl.Contains("X-Plex-Token="))
+                {
+                    fullUrl += (fullUrl.Contains('?') ? "&" : "?") + $"X-Plex-Token={_plexToken}";
+                }
+                Logs.Debug($"Performing Plex API POST to: {fullUrl.Replace(_plexToken!, "[REDACTED]")}");
+                var headers = new Dictionary<string, string>
+                {
+                    ["Accept"] = "application/json"
+                };
+                string response = await _httpClient.SendRequestForStringAsync(HttpMethod.Post, fullUrl, null, headers, cancellationToken);
+                if (string.IsNullOrEmpty(response))
+                {
+                    throw new PlexApiException("Plex API POST returned an empty response");
+                }
+                Logs.Debug($"Received Plex API POST response ({response.Length} bytes)");
+                return response;
+            }
+            catch (PlexApiException) { throw; }
+            catch (AuthenticationException) { throw; }
+            catch (Exception ex)
+            {
+                throw new PlexApiException($"Error performing Plex API POST request: {ex.Message}", ex);
+            }
+        }
+
+        /// <inheritdoc />
+        public async Task<string> GetMachineIdentifierAsync(CancellationToken cancellationToken = default)
+        {
+            if (!string.IsNullOrEmpty(_machineIdentifier))
+                return _machineIdentifier;
+
+            try
+            {
+                string response = await PerformRequestAsync("/", cancellationToken);
+                JToken? mediaContainer = PlexJsonParser.ParseMediaContainer(response);
+                _machineIdentifier = mediaContainer?["machineIdentifier"]?.ToString()
+                    ?? throw new PlexApiException("Could not retrieve machine identifier from Plex server");
+                Logs.Debug($"Plex machine identifier: {_machineIdentifier}");
+                return _machineIdentifier;
+            }
+            catch (Exception ex) when (ex is not PlexApiException)
+            {
+                throw new PlexApiException($"Failed to get machine identifier: {ex.Message}", ex);
+            }
         }
     }
 }
