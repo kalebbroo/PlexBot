@@ -11,8 +11,8 @@ if [ ! -f "$APP_DIR/.env" ]; then
     exit 1
 fi
 
-# Pull latest source if git repo is mounted
-if [ -d "$SOURCE_DIR/.git" ]; then
+# Pull latest source if git repo is mounted (opt-in via AUTO_UPDATE=true in .env)
+if [ "${AUTO_UPDATE:-false}" = "true" ] && [ -d "$SOURCE_DIR/.git" ]; then
     echo "Checking for source updates..."
     cd "$SOURCE_DIR"
     git pull || echo "Warning: git pull failed, continuing with existing source"
