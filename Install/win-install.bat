@@ -40,7 +40,7 @@ REM Create plugins directory if it doesn't exist
 if not exist "%DOCKER_DIR%\plugins" mkdir "%DOCKER_DIR%\plugins"
 
 REM Generate Lavalink config from base template + extension plugin fragments.
-REM Uses the same mikefarah/yq Docker image that docker-compose uses for the init container.
+REM Uses mikefarah/yq Docker image. Output is mounted directly into the Lavalink container.
 echo Generating Lavalink configuration from base template + extension fragments...
 docker run --rm -v "%ROOT_DIR%\Extensions:/extensions:ro" -v "%DOCKER_DIR%\lavalink.base.yml:/config/base.yml:ro" -v "%DOCKER_DIR%\generate-lavalink-config.sh:/config/generate.sh:ro" -v "%DOCKER_DIR%:/output" mikefarah/yq:latest sh /config/generate.sh /extensions /output /config/base.yml
 
