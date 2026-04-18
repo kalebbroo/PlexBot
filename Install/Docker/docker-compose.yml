@@ -37,6 +37,7 @@ services:
   lavalink-init:
     container_name: LavaLink-Init
     image: mikefarah/yq:latest
+    user: "0:0"  # yq image runs as non-root by default; needs root to write to the shared volume
     volumes:
       - ../../Extensions:/extensions:ro
       - ./lavalink.base.yml:/config/base.yml:ro
@@ -64,6 +65,8 @@ services:
       - LAVALINK_SERVER_PASSWORD=${LAVALINK_SERVER_PASSWORD:-youshallnotpass}
       # JVM tuning — uncomment _JAVA_OPTIONS in .env to enable ZGC (reduces audio stuttering)
       - _JAVA_OPTIONS=${_JAVA_OPTIONS:-}
+      # Disable Spring Cloud Config — Lavalink uses a local file, not a config server
+      - SPRING_CLOUD_CONFIG_ENABLED=false
       # Read generated config from the shared volume (written by lavalink-init)
       - SPRING_CONFIG_LOCATION=file:///opt/Lavalink/config/lavalink.application.yml
     volumes:
