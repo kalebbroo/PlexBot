@@ -1,9 +1,5 @@
 name: PlexBot
 
-volumes:
-  # Shared volume for generated Lavalink config (lavalink-init → lavalink)
-  lavalink-config:
-
 services:
   # PlexBot Service
   plexbot:
@@ -32,30 +28,13 @@ services:
     networks:
       - plexbot-network
 
-  # Generates Lavalink config from base template + extension plugin fragments.
-  # Runs once on every `docker compose up`, then exits. Lavalink waits for it.
-  lavalink-init:
-    container_name: LavaLink-Init
-    image: mikefarah/yq:latest
-    user: "0:0"  # yq image runs as non-root by default; needs root to write to the shared volume
-    volumes:
-      - ../../Extensions:/extensions:ro
-      - ./lavalink.base.yml:/config/base.yml:ro
-      - ./generate-lavalink-config.sh:/config/generate.sh:ro
-      - lavalink-config:/output
-    entrypoint: ["sh", "/config/generate.sh", "/extensions", "/output", "/config/base.yml"]
-    restart: "no"
-    networks:
-      - plexbot-network
-
   # Lavalink Service
+  # Config file (lavalink.application.yml) is generated on the host by the install
+  # script or startup.sh, then mounted directly — no init container needed.
   lavalink:
     container_name: LavaLink
     image: ghcr.io/lavalink-devs/lavalink:4
     restart: unless-stopped
-    depends_on:
-      lavalink-init:
-        condition: service_completed_successfully
     env_file:
       - ../../.env
     environment:
@@ -67,10 +46,10 @@ services:
       - _JAVA_OPTIONS=${_JAVA_OPTIONS:-}
       # Disable Spring Cloud Config — Lavalink uses a local file, not a config server
       - SPRING_CLOUD_CONFIG_ENABLED=false
-      # Read generated config from the shared volume (written by lavalink-init)
+      # Read generated config mounted from host
       - SPRING_CONFIG_LOCATION=file:///opt/Lavalink/config/lavalink.application.yml
     volumes:
-      - lavalink-config:/opt/Lavalink/config:ro
+      - ./lavalink.application.yml:/opt/Lavalink/config/lavalink.application.yml:ro
       - ./plugins:/opt/Lavalink/plugins
       - ../../logs/lavalink:/opt/Lavalink/logs
     ports:
