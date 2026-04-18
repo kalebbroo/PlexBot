@@ -25,4 +25,15 @@ public interface IPlexApiService
     /// <param name="artworkPath">The relative artwork path from Plex metadata (e.g., /library/metadata/123/thumb/456)</param>
     /// <returns>A complete, authenticated URL for the artwork image, or empty string if path is null/empty</returns>
     string GetArtworkUrl(string? artworkPath);
+
+    /// <summary>Executes an authenticated HTTP POST request to a Plex API endpoint</summary>
+    /// <param name="uri">The endpoint URI relative to the Plex server base URL</param>
+    /// <param name="cancellationToken">Optional token to cancel the operation</param>
+    /// <returns>The raw JSON response string from the Plex API</returns>
+    Task<string> PerformPostRequestAsync(string uri, CancellationToken cancellationToken = default);
+
+    /// <summary>Gets the Plex server's machine identifier, needed for constructing PlayQueue URIs</summary>
+    /// <param name="cancellationToken">Optional token to cancel the operation</param>
+    /// <returns>The server's unique machine identifier string</returns>
+    Task<string> GetMachineIdentifierAsync(CancellationToken cancellationToken = default);
 }

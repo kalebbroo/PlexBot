@@ -5,7 +5,7 @@ namespace PlexBot.Core.Services.Music;
 
 /// <summary>Plex music provider that wraps IPlexMusicService behind the generic IMusicProvider interface.
 /// This is a thin facade — IPlexMusicService remains unchanged and available for Plex-specific code.</summary>
-public class PlexMusicProvider(IPlexMusicService plexMusicService) : IMusicProvider
+public class PlexMusicProvider(IPlexMusicService plexMusicService, IPlexSonicService plexSonicService) : IMusicProvider
 {
     public string Id => "plex";
     public string DisplayName => "Plex";
@@ -14,7 +14,7 @@ public class PlexMusicProvider(IPlexMusicService plexMusicService) : IMusicProvi
     public MusicProviderCapabilities Capabilities =>
         MusicProviderCapabilities.Search | MusicProviderCapabilities.TrackDetails |
         MusicProviderCapabilities.Albums | MusicProviderCapabilities.Playlists |
-        MusicProviderCapabilities.ArtistBrowse;
+        MusicProviderCapabilities.ArtistBrowse | MusicProviderCapabilities.Radio;
 
     public Task<SearchResults> SearchAsync(string query, CancellationToken cancellationToken = default) =>
         plexMusicService.SearchLibraryAsync(query, cancellationToken);
@@ -36,4 +36,7 @@ public class PlexMusicProvider(IPlexMusicService plexMusicService) : IMusicProvi
 
     public async Task<Playlist?> GetPlaylistDetailsAsync(string playlistKey, CancellationToken cancellationToken = default) =>
         await plexMusicService.GetPlaylistDetailsAsync(playlistKey, cancellationToken);
+
+    public Task<List<Track>> GetRadioTracksAsync(string seedKey, CancellationToken cancellationToken = default) =>
+        plexSonicService.GetRadioTracksAsync(seedKey, cancellationToken: cancellationToken);
 }

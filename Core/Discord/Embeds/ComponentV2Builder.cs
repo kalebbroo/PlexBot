@@ -384,6 +384,33 @@ public static class ComponentV2Builder
             : $"{(int)ts.TotalMinutes}:{ts.Seconds:D2}";
     }
 
+    /// <summary>Builds the radio options panel shown when the Radio button is clicked on the visual player</summary>
+    public static MessageComponent BuildRadioOptions(
+        string trackTitle, string trackArtist, ComponentBuilder actionButtons)
+    {
+        var container = new ContainerBuilder()
+            .WithAccentColor(MusicColor)
+            .WithTextDisplay("## \uD83D\uDCFB Start Radio")
+            .WithTextDisplay($"Seed track: **{trackArtist}** - {trackTitle}")
+            .WithTextDisplay("Generate a radio station based on this track's sonic profile.")
+            .WithSeparator(SeparatorSpacingSize.Small, isDivider: true);
+        AddActionRows(container, actionButtons);
+        return new ComponentBuilderV2().WithContainer(container).Build();
+    }
+
+    /// <summary>Builds a sonic results display for mood/genre/similar/radio track results</summary>
+    public static MessageComponent BuildSonicResults(
+        string title, string description, ComponentBuilder selectMenus)
+    {
+        var container = new ContainerBuilder()
+            .WithAccentColor(MusicColor)
+            .WithTextDisplay($"## \uD83C\uDFB5 {title}")
+            .WithTextDisplay(description)
+            .WithSeparator(SeparatorSpacingSize.Small, isDivider: true);
+        AddActionRows(container, selectMenus);
+        return new ComponentBuilderV2().WithContainer(container).Build();
+    }
+
     private static MessageComponent BuildStatusMessage(Color color, string emoji, string title, string description)
     {
         return new ComponentBuilderV2()
