@@ -20,7 +20,7 @@ if [ -d "$SOURCE_DIR/.git" ]; then
 fi
 
 # Regenerate Lavalink config from base template + extension fragments.
-# In Docker, the lavalink-init container handles this before Lavalink starts.
+# The generated file is mounted directly into the Lavalink container from the host.
 # This covers live-source-mount scenarios where extensions changed after initial startup.
 DOCKER_DIR="/source/Install/Docker"
 EXTENSIONS_DIR="${EXTENSIONS_SOURCE_DIR:-/source/Extensions}"
