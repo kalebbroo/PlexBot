@@ -42,6 +42,7 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
                     ? socketInteraction.Channel as ITextChannel
                     : null,
                 DefaultVolume = defaultVolume,
+                InitialVolume = defaultVolume,
             };
             // Wrap options for DI
             var optionsWrapper = Options.Create(playerOptions);
@@ -61,12 +62,6 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
                 };
                 await interaction.FollowupAsync(errorMessage, ephemeral: true);
                 return null;
-            }
-            // Set volume if it's a new player
-            if (result.Status == PlayerRetrieveStatus.Success)
-            {
-                await result.Player.SetVolumeAsync(defaultVolume, cancellationToken);
-                Logs.Debug($"Created new player for guild {guildId} with volume {defaultVolume * 100:F0}%");
             }
             return result.Player;
         }
