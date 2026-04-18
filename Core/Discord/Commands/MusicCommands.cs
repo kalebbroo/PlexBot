@@ -63,7 +63,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         }
         catch (Exception ex)
         {
-            Logs.Error($"Error in search command: {ex.Message}\n{ex.StackTrace}");
+            Logs.Error($"Error in search command: {ex}");
             try { await FollowupAsync(components: ComponentV2Builder.Error("Search Error", "An error occurred while searching. Please try again later."), ephemeral: true); }
             catch { /* interaction may be dead */ }
         }
@@ -87,10 +87,9 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
                 .WithMaxValues(1);
             foreach (Artist artist in results.Artists.Take(25))
             {
-                artistMenu.AddOption(
-                    artist.Name,
-                    artist.SourceKey,
-                    TruncateDescription(artist.Summary));
+                string name = string.IsNullOrEmpty(artist.Name) ? "Unknown Artist" : artist.Name;
+                string key = string.IsNullOrEmpty(artist.SourceKey) ? $"unknown_{Guid.NewGuid()}" : artist.SourceKey;
+                artistMenu.AddOption(name, key, TruncateDescription(artist.Summary));
             }
             builder.WithSelectMenu(artistMenu);
         }
@@ -105,10 +104,13 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
                 .WithMaxValues(1);
             foreach (Album album in results.Albums.Take(25))
             {
+                string title = string.IsNullOrEmpty(album.Title) ? "Unknown Album" : album.Title;
+                string key = string.IsNullOrEmpty(album.SourceKey) ? $"unknown_{Guid.NewGuid()}" : album.SourceKey;
+                string artist = album.Artist ?? "Unknown Artist";
                 albumMenu.AddOption(
-                    album.Title,
-                    album.SourceKey,
-                    TruncateDescription($"Album by {album.Artist}"));
+                    title.Length > 100 ? title[..97] + "..." : title,
+                    key,
+                    TruncateDescription($"Album by {artist}"));
             }
             builder.WithSelectMenu(albumMenu);
         }
@@ -123,11 +125,14 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
                 .WithMaxValues(1);
             foreach (Track track in results.Tracks.Take(25))
             {
-                string title = track.Title.Length > 80 ? track.Title[..77] + "..." : track.Title;
+                string title = string.IsNullOrEmpty(track.Title) ? "Unknown Track" : track.Title;
+                title = title.Length > 80 ? title[..77] + "..." : title;
+                string key = string.IsNullOrEmpty(track.SourceKey) ? $"unknown_{Guid.NewGuid()}" : track.SourceKey;
+                string trackArtist = track.Artist ?? "Unknown Artist";
                 string description = !string.IsNullOrEmpty(track.DurationDisplay)
-                    ? $"{track.Artist} | {track.DurationDisplay}"
-                    : $"Track by {track.Artist}";
-                trackMenu.AddOption(title, track.SourceKey, TruncateDescription(description));
+                    ? $"{trackArtist} | {track.DurationDisplay}"
+                    : $"Track by {trackArtist}";
+                trackMenu.AddOption(title, key, TruncateDescription(description));
             }
             builder.WithSelectMenu(trackMenu);
         }
