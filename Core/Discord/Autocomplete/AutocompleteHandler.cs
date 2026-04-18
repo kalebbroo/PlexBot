@@ -5,29 +5,6 @@ using PlexBot.Utils;
 
 namespace PlexBot.Core.Discord.Autocomplete;
 
-/// <summary>Provides autocomplete suggestions for music sources.
-/// Dynamically lists all available providers from MusicProviderRegistry.</summary>
-public class SourceAutocompleteHandler : AutocompleteHandler
-{
-    public override Task<AutocompletionResult> GenerateSuggestionsAsync(IInteractionContext context,
-        IAutocompleteInteraction autocompleteInteraction, IParameterInfo parameter, IServiceProvider service)
-    {
-        try
-        {
-            MusicProviderRegistry registry = service.GetRequiredService<MusicProviderRegistry>();
-            List<AutocompleteResult> results = registry.GetAvailableProviders()
-                .Select(p => new AutocompleteResult(p.DisplayName, p.Id))
-                .ToList();
-
-            return Task.FromResult(AutocompletionResult.FromSuccess(results));
-        }
-        catch (Exception ex)
-        {
-            Logs.Error($"Error generating source suggestions: {ex.Message}");
-            return Task.FromResult(AutocompletionResult.FromError(ex));
-        }
-    }
-}
 
 /// <summary>Provides autocomplete suggestions for playlists from all sources.
 /// Fetches Plex playlists and custom user playlists (if extension loaded),
@@ -106,13 +83,13 @@ public class PlaylistAutocompleteHandler : AutocompleteHandler
     }
 }
 
-/// <summary>Provides autocomplete suggestions for search modes.
-/// Lists available search modes: library, mood, genre, similar, radio, adventure.</summary>
+/// <summary>Unified search mode autocomplete that combines Plex sonic features with
+/// dynamically registered extension providers (YouTube, SoundCloud, etc.) into one dropdown</summary>
 public class SearchModeAutocompleteHandler : AutocompleteHandler
 {
-    private static readonly List<(string Name, string Value)> Modes =
+    private static readonly List<(string Name, string Value)> BuiltInModes =
     [
-        ("Library Search", "library"),
+        ("Plex Library", "plex"),
         ("Find by Mood", "mood"),
         ("Find by Genre", "genre"),
         ("Similar Tracks", "similar"),
@@ -124,7 +101,23 @@ public class SearchModeAutocompleteHandler : AutocompleteHandler
         IAutocompleteInteraction autocompleteInteraction, IParameterInfo parameter, IServiceProvider service)
     {
         string input = autocompleteInteraction.Data.Current.Value as string ?? "";
-        IEnumerable<(string Name, string Value)> filtered = Modes.AsEnumerable();
+        List<(string Name, string Value)> allModes = [.. BuiltInModes];
+
+        try
+        {
+            MusicProviderRegistry registry = service.GetRequiredService<MusicProviderRegistry>();
+            foreach (IMusicProvider provider in registry.GetAvailableProviders())
+            {
+                if (provider.Id.Equals("plex", StringComparison.OrdinalIgnoreCase)) continue;
+                allModes.Add((provider.DisplayName, provider.Id));
+            }
+        }
+        catch (Exception ex)
+        {
+            Logs.Warning($"Could not load extension providers for autocomplete: {ex.Message}");
+        }
+
+        IEnumerable<(string Name, string Value)> filtered = allModes.AsEnumerable();
         if (!string.IsNullOrWhiteSpace(input))
             filtered = filtered.Where(m => m.Name.Contains(input, StringComparison.OrdinalIgnoreCase)
                 || m.Value.Contains(input, StringComparison.OrdinalIgnoreCase));

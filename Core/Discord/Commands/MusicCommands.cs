@@ -19,25 +19,23 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
     : InteractionModuleBase<SocketInteractionContext>
 {
 
-    /// <summary>Entry point for all music discovery — routes to standard library search or sonic modes based on the mode parameter</summary>
-    [SlashCommand("search", "Search for music in your Plex library or other sources")]
+    /// <summary>Unified entry point for all music discovery — routes to Plex library, sonic features,
+    /// or extension providers based on a single mode selector</summary>
+    [SlashCommand("search", "Search for music across all sources")]
     public async Task SearchCommand(
-        [Summary("query", "What to search for")] string query,
-        [Summary("source", "Where to search for music")]
-    [Autocomplete(typeof(SourceAutocompleteHandler))]
-    string source = "plex",
-        [Summary("mode", "Search mode (library, mood, genre, similar, radio, adventure)")]
-    [Autocomplete(typeof(SearchModeAutocompleteHandler))]
-    string mode = "library")
+        [Summary("mode", "Where and how to search")]
+        [Autocomplete(typeof(SearchModeAutocompleteHandler))]
+        string mode,
+        [Summary("query", "What to search for")]
+        string query)
     {
         try
         {
             await DeferAsync(ephemeral: true);
             string normalizedMode = mode.ToLowerInvariant();
-            source = source.ToLowerInvariant();
-            Logs.Debug($"Search: query='{query}', source={source}, mode={normalizedMode}");
+            Logs.Debug($"Search: query='{query}', mode={normalizedMode}");
 
-                if (normalizedMode != "library")
+            if (normalizedMode is "mood" or "genre" or "similar" or "radio" or "adventure")
             {
                 await HandleSonicModeAsync(query, normalizedMode);
                 return;
@@ -48,10 +46,12 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
                 await FollowupAsync(components: ComponentV2Builder.Error("Invalid Query", "Please enter a search query."), ephemeral: true);
                 return;
             }
-            IMusicProvider? provider = providerRegistry.GetProvider(source);
+
+            string providerId = normalizedMode == "library" ? "plex" : normalizedMode;
+            IMusicProvider? provider = providerRegistry.GetProvider(providerId);
             if (provider is null)
             {
-                await FollowupAsync(components: ComponentV2Builder.Error("Unknown Source", $"Music source '{source}' is not available."), ephemeral: true);
+                await FollowupAsync(components: ComponentV2Builder.Error("Unknown Source", $"Music source '{providerId}' is not available."), ephemeral: true);
                 return;
             }
             SearchResults results = await provider.SearchAsync(query);
