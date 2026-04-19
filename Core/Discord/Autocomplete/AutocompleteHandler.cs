@@ -1,6 +1,7 @@
 ﻿using PlexBot.Core.Models.Media;
 using PlexBot.Core.Services;
 using PlexBot.Core.Services.Music;
+using PlexBot.Core.Services.PlexApi;
 using PlexBot.Utils;
 
 namespace PlexBot.Core.Discord.Autocomplete;
@@ -127,5 +128,91 @@ public class SearchModeAutocompleteHandler : AutocompleteHandler
             .ToList();
 
         return Task.FromResult(AutocompletionResult.FromSuccess(results));
+    }
+}
+
+/// <summary>Context-aware query autocomplete that populates suggestions based on the selected search mode.
+/// For mood/genre/radio modes, fetches real options from the Plex API. Other modes return no suggestions
+/// (user types free-text).</summary>
+public class SearchQueryAutocompleteHandler : AutocompleteHandler
+{
+    public override async Task<AutocompletionResult> GenerateSuggestionsAsync(IInteractionContext context,
+        IAutocompleteInteraction autocompleteInteraction, IParameterInfo parameter, IServiceProvider service)
+    {
+        try
+        {
+            string currentInput = autocompleteInteraction.Data.Current.Value as string ?? "";
+
+            // Read the mode parameter value from the interaction
+            string mode = "";
+            foreach (AutocompleteOption option in autocompleteInteraction.Data.Options)
+            {
+                if (option.Name == "mode" && option.Value is string modeValue)
+                {
+                    mode = modeValue.ToLowerInvariant();
+                    break;
+                }
+            }
+
+            if (string.IsNullOrEmpty(mode))
+                return AutocompletionResult.FromSuccess([]);
+
+            IPlexSonicService sonicService = service.GetRequiredService<IPlexSonicService>();
+
+            return mode switch
+            {
+                "mood" => await GetMoodSuggestionsAsync(sonicService, currentInput),
+                "genre" => await GetGenreSuggestionsAsync(sonicService, currentInput),
+                "radio" => await GetStationSuggestionsAsync(sonicService, currentInput),
+                _ => AutocompletionResult.FromSuccess([])
+            };
+        }
+        catch (Exception ex)
+        {
+            Logs.Warning($"Query autocomplete error: {ex.Message}");
+            return AutocompletionResult.FromSuccess([]);
+        }
+    }
+
+    private static async Task<AutocompletionResult> GetMoodSuggestionsAsync(IPlexSonicService sonicService, string input)
+    {
+        List<MoodTag> moods = await sonicService.GetAvailableMoodsAsync();
+        IEnumerable<MoodTag> filtered = moods.AsEnumerable();
+        if (!string.IsNullOrWhiteSpace(input))
+            filtered = filtered.Where(m => m.Name.Contains(input, StringComparison.OrdinalIgnoreCase));
+
+        List<AutocompleteResult> results = filtered
+            .Take(25)
+            .Select(m => new AutocompleteResult(m.Name, m.Id))
+            .ToList();
+        return AutocompletionResult.FromSuccess(results);
+    }
+
+    private static async Task<AutocompletionResult> GetGenreSuggestionsAsync(IPlexSonicService sonicService, string input)
+    {
+        List<GenreTag> genres = await sonicService.GetAvailableGenresAsync();
+        IEnumerable<GenreTag> filtered = genres.AsEnumerable();
+        if (!string.IsNullOrWhiteSpace(input))
+            filtered = filtered.Where(g => g.Name.Contains(input, StringComparison.OrdinalIgnoreCase));
+
+        List<AutocompleteResult> results = filtered
+            .Take(25)
+            .Select(g => new AutocompleteResult(g.Name, g.Id))
+            .ToList();
+        return AutocompletionResult.FromSuccess(results);
+    }
+
+    private static async Task<AutocompletionResult> GetStationSuggestionsAsync(IPlexSonicService sonicService, string input)
+    {
+        List<RadioStation> stations = await sonicService.GetRadioStationsAsync();
+        IEnumerable<RadioStation> filtered = stations.AsEnumerable();
+        if (!string.IsNullOrWhiteSpace(input))
+            filtered = filtered.Where(s => s.Title.Contains(input, StringComparison.OrdinalIgnoreCase));
+
+        List<AutocompleteResult> results = filtered
+            .Take(25)
+            .Select(s => new AutocompleteResult(s.Title, s.SourceKey))
+            .ToList();
+        return AutocompletionResult.FromSuccess(results);
     }
 }

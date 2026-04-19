@@ -19,7 +19,9 @@
 ## ⭐ Features
 
 - **Stream from Plex**: Play tracks, albums, artists, and playlists directly from your Plex server.
-- **YouTube Support**: Search and play music from YouTube.
+- **Plex Sonic Features**: Mood & genre browsing, similar tracks, radio stations, and Sonic Adventure — all powered by Plex's neural audio analysis.
+- **Radio**: Start a radio station from any track with one button press. Optionally enable infinite radio to auto-refill the queue.
+- **YouTube Support**: Search and play music from YouTube via extension.
 - **Interactive Player UI**: Choose between a modern image-based player or a classic Discord embed.
 - **Static Player Channel**: Optionally dedicate a channel for the persistent player UI.
 - **Rich Queue Management**: Add, remove, shuffle, and loop tracks with intuitive controls.
@@ -62,9 +64,26 @@ For more, see the [Player UI Guide](./Docs/Guides/Player-UI-Guide.md).
 ## ⚡ Slash Commands
 
 <details>
-<summary><b>/search [query] [source]</b></summary>
-Search your Plex library or YouTube. Interactive menus for artists, albums, and tracks.
-<br>Example: <code>/search query:"The Beatles" source:"plex"</code>
+<summary><b>/search [mode] [query?]</b></summary>
+
+Search across all sources with a unified mode selector. The mode dropdown includes built-in Plex features and any extension providers (YouTube, etc.). Query is **optional** for Mood, Genre, and Radio modes — the autocomplete dropdown populates with real choices from your Plex library.
+
+| Mode | Description | Query |
+|------|-------------|-------|
+| **Plex Library** | Search your Plex music library for artists, albums, and tracks | Free text |
+| **Find by Mood** | Browse tracks by mood tags (e.g. "Happy", "Sad", "Energetic") | Autocomplete lists all moods |
+| **Find by Genre** | Browse tracks by genre (e.g. "Rock", "Jazz", "Electronic") | Autocomplete lists all genres |
+| **Similar Tracks** | Find sonically similar tracks using Plex's neural audio analysis | Free text |
+| **Radio Station** | Pick a station or seed radio from a track | Autocomplete lists stations |
+| **Sonic Adventure** | Build a sonic path from the currently playing track to a destination track | Free text |
+| *YouTube, etc.* | *Extension providers appear automatically when loaded* | Free text |
+
+**Examples:**
+- <code>/search mode:Plex Library query:"The Beatles"</code>
+- <code>/search mode:Find by Mood</code> — pick a mood from the autocomplete dropdown
+- <code>/search mode:Find by Genre</code> — pick a genre from the autocomplete dropdown
+- <code>/search mode:Radio Station</code> — pick a station (Library Radio, Deep Cuts, etc.)
+- <code>/search mode:Sonic Adventure query:"Stairway to Heaven"</code>
 </details>
 
 <details>
@@ -88,6 +107,15 @@ Show an interactive help menu with all commands and usage tips.
 <summary><b>/ping</b></summary>
 Test if the bot is responding to interactions.
 </details>
+
+### Radio Button
+
+The visual player includes a **Radio** button (📻) on the second row. Click it while a Plex track is playing to:
+- **Start Radio (Replace Queue)** — Clear the queue and fill it with radio tracks seeded from the current track
+- **Start Radio (Add to Queue)** — Append radio tracks to the existing queue
+- **Similar Tracks** — Browse a list of sonically similar tracks to pick from
+
+When infinite radio is enabled in `config.fds`, the queue automatically refills when it runs low.
 
 ---
 
@@ -162,6 +190,9 @@ Uses [Frenetic Data Syntax](https://github.com/FreneticLLC/FreneticUtilities) (Y
 |-----|------|---------|-------------|
 | `plex.maxConcurrentResolves` | int | `3` | Max parallel track resolves when loading playlists/albums from Plex. Lower if tracks fail to load; higher loads faster but may overwhelm Plex |
 | `plex.maxConcurrentYouTubeResolves` | int | `5` | Max parallel track resolves when loading from YouTube. Separate limit allows higher concurrency for YouTube sources |
+| `plex.radio.infinite` | bool | `false` | Enable infinite radio — automatically refills the queue when it runs low |
+| `plex.radio.refillThreshold` | int | `5` | Queue size threshold that triggers a refill when infinite radio is enabled |
+| `plex.radio.batchSize` | int | `30` | Number of tracks to fetch per radio request (initial batch or refill) |
 
 #### Logging
 

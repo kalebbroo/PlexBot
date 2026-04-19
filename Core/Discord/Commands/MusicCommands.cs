@@ -26,8 +26,9 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         [Summary("mode", "Where and how to search")]
         [Autocomplete(typeof(SearchModeAutocompleteHandler))]
         string mode,
-        [Summary("query", "What to search for")]
-        string query)
+        [Summary("query", "What to search for (optional for mood/genre/radio)")]
+        [Autocomplete(typeof(SearchQueryAutocompleteHandler))]
+        string query = "")
     {
         try
         {
@@ -100,24 +101,27 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         }
     }
 
-    /// <summary>Fuzzy matches query against Plex mood tags and displays tracks filtered by the closest match</summary>
+    /// <summary>Matches query against Plex mood tags by ID (from autocomplete) or name (free-text),
+    /// then displays tracks filtered by the matched mood</summary>
     public async Task HandleMoodSearchAsync(string query)
     {
-        if (string.IsNullOrWhiteSpace(query))
+        List<MoodTag> moods = await plexSonicService.GetAvailableMoodsAsync();
+        if (moods.Count == 0)
         {
-            List<MoodTag> allMoods = await plexSonicService.GetAvailableMoodsAsync();
-            if (allMoods.Count == 0)
-            {
-                await FollowupAsync(components: ComponentV2Builder.Info("No Moods", "No mood tags found. Sonic analysis may not be enabled on your Plex server."), ephemeral: true);
-                return;
-            }
-            string moodList = string.Join(", ", allMoods.Take(50).Select(m => m.Name));
-            await FollowupAsync(components: ComponentV2Builder.Info("Available Moods", $"Enter a mood name as your query. Available moods:\n{moodList}"), ephemeral: true);
+            await FollowupAsync(components: ComponentV2Builder.Info("No Moods", "No mood tags found. Sonic analysis may not be enabled on your Plex server."), ephemeral: true);
             return;
         }
 
-        List<MoodTag> moods = await plexSonicService.GetAvailableMoodsAsync();
-        MoodTag? matched = moods.FirstOrDefault(m => m.Name.Equals(query, StringComparison.OrdinalIgnoreCase))
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            string moodList = string.Join(", ", moods.Take(50).Select(m => m.Name));
+            await FollowupAsync(components: ComponentV2Builder.Info("Available Moods", $"Select a mood from the autocomplete dropdown, or type a mood name.\n\n{moodList}"), ephemeral: true);
+            return;
+        }
+
+        // Match by ID first (autocomplete sends the numeric ID), then by name
+        MoodTag? matched = moods.FirstOrDefault(m => m.Id == query)
+            ?? moods.FirstOrDefault(m => m.Name.Equals(query, StringComparison.OrdinalIgnoreCase))
             ?? moods.FirstOrDefault(m => m.Name.Contains(query, StringComparison.OrdinalIgnoreCase));
 
         if (matched is null)
@@ -137,24 +141,27 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         await DisplaySonicResults($"Mood: {matched.Name}", $"Found {tracks.Count} tracks matching this mood", tracks);
     }
 
-    /// <summary>Fuzzy matches query against Plex genre tags and displays tracks filtered by the closest match</summary>
+    /// <summary>Matches query against Plex genre tags by ID (from autocomplete) or name (free-text),
+    /// then displays tracks filtered by the matched genre</summary>
     public async Task HandleGenreSearchAsync(string query)
     {
-        if (string.IsNullOrWhiteSpace(query))
+        List<GenreTag> genres = await plexSonicService.GetAvailableGenresAsync();
+        if (genres.Count == 0)
         {
-            List<GenreTag> allGenres = await plexSonicService.GetAvailableGenresAsync();
-            if (allGenres.Count == 0)
-            {
-                await FollowupAsync(components: ComponentV2Builder.Info("No Genres", "No genre tags found in your library."), ephemeral: true);
-                return;
-            }
-            string genreList = string.Join(", ", allGenres.Take(50).Select(g => g.Name));
-            await FollowupAsync(components: ComponentV2Builder.Info("Available Genres", $"Enter a genre name as your query. Available genres:\n{genreList}"), ephemeral: true);
+            await FollowupAsync(components: ComponentV2Builder.Info("No Genres", "No genre tags found in your library."), ephemeral: true);
             return;
         }
 
-        List<GenreTag> genres = await plexSonicService.GetAvailableGenresAsync();
-        GenreTag? matched = genres.FirstOrDefault(g => g.Name.Equals(query, StringComparison.OrdinalIgnoreCase))
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            string genreList = string.Join(", ", genres.Take(50).Select(g => g.Name));
+            await FollowupAsync(components: ComponentV2Builder.Info("Available Genres", $"Select a genre from the autocomplete dropdown, or type a genre name.\n\n{genreList}"), ephemeral: true);
+            return;
+        }
+
+        // Match by ID first (autocomplete sends the numeric ID), then by name
+        GenreTag? matched = genres.FirstOrDefault(g => g.Id == query)
+            ?? genres.FirstOrDefault(g => g.Name.Equals(query, StringComparison.OrdinalIgnoreCase))
             ?? genres.FirstOrDefault(g => g.Name.Contains(query, StringComparison.OrdinalIgnoreCase));
 
         if (matched is null)
@@ -211,7 +218,8 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
             similarTracks);
     }
 
-    /// <summary>Seeds a radio station from a search result track, or lists available stations when query is empty</summary>
+    /// <summary>Seeds a radio station from a search result track, plays a station selected from autocomplete,
+    /// or lists available stations when query is empty</summary>
     public async Task HandleRadioSearchAsync(string query)
     {
         if (string.IsNullOrWhiteSpace(query))
@@ -226,6 +234,14 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
             return;
         }
 
+        // Check if query is a station key (from autocomplete, e.g. "/library/sections/6/stations/1")
+        if (query.StartsWith("/library/sections/", StringComparison.OrdinalIgnoreCase))
+        {
+            await HandleStationPlayAsync(query);
+            return;
+        }
+
+        // Otherwise treat as a track search to seed radio
         SearchResults searchResults = await plexMusicService.SearchLibraryAsync(query);
         if (searchResults.Tracks.Count == 0)
         {
@@ -252,6 +268,42 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
             $"Radio from: {seedTrack.Title}",
             $"Generated {radioTracks.Count} radio tracks seeded from **{seedTrack.Artist}** - {seedTrack.Title}",
             radioTracks);
+    }
+
+    /// <summary>Fetches tracks from a Plex radio station key and queues them for playback</summary>
+    public async Task HandleStationPlayAsync(string stationKey)
+    {
+        try
+        {
+            List<RadioStation> stations = await plexSonicService.GetRadioStationsAsync();
+            RadioStation? station = stations.FirstOrDefault(s => s.SourceKey == stationKey);
+            string stationName = station?.Title ?? "Radio Station";
+
+            // Fetch tracks from the station endpoint
+            string response = await plexSonicService.GetStationTracksAsync(stationKey);
+            if (string.IsNullOrEmpty(response))
+            {
+                await FollowupAsync(components: ComponentV2Builder.Info("No Tracks", $"Could not load tracks from '{stationName}'."), ephemeral: true);
+                return;
+            }
+
+            List<Track> tracks = plexSonicService.ParseTracksFromResponse(response);
+            if (tracks.Count == 0)
+            {
+                await FollowupAsync(components: ComponentV2Builder.Info("No Tracks", $"No tracks available from '{stationName}'."), ephemeral: true);
+                return;
+            }
+
+            await DisplaySonicResults(
+                $"Station: {stationName}",
+                $"Loaded {tracks.Count} tracks from {stationName}",
+                tracks);
+        }
+        catch (Exception ex)
+        {
+            Logs.Error($"Error loading station: {ex.Message}");
+            await FollowupAsync(components: ComponentV2Builder.Error("Station Error", "Failed to load radio station tracks."), ephemeral: true);
+        }
     }
 
     /// <summary>Builds a sonic path from the currently playing Plex track to a destination track found via query,
