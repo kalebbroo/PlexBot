@@ -36,7 +36,14 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
             string normalizedMode = mode.ToLowerInvariant();
             Logs.Debug($"Search: query='{query}', mode={normalizedMode}");
 
-            if (normalizedMode is "mood" or "genre" or "similar" or "radio" or "adventure")
+            // Ignore hint placeholder values from autocomplete
+            if (query.StartsWith("hint_", StringComparison.Ordinal))
+            {
+                await FollowupAsync(components: ComponentV2Builder.Error("Invalid Query", "Please type your search — don't select the hint text."), ephemeral: true);
+                return;
+            }
+
+            if (normalizedMode is "mood" or "genre" or "radio")
             {
                 await HandleSonicModeAsync(query, normalizedMode);
                 return;
@@ -80,14 +87,8 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
             case "genre":
                 await HandleGenreSearchAsync(query);
                 break;
-            case "similar":
-                await HandleSimilarSearchAsync(query);
-                break;
             case "radio":
                 await HandleRadioSearchAsync(query);
-                break;
-            case "adventure":
-                await HandleAdventureSearchAsync(query);
                 break;
             default:
                 await FollowupAsync(components: ComponentV2Builder.Error("Unknown Mode", $"Search mode '{mode}' is not recognized."), ephemeral: true);
@@ -159,43 +160,6 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         }
 
         await DisplaySonicResults($"Genre: {matched.Name}", $"Found {tracks.Count} tracks in this genre", tracks);
-    }
-
-    /// <summary>Searches for a track by name, then uses Plex's neural audio analysis to find sonically similar tracks</summary>
-    public async Task HandleSimilarSearchAsync(string query)
-    {
-        if (string.IsNullOrWhiteSpace(query))
-        {
-            await FollowupAsync(components: ComponentV2Builder.Error("Missing Query", "Enter a track name to find similar tracks."), ephemeral: true);
-            return;
-        }
-
-        SearchResults searchResults = await plexMusicService.SearchLibraryAsync(query);
-        if (searchResults.Tracks.Count == 0)
-        {
-            await FollowupAsync(components: ComponentV2Builder.Error("No Results", $"No tracks found for '{query}'. Try a different search term."), ephemeral: true);
-            return;
-        }
-
-        Track seedTrack = searchResults.Tracks.First();
-        string ratingKey = PlexJsonParser.ExtractRatingKey(seedTrack.SourceKey);
-        if (string.IsNullOrEmpty(ratingKey))
-        {
-            await FollowupAsync(components: ComponentV2Builder.Error("Error", "Could not extract track identifier."), ephemeral: true);
-            return;
-        }
-
-        List<Track> similarTracks = await plexSonicService.GetSimilarTracksAsync(ratingKey);
-        if (similarTracks.Count == 0)
-        {
-            await FollowupAsync(components: ComponentV2Builder.Info("No Similar Tracks", $"No sonically similar tracks found for '{seedTrack.Title}'. Sonic analysis may not be complete."), ephemeral: true);
-            return;
-        }
-
-        await DisplaySonicResults(
-            $"Similar to: {seedTrack.Title}",
-            $"Found {similarTracks.Count} sonically similar tracks to **{seedTrack.Artist}** - {seedTrack.Title}",
-            similarTracks);
     }
 
     /// <summary>Seeds a radio station from a search result track, plays a station selected from autocomplete,
@@ -284,59 +248,6 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
             Logs.Error($"Error loading station: {ex.Message}");
             await FollowupAsync(components: ComponentV2Builder.Error("Station Error", "Failed to load radio station tracks."), ephemeral: true);
         }
-    }
-
-    /// <summary>Builds a sonic path from the currently playing Plex track to a destination track found via query,
-    /// using Plex's computePath endpoint to traverse through sonic space</summary>
-    public async Task HandleAdventureSearchAsync(string query)
-    {
-        if (string.IsNullOrWhiteSpace(query))
-        {
-            await FollowupAsync(components: ComponentV2Builder.Error("Missing Destination", "Enter a track name as the destination for your sonic adventure."), ephemeral: true);
-            return;
-        }
-
-        if (await playerService.GetPlayerAsync(Context.Interaction, false) is not CustomLavaLinkPlayer player
-            || player.CurrentItem is not CustomTrackQueueItem currentItem
-            || currentItem.SourceTrack.SourceSystem != "plex")
-        {
-            await FollowupAsync(components: ComponentV2Builder.Error("No Start Track", "Play a Plex track first, then use adventure mode to create a sonic path to another track."), ephemeral: true);
-            return;
-        }
-
-        string startRatingKey = PlexJsonParser.ExtractRatingKey(currentItem.SourceTrack.SourceKey);
-        if (string.IsNullOrEmpty(startRatingKey))
-        {
-            await FollowupAsync(components: ComponentV2Builder.Error("Error", "Could not identify the currently playing track."), ephemeral: true);
-            return;
-        }
-
-        SearchResults searchResults = await plexMusicService.SearchLibraryAsync(query);
-        if (searchResults.Tracks.Count == 0)
-        {
-            await FollowupAsync(components: ComponentV2Builder.Error("No Results", $"No destination tracks found for '{query}'."), ephemeral: true);
-            return;
-        }
-
-        Track endTrack = searchResults.Tracks.First();
-        string endRatingKey = PlexJsonParser.ExtractRatingKey(endTrack.SourceKey);
-        if (string.IsNullOrEmpty(endRatingKey))
-        {
-            await FollowupAsync(components: ComponentV2Builder.Error("Error", "Could not extract destination track identifier."), ephemeral: true);
-            return;
-        }
-
-        List<Track> adventureTracks = await plexSonicService.GetSonicAdventureAsync(startRatingKey, endRatingKey);
-        if (adventureTracks.Count == 0)
-        {
-            await FollowupAsync(components: ComponentV2Builder.Info("No Path Found", $"Could not find a sonic path from '{currentItem.Title}' to '{endTrack.Title}'."), ephemeral: true);
-            return;
-        }
-
-        await DisplaySonicResults(
-            "Sonic Adventure",
-            $"Path from **{currentItem.Artist}** - {currentItem.Title} to **{endTrack.Artist}** - {endTrack.Title} ({adventureTracks.Count} tracks)",
-            adventureTracks);
     }
 
     /// <summary>Builds a track select menu with optional "Play All" button, reusing the search:plex:track

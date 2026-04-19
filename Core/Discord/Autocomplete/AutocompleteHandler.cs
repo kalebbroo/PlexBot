@@ -93,9 +93,7 @@ public class SearchModeAutocompleteHandler : AutocompleteHandler
         ("Plex Library", "plex"),
         ("Find by Mood", "mood"),
         ("Find by Genre", "genre"),
-        ("Similar Tracks", "similar"),
-        ("Radio Station", "radio"),
-        ("Sonic Adventure", "adventure")
+        ("Radio Station", "radio")
     ];
 
     public override Task<AutocompletionResult> GenerateSuggestionsAsync(IInteractionContext context,
@@ -110,6 +108,7 @@ public class SearchModeAutocompleteHandler : AutocompleteHandler
             foreach (IMusicProvider provider in registry.GetAvailableProviders())
             {
                 if (provider.Id.Equals("plex", StringComparison.OrdinalIgnoreCase)) continue;
+                if (!provider.Capabilities.HasFlag(MusicProviderCapabilities.Search)) continue;
                 allModes.Add((provider.DisplayName, provider.Id));
             }
         }
@@ -166,7 +165,7 @@ public class SearchQueryAutocompleteHandler : AutocompleteHandler
                 "mood" => await GetMoodSuggestionsAsync(sonicService, currentInput),
                 "genre" => await GetGenreSuggestionsAsync(sonicService, currentInput),
                 "radio" => await GetStationSuggestionsAsync(sonicService, currentInput),
-                _ => AutocompletionResult.FromSuccess([])
+                _ => GetSearchHint(currentInput)
             };
         }
         catch (Exception ex)
@@ -218,5 +217,15 @@ public class SearchQueryAutocompleteHandler : AutocompleteHandler
             .Select(s => new AutocompleteResult(s.Title, s.SourceKey))
             .ToList();
         return AutocompletionResult.FromSuccess(results);
+    }
+
+    private static AutocompletionResult GetSearchHint(string input)
+    {
+        if (string.IsNullOrWhiteSpace(input))
+            return AutocompletionResult.FromSuccess(
+            [
+                new AutocompleteResult("\u266b Type to search for artists, albums, or tracks", "hint_search")
+            ]);
+        return AutocompletionResult.FromSuccess([]);
     }
 }
