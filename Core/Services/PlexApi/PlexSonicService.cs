@@ -6,13 +6,14 @@ using PlexBot.Utils;
 
 namespace PlexBot.Core.Services.PlexApi;
 
-/// <summary>Implements Plex Sonic features: radio stations, mood/genre browsing,
-/// sonically similar tracks, and sonic adventure paths</summary>
+/// <summary>Implements Plex Sonic features using real PMS endpoints for mood/genre filtering,
+/// sonic adventure (computePath), and hub-based stations. Similar tracks and radio use
+/// genre/mood matching since no dedicated PMS endpoints exist for those.</summary>
 public class PlexSonicService(IPlexApiService plexApiService, IMemoryCache cache) : IPlexSonicService
 {
     private static readonly MemoryCacheEntryOptions PermanentCacheOptions = new() { AbsoluteExpiration = DateTimeOffset.MaxValue };
     private static readonly MemoryCacheEntryOptions TagCacheOptions = new() { SlidingExpiration = TimeSpan.FromMinutes(30) };
-    private static readonly MemoryCacheEntryOptions RadioCacheOptions = new() { SlidingExpiration = TimeSpan.FromMinutes(5) };
+    private static readonly MemoryCacheEntryOptions TrackCacheOptions = new() { SlidingExpiration = TimeSpan.FromMinutes(5) };
     private static readonly MemoryCacheEntryOptions SimilarCacheOptions = new() { SlidingExpiration = TimeSpan.FromMinutes(10) };
 
     /// <inheritdoc />
@@ -64,9 +65,25 @@ public class PlexSonicService(IPlexApiService plexApiService, IMemoryCache cache
         try
         {
             string sectionId = await GetMusicSectionIdAsync(cancellationToken);
-            List<MoodTag> moods = await GetFilterTagsAsync<MoodTag>(
-                sectionId, "mood", (id, name, key) => new MoodTag { Id = id, Name = name, FilterKey = key },
-                cancellationToken);
+            string uri = $"/library/sections/{sectionId}/mood?type=10";
+            Logs.Debug($"Requesting mood tags: {uri}");
+            string response = await plexApiService.PerformRequestAsync(uri, cancellationToken);
+            JToken? mediaContainer = PlexJsonParser.ParseMediaContainer(response);
+            JToken? directories = mediaContainer?["Directory"];
+
+            List<MoodTag> moods = [];
+            if (directories is not null)
+            {
+                foreach (JToken dir in directories)
+                {
+                    string id = dir["key"]?.ToString() ?? "";
+                    string name = dir["title"]?.ToString() ?? "";
+                    if (!string.IsNullOrEmpty(id) && !string.IsNullOrEmpty(name))
+                    {
+                        moods.Add(new MoodTag { Id = id, Name = name, FilterKey = $"/library/sections/{sectionId}/all?type=10&mood=" });
+                    }
+                }
+            }
 
             cache.Set(cacheKey, moods, TagCacheOptions);
             Logs.Info($"Found {moods.Count} mood tags");
@@ -89,9 +106,25 @@ public class PlexSonicService(IPlexApiService plexApiService, IMemoryCache cache
         try
         {
             string sectionId = await GetMusicSectionIdAsync(cancellationToken);
-            List<GenreTag> genres = await GetFilterTagsAsync<GenreTag>(
-                sectionId, "genre", (id, name, key) => new GenreTag { Id = id, Name = name, FilterKey = key },
-                cancellationToken);
+            string uri = $"/library/sections/{sectionId}/genre?type=10";
+            Logs.Debug($"Requesting genre tags: {uri}");
+            string response = await plexApiService.PerformRequestAsync(uri, cancellationToken);
+            JToken? mediaContainer = PlexJsonParser.ParseMediaContainer(response);
+            JToken? directories = mediaContainer?["Directory"];
+
+            List<GenreTag> genres = [];
+            if (directories is not null)
+            {
+                foreach (JToken dir in directories)
+                {
+                    string id = dir["key"]?.ToString() ?? "";
+                    string name = dir["title"]?.ToString() ?? "";
+                    if (!string.IsNullOrEmpty(id) && !string.IsNullOrEmpty(name))
+                    {
+                        genres.Add(new GenreTag { Id = id, Name = name, FilterKey = $"/library/sections/{sectionId}/all?type=10&genre=" });
+                    }
+                }
+            }
 
             cache.Set(cacheKey, genres, TagCacheOptions);
             Logs.Info($"Found {genres.Count} genre tags");
@@ -101,97 +134,6 @@ public class PlexSonicService(IPlexApiService plexApiService, IMemoryCache cache
         {
             throw new PlexApiException($"Failed to get genre tags: {ex.Message}", ex);
         }
-    }
-
-    /// <summary>Walks the section details response to find filter tag values, trying both FieldType→Filter
-    /// and Type→Field→SubType paths since Plex server versions structure this differently</summary>
-    public async Task<List<T>> GetFilterTagsAsync<T>(
-        string sectionId, string filterType, Func<string, string, string, T> factory,
-        CancellationToken cancellationToken)
-    {
-        string filterUri = $"/library/sections/{sectionId}/all?type=10&{filterType}=";
-        string detailsUri = $"/library/sections/{sectionId}?includeDetails=1";
-        string response = await plexApiService.PerformRequestAsync(detailsUri, cancellationToken);
-        JToken? mediaContainer = PlexJsonParser.ParseMediaContainer(response);
-
-        List<T> tags = [];
-
-        JToken? fieldTypes = mediaContainer?["FieldType"];
-        if (fieldTypes is not null)
-        {
-            foreach (JToken fieldType in fieldTypes)
-            {
-                string type = fieldType["type"]?.ToString() ?? "";
-                if (!type.Equals("tag", StringComparison.OrdinalIgnoreCase))
-                    continue;
-
-                JToken? filters = fieldType["Filter"];
-                if (filters is null) continue;
-
-                foreach (JToken filter in filters)
-                {
-                    string fFilter = filter["filter"]?.ToString() ?? "";
-                    if (!fFilter.Equals(filterType, StringComparison.OrdinalIgnoreCase))
-                        continue;
-
-                    string filterKey = filter["key"]?.ToString() ?? "";
-                    if (string.IsNullOrEmpty(filterKey)) continue;
-
-                    string tagResponse = await plexApiService.PerformRequestAsync(filterKey, cancellationToken);
-                    JToken? tagContainer = PlexJsonParser.ParseMediaContainer(tagResponse);
-                    JToken? directories = tagContainer?["Directory"];
-                    if (directories is null) continue;
-
-                    foreach (JToken dir in directories)
-                    {
-                        string id = dir["key"]?.ToString() ?? "";
-                        string name = dir["title"]?.ToString() ?? "";
-                        if (!string.IsNullOrEmpty(id) && !string.IsNullOrEmpty(name))
-                        {
-                            tags.Add(factory(id, name, filterKey));
-                        }
-                    }
-                    return tags;
-                }
-            }
-        }
-
-        // Fallback: try the Type array approach
-        JToken? types = mediaContainer?["Type"];
-        if (types is not null)
-        {
-            foreach (JToken typeEntry in types)
-            {
-                // Look for track type (type=10)
-                if (typeEntry["type"]?.ToString() != "10") continue;
-
-                JToken? fieldEntries = typeEntry["Field"];
-                if (fieldEntries is null) continue;
-
-                foreach (JToken field in fieldEntries)
-                {
-                    string key = field["key"]?.ToString() ?? "";
-                    if (!key.Equals(filterType, StringComparison.OrdinalIgnoreCase)) continue;
-
-                    // The subtype entries contain the values
-                    JToken? subTypes = field["SubType"];
-                    if (subTypes is null) continue;
-
-                    foreach (JToken sub in subTypes)
-                    {
-                        string id = sub["key"]?.ToString() ?? "";
-                        string name = sub["title"]?.ToString() ?? "";
-                        if (!string.IsNullOrEmpty(id) && !string.IsNullOrEmpty(name))
-                        {
-                            tags.Add(factory(id, name, $"/library/sections/{sectionId}/all?type=10&{filterType}="));
-                        }
-                    }
-                    return tags;
-                }
-            }
-        }
-
-        return tags;
     }
 
     /// <inheritdoc />
@@ -206,10 +148,11 @@ public class PlexSonicService(IPlexApiService plexApiService, IMemoryCache cache
         {
             string sectionId = await GetMusicSectionIdAsync(cancellationToken);
             string uri = $"/library/sections/{sectionId}/all?type=10&mood={Uri.EscapeDataString(moodId)}&sort=random&limit={limit}";
+            Logs.Debug($"Requesting mood tracks: {uri}");
             string response = await plexApiService.PerformRequestAsync(uri, cancellationToken);
             List<Track> tracks = ParseTracksFromResponse(response);
 
-            cache.Set(cacheKey, tracks, RadioCacheOptions);
+            cache.Set(cacheKey, tracks, TrackCacheOptions);
             Logs.Info($"Found {tracks.Count} tracks for mood '{moodId}'");
             return tracks;
         }
@@ -231,10 +174,11 @@ public class PlexSonicService(IPlexApiService plexApiService, IMemoryCache cache
         {
             string sectionId = await GetMusicSectionIdAsync(cancellationToken);
             string uri = $"/library/sections/{sectionId}/all?type=10&genre={Uri.EscapeDataString(genreId)}&sort=random&limit={limit}";
+            Logs.Debug($"Requesting genre tracks: {uri}");
             string response = await plexApiService.PerformRequestAsync(uri, cancellationToken);
             List<Track> tracks = ParseTracksFromResponse(response);
 
-            cache.Set(cacheKey, tracks, RadioCacheOptions);
+            cache.Set(cacheKey, tracks, TrackCacheOptions);
             Logs.Info($"Found {tracks.Count} tracks for genre '{genreId}'");
             return tracks;
         }
@@ -244,31 +188,94 @@ public class PlexSonicService(IPlexApiService plexApiService, IMemoryCache cache
         }
     }
 
-    /// <inheritdoc />
+    /// <summary>Finds tracks that share the same artist or genre as the seed track.
+    /// No dedicated PMS endpoint exists for sonic similarity — this builds a
+    /// similar-feeling list by pulling the seed track's metadata and querying
+    /// for other tracks in the same genre, excluding the seed artist's tracks
+    /// from the first batch to add variety.</summary>
     public async Task<List<Track>> GetSimilarTracksAsync(string ratingKey, int limit = 50, CancellationToken cancellationToken = default)
     {
         string cacheKey = $"similar:{ratingKey}";
         if (cache.TryGetValue(cacheKey, out List<Track>? cached) && cached is not null)
             return cached;
 
-        Logs.Debug($"Fetching similar tracks for: {ratingKey}");
+        Logs.Debug($"Building similar tracks for: {ratingKey}");
         try
         {
-            string uri = $"/library/metadata/{ratingKey}/nearest?limit={limit}&maxDistance=0.25";
-            string response = await plexApiService.PerformRequestAsync(uri, cancellationToken);
-            List<Track> tracks = ParseTracksFromResponse(response);
+            string metadataUri = $"/library/metadata/{ratingKey}";
+            string metadataResponse = await plexApiService.PerformRequestAsync(metadataUri, cancellationToken);
+            JToken? mediaContainer = PlexJsonParser.ParseMediaContainer(metadataResponse);
+            JToken? metadata = mediaContainer?["Metadata"]?.First;
 
-            cache.Set(cacheKey, tracks, SimilarCacheOptions);
-            Logs.Info($"Found {tracks.Count} similar tracks for '{ratingKey}'");
-            return tracks;
+            if (metadata is null)
+            {
+                Logs.Warning($"Could not fetch metadata for track {ratingKey}");
+                return [];
+            }
+
+            string seedArtist = metadata["grandparentTitle"]?.ToString() ?? "";
+            JToken? genreTags = metadata["Genre"];
+            List<Track> similarTracks = [];
+            HashSet<string> seenKeys = [ratingKey];
+            string sectionId = await GetMusicSectionIdAsync(cancellationToken);
+
+            // Pull tracks from matching genres (excluding the seed track itself)
+            if (genreTags is not null)
+            {
+                foreach (JToken genreTag in genreTags)
+                {
+                    string genreName = genreTag["tag"]?.ToString() ?? "";
+                    if (string.IsNullOrEmpty(genreName)) continue;
+
+                    string uri = $"/library/sections/{sectionId}/all?type=10&genre={Uri.EscapeDataString(genreName)}&sort=random&limit={limit}";
+                    Logs.Debug($"Fetching similar tracks via genre '{genreName}': {uri}");
+                    string response = await plexApiService.PerformRequestAsync(uri, cancellationToken);
+                    List<Track> genreTracks = ParseTracksFromResponse(response);
+
+                    foreach (Track track in genreTracks)
+                    {
+                        if (seenKeys.Contains(track.Id)) continue;
+                        seenKeys.Add(track.Id);
+                        similarTracks.Add(track);
+                        if (similarTracks.Count >= limit) break;
+                    }
+                    if (similarTracks.Count >= limit) break;
+                }
+            }
+
+            // If genres didn't yield enough, add tracks from the same artist
+            if (similarTracks.Count < limit && !string.IsNullOrEmpty(seedArtist))
+            {
+                string artistKey = metadata["grandparentKey"]?.ToString() ?? "";
+                if (!string.IsNullOrEmpty(artistKey))
+                {
+                    string artistUri = $"{artistKey}/allLeaves";
+                    Logs.Debug($"Padding similar tracks with same-artist tracks: {artistUri}");
+                    string artistResponse = await plexApiService.PerformRequestAsync(artistUri, cancellationToken);
+                    List<Track> artistTracks = ParseTracksFromResponse(artistResponse);
+
+                    foreach (Track track in artistTracks)
+                    {
+                        if (seenKeys.Contains(track.Id)) continue;
+                        seenKeys.Add(track.Id);
+                        similarTracks.Add(track);
+                        if (similarTracks.Count >= limit) break;
+                    }
+                }
+            }
+
+            cache.Set(cacheKey, similarTracks, SimilarCacheOptions);
+            Logs.Info($"Built {similarTracks.Count} similar tracks for '{ratingKey}'");
+            return similarTracks;
         }
         catch (Exception ex) when (ex is not PlexApiException)
         {
-            throw new PlexApiException($"Failed to get similar tracks: {ex.Message}", ex);
+            throw new PlexApiException($"Failed to build similar tracks: {ex.Message}", ex);
         }
     }
 
-    /// <inheritdoc />
+    /// <summary>Uses the real PMS computePath endpoint to build a sonic adventure
+    /// between two tracks — requires Plex Pass and completed Sonic Analysis</summary>
     public async Task<List<Track>> GetSonicAdventureAsync(string startRatingKey, string endRatingKey, CancellationToken cancellationToken = default)
     {
         Logs.Debug($"Computing sonic adventure: {startRatingKey} → {endRatingKey}");
@@ -276,6 +283,7 @@ public class PlexSonicService(IPlexApiService plexApiService, IMemoryCache cache
         {
             string sectionId = await GetMusicSectionIdAsync(cancellationToken);
             string uri = $"/library/sections/{sectionId}/computePath?startID={startRatingKey}&endID={endRatingKey}";
+            Logs.Debug($"Requesting sonic adventure: {uri}");
             string response = await plexApiService.PerformRequestAsync(uri, cancellationToken);
             List<Track> tracks = ParseTracksFromResponse(response);
 
@@ -288,41 +296,95 @@ public class PlexSonicService(IPlexApiService plexApiService, IMemoryCache cache
         }
     }
 
-    /// <inheritdoc />
+    /// <summary>Builds a radio-style track list by finding the seed track's genres,
+    /// then pulling a randomized mix of tracks from those genres. No dedicated
+    /// PMS radio endpoint exists — this mimics Plexamp's radio behavior using
+    /// standard genre filtering with random sort.</summary>
     public async Task<List<Track>> GetRadioTracksAsync(string ratingKey, int limit = 50, CancellationToken cancellationToken = default)
     {
-        Logs.Debug($"Getting radio tracks seeded from: {ratingKey}");
+        Logs.Debug($"Building radio tracks seeded from: {ratingKey}");
         try
         {
-            string metadataUri = $"/library/metadata/{ratingKey}?includeStations=1";
+            string metadataUri = $"/library/metadata/{ratingKey}";
             string metadataResponse = await plexApiService.PerformRequestAsync(metadataUri, cancellationToken);
             JToken? mediaContainer = PlexJsonParser.ParseMediaContainer(metadataResponse);
+            JToken? metadata = mediaContainer?["Metadata"]?.First;
 
-            string? stationKey = FindStationKey(mediaContainer);
-            if (string.IsNullOrEmpty(stationKey))
+            if (metadata is null)
             {
-                Logs.Warning($"No radio station found for item {ratingKey}");
+                Logs.Warning($"Could not fetch metadata for track {ratingKey}");
                 return [];
             }
 
-            // PlayQueue creation requires the full server://machineId/... URI format
-            string machineId = await plexApiService.GetMachineIdentifierAsync(cancellationToken);
-            string stationUri = $"server://{machineId}/com.plexapp.plugins.library{stationKey}";
+            JToken? genreTags = metadata["Genre"];
+            JToken? moodTags = metadata["Mood"];
+            string sectionId = await GetMusicSectionIdAsync(cancellationToken);
+            List<Track> radioTracks = [];
+            HashSet<string> seenKeys = [ratingKey];
 
-            string playQueueUri = $"/playQueues?type=audio&uri={Uri.EscapeDataString(stationUri)}&repeat=0&shuffle=1&limit={limit}";
-            string playQueueResponse = await plexApiService.PerformPostRequestAsync(playQueueUri, cancellationToken);
-            List<Track> tracks = ParseTracksFromResponse(playQueueResponse);
+            // Primary: pull from the seed track's genres (randomized)
+            if (genreTags is not null)
+            {
+                foreach (JToken genreTag in genreTags)
+                {
+                    string genreName = genreTag["tag"]?.ToString() ?? "";
+                    if (string.IsNullOrEmpty(genreName)) continue;
 
-            Logs.Info($"Radio generated {tracks.Count} tracks from seed {ratingKey}");
-            return tracks;
+                    string uri = $"/library/sections/{sectionId}/all?type=10&genre={Uri.EscapeDataString(genreName)}&sort=random&limit={limit}";
+                    Logs.Debug($"Radio: fetching genre '{genreName}' tracks");
+                    string response = await plexApiService.PerformRequestAsync(uri, cancellationToken);
+                    List<Track> genreTracks = ParseTracksFromResponse(response);
+
+                    foreach (Track track in genreTracks)
+                    {
+                        if (seenKeys.Contains(track.Id)) continue;
+                        seenKeys.Add(track.Id);
+                        radioTracks.Add(track);
+                    }
+                    if (radioTracks.Count >= limit) break;
+                }
+            }
+
+            // Secondary: if genres didn't fill the quota, try mood tags
+            if (radioTracks.Count < limit && moodTags is not null)
+            {
+                foreach (JToken moodTag in moodTags)
+                {
+                    string moodName = moodTag["tag"]?.ToString() ?? "";
+                    if (string.IsNullOrEmpty(moodName)) continue;
+
+                    string uri = $"/library/sections/{sectionId}/all?type=10&mood={Uri.EscapeDataString(moodName)}&sort=random&limit={limit - radioTracks.Count}";
+                    Logs.Debug($"Radio: padding with mood '{moodName}' tracks");
+                    string response = await plexApiService.PerformRequestAsync(uri, cancellationToken);
+                    List<Track> moodTracks = ParseTracksFromResponse(response);
+
+                    foreach (Track track in moodTracks)
+                    {
+                        if (seenKeys.Contains(track.Id)) continue;
+                        seenKeys.Add(track.Id);
+                        radioTracks.Add(track);
+                    }
+                    if (radioTracks.Count >= limit) break;
+                }
+            }
+
+            // Shuffle to avoid genre-clustered ordering
+            Random rng = new();
+            radioTracks = [.. radioTracks.OrderBy(_ => rng.Next())];
+            if (radioTracks.Count > limit)
+                radioTracks = radioTracks.Take(limit).ToList();
+
+            Logs.Info($"Radio generated {radioTracks.Count} tracks from seed {ratingKey}");
+            return radioTracks;
         }
         catch (Exception ex) when (ex is not PlexApiException)
         {
-            throw new PlexApiException($"Failed to get radio tracks: {ex.Message}", ex);
+            throw new PlexApiException($"Failed to build radio tracks: {ex.Message}", ex);
         }
     }
 
-    /// <inheritdoc />
+    /// <summary>Fetches hub listings from the real /hubs/sections endpoint and extracts
+    /// items from the music stations hub (context == hub.music.stations)</summary>
     public async Task<List<RadioStation>> GetRadioStationsAsync(CancellationToken cancellationToken = default)
     {
         const string cacheKey = "plex:stations";
@@ -334,6 +396,7 @@ public class PlexSonicService(IPlexApiService plexApiService, IMemoryCache cache
         {
             string sectionId = await GetMusicSectionIdAsync(cancellationToken);
             string uri = $"/hubs/sections/{sectionId}?includeStations=1";
+            Logs.Debug($"Requesting hubs: {uri}");
             string response = await plexApiService.PerformRequestAsync(uri, cancellationToken);
             JToken? mediaContainer = PlexJsonParser.ParseMediaContainer(response);
 
@@ -348,27 +411,31 @@ public class PlexSonicService(IPlexApiService plexApiService, IMemoryCache cache
             foreach (JToken hub in hubs)
             {
                 string context = hub["context"]?.ToString() ?? "";
-                string hubTitle = hub["title"]?.ToString() ?? "";
 
-                JToken? metadata = hub["Metadata"];
-                if (metadata is null || !metadata.Any()) continue;
+                // Stations appear as Playlist elements (not Metadata or Directory)
+                JToken? items = hub["Playlist"] ?? hub["Metadata"];
+                if (items is null || !items.Any()) continue;
 
-                foreach (JToken item in metadata)
+                // Only parse the stations hub
+                if (!context.Contains("station", StringComparison.OrdinalIgnoreCase)) continue;
+
+                foreach (JToken item in items)
                 {
-                    string type = item["type"]?.ToString() ?? "";
-                    string ratingKey = item["ratingKey"]?.ToString() ?? "";
-                    string title = item["title"]?.ToString() ?? hubTitle;
+                    string title = item["title"]?.ToString() ?? "";
+                    string key = item["key"]?.ToString() ?? "";
+                    string guid = item["guid"]?.ToString() ?? "";
 
-                    if (string.IsNullOrEmpty(ratingKey)) continue;
+                    if (string.IsNullOrEmpty(key) || string.IsNullOrEmpty(title)) continue;
 
                     stations.Add(new RadioStation
                     {
-                        Id = ratingKey,
+                        Id = guid,
                         Title = title,
                         Description = item["summary"]?.ToString() ?? "",
-                        ArtworkUrl = plexApiService.GetArtworkUrl(item["thumb"]?.ToString()),
-                        Type = context.Contains("station", StringComparison.OrdinalIgnoreCase) ? "station" : type,
-                        SourceKey = ratingKey
+                        ArtworkUrl = plexApiService.GetArtworkUrl(item["thumb"]?.ToString() ?? item["icon"]?.ToString()),
+                        Type = "station",
+                        SourceKey = key,
+                        StationUri = key
                     });
                 }
             }
@@ -383,47 +450,28 @@ public class PlexSonicService(IPlexApiService plexApiService, IMemoryCache cache
         }
     }
 
+    /// <inheritdoc />
+    public async Task<string> GetStationTracksAsync(string stationKey, CancellationToken cancellationToken = default)
+    {
+        Logs.Debug($"Fetching station tracks: {stationKey}");
+        try
+        {
+            return await plexApiService.PerformRequestAsync(stationKey, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not PlexApiException)
+        {
+            throw new PlexApiException($"Failed to get station tracks: {ex.Message}", ex);
+        }
+    }
+
     /// <summary>Unwraps a standard Plex response envelope and delegates track parsing to PlexJsonParser</summary>
     public List<Track> ParseTracksFromResponse(string response)
     {
         JToken? mediaContainer = PlexJsonParser.ParseMediaContainer(response);
         JToken? metadata = mediaContainer?["Metadata"];
+        // Station responses may use Track elements directly under MediaContainer
+        metadata ??= mediaContainer?["Track"];
         if (metadata is null) return [];
         return PlexJsonParser.ParseTracksFromMetadata(metadata, plexApiService);
-    }
-
-    /// <summary>Searches multiple locations in the response for a station key since Plex stores it
-    /// under Metadata[].Station, Metadata[].Stations, or directly at the container level</summary>
-    public static string? FindStationKey(JToken? mediaContainer)
-    {
-        if (mediaContainer is null) return null;
-
-        JToken? metadata = mediaContainer["Metadata"];
-        if (metadata is null) return null;
-
-        foreach (JToken item in metadata)
-        {
-            JToken? stations = item["Station"];
-            if (stations is not null && stations.Any())
-            {
-                string? key = stations.First?["key"]?.ToString();
-                if (!string.IsNullOrEmpty(key)) return key;
-            }
-
-            JToken? stationsPlural = item["Stations"];
-            if (stationsPlural is not null && stationsPlural.Any())
-            {
-                string? key = stationsPlural.First?["key"]?.ToString();
-                if (!string.IsNullOrEmpty(key)) return key;
-            }
-        }
-
-        JToken? containerStations = mediaContainer["Station"] ?? mediaContainer["Stations"];
-        if (containerStations is not null && containerStations.Any())
-        {
-            return containerStations.First?["key"]?.ToString();
-        }
-
-        return null;
     }
 }

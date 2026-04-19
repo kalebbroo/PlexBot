@@ -32,4 +32,10 @@ public interface IPlexSonicService
 
     /// <summary>Gets hub/station listings for the music section</summary>
     Task<List<RadioStation>> GetRadioStationsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Fetches tracks from a specific radio station by its key path</summary>
+    Task<string> GetStationTracksAsync(string stationKey, CancellationToken cancellationToken = default);
+
+    /// <summary>Parses tracks from a raw Plex API response</summary>
+    List<Track> ParseTracksFromResponse(string response);
 }
