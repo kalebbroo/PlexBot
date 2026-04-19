@@ -26,9 +26,9 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         [Summary("mode", "Where and how to search")]
         [Autocomplete(typeof(SearchModeAutocompleteHandler))]
         string mode,
-        [Summary("query", "What to search for (optional for mood/genre/radio)")]
+        [Summary("query", "What to search for")]
         [Autocomplete(typeof(SearchQueryAutocompleteHandler))]
-        string query = "")
+        string query)
     {
         try
         {
@@ -39,12 +39,6 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
             if (normalizedMode is "mood" or "genre" or "similar" or "radio" or "adventure")
             {
                 await HandleSonicModeAsync(query, normalizedMode);
-                return;
-            }
-
-            if (string.IsNullOrWhiteSpace(query))
-            {
-                await FollowupAsync(components: ComponentV2Builder.Error("Invalid Query", "Please enter a search query."), ephemeral: true);
                 return;
             }
 
@@ -112,13 +106,6 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(query))
-        {
-            string moodList = string.Join(", ", moods.Take(50).Select(m => m.Name));
-            await FollowupAsync(components: ComponentV2Builder.Info("Available Moods", $"Select a mood from the autocomplete dropdown, or type a mood name.\n\n{moodList}"), ephemeral: true);
-            return;
-        }
-
         // Match by ID first (autocomplete sends the numeric ID), then by name
         MoodTag? matched = moods.FirstOrDefault(m => m.Id == query)
             ?? moods.FirstOrDefault(m => m.Name.Equals(query, StringComparison.OrdinalIgnoreCase))
@@ -149,13 +136,6 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         if (genres.Count == 0)
         {
             await FollowupAsync(components: ComponentV2Builder.Info("No Genres", "No genre tags found in your library."), ephemeral: true);
-            return;
-        }
-
-        if (string.IsNullOrWhiteSpace(query))
-        {
-            string genreList = string.Join(", ", genres.Take(50).Select(g => g.Name));
-            await FollowupAsync(components: ComponentV2Builder.Info("Available Genres", $"Select a genre from the autocomplete dropdown, or type a genre name.\n\n{genreList}"), ephemeral: true);
             return;
         }
 
