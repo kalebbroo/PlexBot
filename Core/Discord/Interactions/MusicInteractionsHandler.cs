@@ -8,6 +8,8 @@ using PlexBot.Core.Discord.Embeds;
 using PlexBot.Core.Services;
 using PlexBot.Core.Services.LavaLink;
 using PlexBot.Core.Services.Music;
+using PlexBot.Core.Discord.Modals;
+using PlexBot.Core.Models;
 
 namespace PlexBot.Core.Discord.Interactions;
 
@@ -17,7 +19,7 @@ namespace PlexBot.Core.Discord.Interactions;
 public class MusicInteractionHandler(IPlayerService playerService,
     VisualPlayer visualPlayer, DiscordButtonBuilder buttonBuilder,
     MusicProviderRegistry providerRegistry, IPlexSonicService plexSonicService,
-    RadioSessionManager radioSessionManager) : InteractionModuleBase<SocketInteractionContext>
+    RadioSessionManager radioSessionManager, IPlexMusicService plexMusicService) : InteractionModuleBase<SocketInteractionContext>
 {
 
     // Cooldown tracking to prevent spamming
@@ -542,14 +544,200 @@ public class MusicInteractionHandler(IPlayerService playerService,
         }
     }
 
-    /// <summary>Queues all similar tracks at once when the user clicks "Play All" instead of selecting individual tracks</summary>
-    [ComponentInteraction("sonic:playall:*:*")]
-    public async Task HandleSonicPlayAllAsync(string providerId, string ratingKey)
+    /// <summary>Visual Player button — reads the currently playing Plex track and directly shows
+    /// sonically similar tracks in an ephemeral select menu</summary>
+    [ComponentInteraction("sonic:similar")]
+    public async Task HandleSonicSimilarButtonAsync()
+    {
+        await DeferAsync(ephemeral: true);
+        if (IsOnCooldown(Context.User.Id, "sonic:similar"))
+        {
+            await FollowupAsync(components: ComponentV2Builder.Error("Cooldown", "Please wait a moment before clicking again."), ephemeral: true);
+            return;
+        }
+        try
+        {
+            if (await playerService.GetPlayerAsync(Context.Interaction, false) is not CustomLavaLinkPlayer player
+                || player.CurrentItem is not CustomTrackQueueItem currentItem)
+            {
+                await FollowupAsync(components: ComponentV2Builder.Error("No Track", "No track is currently playing."), ephemeral: true);
+                return;
+            }
+            if (!currentItem.SourceTrack.SourceSystem.Equals("plex", StringComparison.OrdinalIgnoreCase))
+            {
+                await FollowupAsync(components: ComponentV2Builder.Error("Not Supported", "Similar tracks is only available for Plex tracks."), ephemeral: true);
+                return;
+            }
+            string ratingKey = PlexJsonParser.ExtractRatingKey(currentItem.SourceTrack.SourceKey);
+            if (string.IsNullOrEmpty(ratingKey))
+            {
+                await FollowupAsync(components: ComponentV2Builder.Error("Error", "Could not determine track key."), ephemeral: true);
+                return;
+            }
+
+            List<Track> similarTracks = await plexSonicService.GetSimilarTracksAsync(ratingKey, 25);
+            if (similarTracks.Count == 0)
+            {
+                await FollowupAsync(components: ComponentV2Builder.Info("No Similar Tracks", $"No sonically similar tracks found for '{currentItem.SourceTrack.Title}'."), ephemeral: true);
+                return;
+            }
+
+            SelectMenuBuilder selectMenu = new SelectMenuBuilder()
+                .WithCustomId("search:plex:track")
+                .WithPlaceholder("Select a similar track to play")
+                .WithMaxValues(1);
+
+            foreach (Track track in similarTracks.Take(25))
+            {
+                string label = track.Title?.Length > 100 ? track.Title[..97] + "..." : track.Title ?? "Unknown";
+                string desc = $"{track.Artist} - {track.Album}";
+                if (desc.Length > 100) desc = desc[..97] + "...";
+                selectMenu.AddOption(label, track.SourceKey, desc);
+            }
+
+            ComponentBuilder components = new();
+            components.WithSelectMenu(selectMenu);
+            components.WithButton("Play All Similar", $"sonic:playall:plex:{ratingKey}", ButtonStyle.Success, row: 1);
+
+            await FollowupAsync(components: ComponentV2Builder.BuildSonicResults(
+                $"Similar to: {currentItem.SourceTrack.Title}",
+                $"Found {similarTracks.Count} sonically similar tracks to **{currentItem.SourceTrack.Artist}** - {currentItem.SourceTrack.Title}",
+                components), ephemeral: true);
+        }
+        catch (Exception ex)
+        {
+            Logs.Error($"Error handling similar button: {ex.Message}");
+            await FollowupAsync(components: ComponentV2Builder.Error("Error", "Failed to find similar tracks."), ephemeral: true);
+        }
+    }
+
+    /// <summary>Visual Player button — opens a modal for the user to enter a destination track name
+    /// for a Sonic Adventure path from the currently playing track</summary>
+    [ComponentInteraction("sonic:adventure")]
+    public async Task HandleSonicAdventureButtonAsync()
+    {
+        try
+        {
+            if (await playerService.GetPlayerAsync(Context.Interaction, false) is not CustomLavaLinkPlayer player
+                || player.CurrentItem is not CustomTrackQueueItem currentItem
+                || !currentItem.SourceTrack.SourceSystem.Equals("plex", StringComparison.OrdinalIgnoreCase))
+            {
+                await RespondAsync(components: ComponentV2Builder.Error("Not Available", "Play a Plex track first to use Sonic Adventure."), ephemeral: true);
+                return;
+            }
+
+            await Context.Interaction.RespondWithModalAsync<SonicAdventureModal>("sonic:adventure_modal");
+        }
+        catch (Exception ex)
+        {
+            Logs.Error($"Error opening adventure modal: {ex.Message}");
+            try { await RespondAsync(components: ComponentV2Builder.Error("Error", "Failed to open adventure dialog."), ephemeral: true); }
+            catch { /* interaction may be dead */ }
+        }
+    }
+
+    /// <summary>Processes the Sonic Adventure modal submission — takes the destination track name,
+    /// searches the library, and builds a sonic path from the currently playing track</summary>
+    [ModalInteraction("sonic:adventure_modal")]
+    public async Task HandleSonicAdventureModalAsync(SonicAdventureModal modal)
     {
         await DeferAsync(ephemeral: true);
         try
         {
-            List<Track> tracks = await plexSonicService.GetSimilarTracksAsync(ratingKey, 50);
+            if (await playerService.GetPlayerAsync(Context.Interaction, false) is not CustomLavaLinkPlayer player
+                || player.CurrentItem is not CustomTrackQueueItem currentItem
+                || !currentItem.SourceTrack.SourceSystem.Equals("plex", StringComparison.OrdinalIgnoreCase))
+            {
+                await FollowupAsync(components: ComponentV2Builder.Error("No Start Track", "The Plex track you were playing has stopped. Play a Plex track and try again."), ephemeral: true);
+                return;
+            }
+
+            string startRatingKey = PlexJsonParser.ExtractRatingKey(currentItem.SourceTrack.SourceKey);
+            if (string.IsNullOrEmpty(startRatingKey))
+            {
+                await FollowupAsync(components: ComponentV2Builder.Error("Error", "Could not identify the currently playing track."), ephemeral: true);
+                return;
+            }
+
+            SearchResults searchResults = await plexMusicService.SearchLibraryAsync(modal.Destination);
+            if (searchResults.Tracks.Count == 0)
+            {
+                await FollowupAsync(components: ComponentV2Builder.Error("No Results", $"No tracks found for '{modal.Destination}'."), ephemeral: true);
+                return;
+            }
+
+            Track endTrack = searchResults.Tracks.First();
+            string endRatingKey = PlexJsonParser.ExtractRatingKey(endTrack.SourceKey);
+            if (string.IsNullOrEmpty(endRatingKey))
+            {
+                await FollowupAsync(components: ComponentV2Builder.Error("Error", "Could not extract destination track identifier."), ephemeral: true);
+                return;
+            }
+
+            List<Track> adventureTracks = await plexSonicService.GetSonicAdventureAsync(startRatingKey, endRatingKey);
+            if (adventureTracks.Count == 0)
+            {
+                await FollowupAsync(components: ComponentV2Builder.Info("No Path Found", $"Could not find a sonic path from '{currentItem.SourceTrack.Title}' to '{endTrack.Title}'."), ephemeral: true);
+                return;
+            }
+
+            SelectMenuBuilder selectMenu = new SelectMenuBuilder()
+                .WithCustomId("search:plex:track")
+                .WithPlaceholder("Select a track from the adventure path")
+                .WithMaxValues(1);
+
+            foreach (Track track in adventureTracks.Take(25))
+            {
+                string label = track.Title?.Length > 100 ? track.Title[..97] + "..." : track.Title ?? "Unknown";
+                string desc = $"{track.Artist} - {track.Album}";
+                if (desc.Length > 100) desc = desc[..97] + "...";
+                selectMenu.AddOption(label, track.SourceKey, desc);
+            }
+
+            ComponentBuilder components = new();
+            components.WithSelectMenu(selectMenu);
+            components.WithButton("Play All", $"sonic:playall:adventure:{startRatingKey}-{endRatingKey}", ButtonStyle.Success, row: 1);
+
+            await FollowupAsync(components: ComponentV2Builder.BuildSonicResults(
+                "Sonic Adventure",
+                $"Path from **{currentItem.SourceTrack.Artist}** - {currentItem.SourceTrack.Title} to **{endTrack.Artist}** - {endTrack.Title} ({adventureTracks.Count} tracks)",
+                components), ephemeral: true);
+
+            Logs.Info($"Sonic adventure by {Context.User.Username}: {currentItem.SourceTrack.Title} → {endTrack.Title}, {adventureTracks.Count} tracks");
+        }
+        catch (Exception ex)
+        {
+            Logs.Error($"Error handling adventure modal: {ex.Message}");
+            try { await FollowupAsync(components: ComponentV2Builder.Error("Error", "Failed to build sonic adventure path."), ephemeral: true); }
+            catch { /* interaction may be dead */ }
+        }
+    }
+
+    /// <summary>Queues all tracks from a sonic result set. Routes to similar tracks or adventure path
+    /// based on the provider ID encoded in the custom ID</summary>
+    [ComponentInteraction("sonic:playall:*:*")]
+    public async Task HandleSonicPlayAllAsync(string sonicType, string keyData)
+    {
+        await DeferAsync(ephemeral: true);
+        try
+        {
+            List<Track> tracks;
+            if (sonicType.Equals("adventure", StringComparison.OrdinalIgnoreCase))
+            {
+                // keyData format: "startKey-endKey"
+                string[] keys = keyData.Split('-', 2);
+                if (keys.Length != 2)
+                {
+                    await FollowupAsync(components: ComponentV2Builder.Error("Error", "Invalid adventure path data."), ephemeral: true);
+                    return;
+                }
+                tracks = await plexSonicService.GetSonicAdventureAsync(keys[0], keys[1]);
+            }
+            else
+            {
+                tracks = await plexSonicService.GetSimilarTracksAsync(keyData, 50);
+            }
+
             if (tracks.Count == 0)
             {
                 await FollowupAsync(components: ComponentV2Builder.Warning("No Tracks", "No tracks found to play."), ephemeral: true);
@@ -558,7 +746,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
 
             await playerService.AddToQueueAsync(Context.Interaction, tracks);
             await FollowupAsync(components: ComponentV2Builder.Success("Tracks Added", $"Added {tracks.Count} tracks to the queue."), ephemeral: true);
-            Logs.Info($"Sonic play all by {Context.User.Username}: {tracks.Count} tracks from key {ratingKey}");
+            Logs.Info($"Sonic play all ({sonicType}) by {Context.User.Username}: {tracks.Count} tracks");
         }
         catch (Exception ex)
         {

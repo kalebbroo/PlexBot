@@ -164,6 +164,20 @@ namespace PlexBot.Core.Discord.Embeds
                     .WithCustomId("radio:start")
                     .WithStyle(ButtonStyle.Secondary);
             });
+            RegisterButton("similar", ButtonFlag.VisualPlayer, 66, _ =>
+            {
+                return new ButtonBuilder()
+                    .WithEmote(new Emoji("\uD83D\uDD0D"))
+                    .WithCustomId("sonic:similar")
+                    .WithStyle(ButtonStyle.Secondary);
+            });
+            RegisterButton("adventure", ButtonFlag.VisualPlayer, 67, _ =>
+            {
+                return new ButtonBuilder()
+                    .WithEmote(new Emoji("\uD83E\uDDED"))
+                    .WithCustomId("sonic:adventure")
+                    .WithStyle(ButtonStyle.Secondary);
+            });
             RegisterButton("kill", ButtonFlag.VisualPlayer, 70, _ =>
             {
                 return new ButtonBuilder()
