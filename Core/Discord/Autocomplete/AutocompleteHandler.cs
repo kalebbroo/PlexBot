@@ -154,6 +154,8 @@ public class SearchQueryAutocompleteHandler : AutocompleteHandler
                 }
             }
 
+            Logs.Debug($"Query autocomplete: mode='{mode}', input='{currentInput}'");
+
             if (string.IsNullOrEmpty(mode))
                 return AutocompletionResult.FromSuccess([]);
 
@@ -180,6 +182,8 @@ public class SearchQueryAutocompleteHandler : AutocompleteHandler
         IEnumerable<MoodTag> filtered = moods.AsEnumerable();
         if (!string.IsNullOrWhiteSpace(input))
             filtered = filtered.Where(m => m.Name.Contains(input, StringComparison.OrdinalIgnoreCase));
+        else
+            filtered = filtered.OrderBy(_ => Random.Shared.Next()); // Randomize when no filter (278 moods, Discord limit 25)
 
         List<AutocompleteResult> results = filtered
             .Take(25)
