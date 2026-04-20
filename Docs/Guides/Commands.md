@@ -13,28 +13,26 @@ Unified search across all sources and Plex sonic features.
 | Parameter | Required | Description |
 |-----------|----------|-------------|
 | `mode` | Yes | Where and how to search (autocomplete dropdown) |
-| `query` | No | What to search for — optional for Mood, Genre, and Radio (autocomplete provides choices) |
+| `query` | Yes | What to search for — for Mood, Genre, and Radio modes the autocomplete populates with choices from your library |
 
 **Modes:**
 
 | Mode | What it does | Query autocomplete |
 |------|-------------|-------------------|
-| **Plex Library** | Standard library search — returns artists, albums, and tracks | Free text |
-| **Find by Mood** | Browse tracks matching a mood tag (e.g. "Happy", "Aggressive") | Lists all available moods |
+| **Plex Library** | Standard library search — returns artists, albums, and tracks | Free text (hint shown) |
+| **Find by Mood** | Browse tracks matching a mood tag (e.g. "Happy", "Aggressive") | Randomized sample of 25 moods; type to filter |
 | **Find by Genre** | Browse tracks matching a genre (e.g. "Rock", "Jazz") | Lists all available genres |
-| **Similar Tracks** | Search for a track, then find sonically similar tracks using Plex's neural audio analysis | Free text |
 | **Radio Station** | Pick a station or search for a track to seed radio from | Lists available stations |
-| **Sonic Adventure** | Enter a destination track name — builds a sonic path from the currently playing track to the destination | Free text |
-| *Extension providers* | Any loaded extensions (YouTube, SoundCloud, etc.) appear automatically in the dropdown | Free text |
+| *Extension providers* | Any loaded extensions (YouTube, SoundCloud, etc.) appear automatically in the dropdown | Free text (hint shown) |
+
+> **Note:** Similar Tracks and Sonic Adventure are available as buttons on the Visual Player (see [Player Controls](#player-controls-buttons) below), not as search modes. They require a currently playing Plex track as context.
 
 **Examples:**
 - `/search mode:Plex Library query:The Beatles` — Search Plex for The Beatles
-- `/search mode:Find by Mood` — Opens a dropdown of all mood tags to pick from
-- `/search mode:Find by Mood query:sad` — Autocomplete filters to moods containing "sad"
-- `/search mode:Find by Genre` — Opens a dropdown of all genres to pick from
-- `/search mode:Radio Station` — Shows available stations (Library Radio, Deep Cuts, etc.)
-- `/search mode:Radio Station query:Bohemian Rhapsody` — Start radio seeded from Bohemian Rhapsody
-- `/search mode:Sonic Adventure query:Stairway to Heaven` — Build a sonic path from the current track to Stairway to Heaven
+- `/search mode:Find by Mood query:Happy` — Pick a mood from autocomplete or type one
+- `/search mode:Find by Genre query:Rock` — Pick a genre from autocomplete or type one
+- `/search mode:Radio Station query:Library Radio` — Pick a station from autocomplete
+- `/search mode:Radio Station query:Bohemian Rhapsody` — Seed radio from a track search
 
 ### `/playlist`
 
@@ -83,6 +81,8 @@ All playback controls are buttons on the player message itself — no slash comm
 | Queue Options | View queue, shuffle, or clear |
 | Volume Up / Down | Adjust volume by 10% |
 | Radio 📻 | Start a radio station from the current Plex track (replace queue, append, or browse similar tracks) |
+| Similar 🔍 | Show 25 sonically similar tracks to the currently playing Plex track |
+| Adventure 🧭 | Opens a popup to type a destination track — builds a sonic path from what's playing to the destination |
 | Kill | Stop playback, clear queue, and disconnect from voice |
 
 ### Queue Options

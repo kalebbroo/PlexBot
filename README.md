@@ -19,7 +19,7 @@
 ## ⭐ Features
 
 - **Stream from Plex**: Play tracks, albums, artists, and playlists directly from your Plex server.
-- **Plex Sonic Features**: Mood & genre browsing, similar tracks, radio stations, and Sonic Adventure — all powered by Plex's neural audio analysis.
+- **Plex Sonic Features**: Mood & genre browsing via `/search`, plus Similar Tracks, Radio, and Sonic Adventure buttons on the player — all powered by Plex's neural audio analysis.
 - **Radio**: Start a radio station from any track with one button press. Optionally enable infinite radio to auto-refill the queue.
 - **YouTube Support**: Search and play music from YouTube via extension.
 - **Interactive Player UI**: Choose between a modern image-based player or a classic Discord embed.
@@ -64,26 +64,23 @@ For more, see the [Player UI Guide](./Docs/Guides/Player-UI-Guide.md).
 ## ⚡ Slash Commands
 
 <details>
-<summary><b>/search [mode] [query?]</b></summary>
+<summary><b>/search [mode] [query]</b></summary>
 
-Search across all sources with a unified mode selector. The mode dropdown includes built-in Plex features and any extension providers (YouTube, etc.). Query is **optional** for Mood, Genre, and Radio modes — the autocomplete dropdown populates with real choices from your Plex library.
+Search across all sources with a unified mode selector. The mode dropdown includes built-in Plex features and any extension providers (YouTube, etc.). For Mood, Genre, and Radio modes the query autocomplete populates with real choices from your Plex library.
 
 | Mode | Description | Query |
 |------|-------------|-------|
 | **Plex Library** | Search your Plex music library for artists, albums, and tracks | Free text |
-| **Find by Mood** | Browse tracks by mood tags (e.g. "Happy", "Sad", "Energetic") | Autocomplete lists all moods |
+| **Find by Mood** | Browse tracks by mood tags (e.g. "Happy", "Sad", "Energetic") | Autocomplete lists moods (randomized sample of 25) |
 | **Find by Genre** | Browse tracks by genre (e.g. "Rock", "Jazz", "Electronic") | Autocomplete lists all genres |
-| **Similar Tracks** | Find sonically similar tracks using Plex's neural audio analysis | Free text |
 | **Radio Station** | Pick a station or seed radio from a track | Autocomplete lists stations |
-| **Sonic Adventure** | Build a sonic path from the currently playing track to a destination track | Free text |
 | *YouTube, etc.* | *Extension providers appear automatically when loaded* | Free text |
 
 **Examples:**
 - <code>/search mode:Plex Library query:"The Beatles"</code>
-- <code>/search mode:Find by Mood</code> — pick a mood from the autocomplete dropdown
-- <code>/search mode:Find by Genre</code> — pick a genre from the autocomplete dropdown
-- <code>/search mode:Radio Station</code> — pick a station (Library Radio, Deep Cuts, etc.)
-- <code>/search mode:Sonic Adventure query:"Stairway to Heaven"</code>
+- <code>/search mode:Find by Mood query:Happy</code> — pick a mood from the autocomplete dropdown
+- <code>/search mode:Find by Genre query:Rock</code> — pick a genre from the autocomplete dropdown
+- <code>/search mode:Radio Station query:Library Radio</code> — pick a station from autocomplete, or type a track name to seed radio
 </details>
 
 <details>
@@ -108,14 +105,17 @@ Show an interactive help menu with all commands and usage tips.
 Test if the bot is responding to interactions.
 </details>
 
-### Radio Button
+### Sonic Player Buttons
 
-The visual player includes a **Radio** button (📻) on the second row. Click it while a Plex track is playing to:
-- **Start Radio (Replace Queue)** — Clear the queue and fill it with radio tracks seeded from the current track
-- **Start Radio (Add to Queue)** — Append radio tracks to the existing queue
-- **Similar Tracks** — Browse a list of sonically similar tracks to pick from
+The visual player's second row includes three Plex Sonic buttons that use neural audio analysis on the currently playing track:
 
-When infinite radio is enabled in `config.fds`, the queue automatically refills when it runs low.
+| Button | Emoji | What it does |
+|--------|-------|--------------|
+| **Radio** | 📻 | Opens a panel with **Replace Queue** / **Add to Queue** / **Similar Tracks** options, seeded from the current track |
+| **Similar** | 🔍 | Instantly shows 25 sonically similar tracks in a select menu |
+| **Adventure** | 🧭 | Opens a popup where you type a destination track — builds a sonic path from what's playing to the destination |
+
+All three require a Plex track to be playing. When infinite radio is enabled in `config.fds`, the queue automatically refills when it runs low.
 
 ---
 
