@@ -3,48 +3,57 @@ using PlexBot.Core.Models;
 using PlexBot.Core.Models.Media;
 using PlexBot.Core.Discord.Autocomplete;
 using PlexBot.Core.Discord.Embeds;
+using PlexBot.Core.Services.PlexApi;
 using PlexBot.Utils;
 
 using PlexBot.Core.Models.Players;
 using PlexBot.Core.Services;
+using PlexBot.Core.Services.LavaLink;
 using PlexBot.Core.Services.Music;
 
 namespace PlexBot.Core.Discord.Commands;
 
 /// <summary>Provides discord slash commands for music playback with interactive UI components to control playback and manage the music queue</summary>
 public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService playerService,
-    IAudioService audioService, MusicProviderRegistry providerRegistry)
+    IAudioService audioService, MusicProviderRegistry providerRegistry, IPlexSonicService plexSonicService)
     : InteractionModuleBase<SocketInteractionContext>
 {
 
-    /// <summary>Searches media libraries and displays interactive results that users can directly queue from the search results</summary>
-    /// <param name="query">The search text to find matching media across available sources</param>
-    /// <param name="source">The media source to search (Plex, YouTube, etc.) with autocomplete support</param>
-    /// <returns>A task representing the asynchronous operation of the search and response</returns>
-    [SlashCommand("search", "Search for music in your Plex library or other sources")]
+    /// <summary>Unified entry point for all music discovery — routes to Plex library, sonic features,
+    /// or extension providers based on a single mode selector</summary>
+    [SlashCommand("search", "Search for music across all sources")]
     public async Task SearchCommand(
-        [Summary("query", "What to search for")] string query,
-        [Summary("source", "Where to search for music")]
-    [Autocomplete(typeof(SourceAutocompleteHandler))]
-    string source = "plex")
+        [Summary("mode", "Where and how to search")]
+        [Autocomplete(typeof(SearchModeAutocompleteHandler))]
+        string mode,
+        [Summary("query", "What to search for")]
+        [Autocomplete(typeof(SearchQueryAutocompleteHandler))]
+        string query)
     {
         try
         {
-            // Defer the response to give us time to search
             await DeferAsync(ephemeral: true);
-            Logs.Debug($"Searching for '{query}' in {source}");
-            if (string.IsNullOrWhiteSpace(query))
+            string normalizedMode = mode.ToLowerInvariant();
+            Logs.Debug($"Search: query='{query}', mode={normalizedMode}");
+
+            // Ignore hint placeholder values from autocomplete
+            if (query.StartsWith("hint_", StringComparison.Ordinal))
             {
-                await FollowupAsync(components: ComponentV2Builder.Error("Invalid Query", "Please enter a search query."), ephemeral: true);
+                await FollowupAsync(components: ComponentV2Builder.Error("Invalid Query", "Please type your search — don't select the hint text."), ephemeral: true);
                 return;
             }
-            // Normalize source to lowercase
-            source = source.ToLowerInvariant();
-            // Route search through the provider registry
-            IMusicProvider? provider = providerRegistry.GetProvider(source);
-            if (provider == null)
+
+            if (normalizedMode is "mood" or "genre" or "radio")
             {
-                await FollowupAsync(components: ComponentV2Builder.Error("Unknown Source", $"Music source '{source}' is not available."), ephemeral: true);
+                await HandleSonicModeAsync(query, normalizedMode);
+                return;
+            }
+
+            string providerId = normalizedMode == "library" ? "plex" : normalizedMode;
+            IMusicProvider? provider = providerRegistry.GetProvider(providerId);
+            if (provider is null)
+            {
+                await FollowupAsync(components: ComponentV2Builder.Error("Unknown Source", $"Music source '{providerId}' is not available."), ephemeral: true);
                 return;
             }
             SearchResults results = await provider.SearchAsync(query);
@@ -57,8 +66,6 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         }
         catch (HttpException httpEx) when (httpEx.DiscordCode == DiscordErrorCode.UnknownInteraction)
         {
-            // 10062: Known intermittent Discord API issue — interaction token wasn't propagated in time.
-            // Nothing we can do; the token is dead. Just log and let Discord show the default failure.
             Logs.Warning($"Search command hit 10062 (Unknown interaction) — Discord-side timing issue");
         }
         catch (Exception ex)
@@ -69,15 +76,247 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         }
     }
 
-    /// <summary>Displays search results from any music provider using select menus.
-    /// Builds menus dynamically based on what result types the provider returned.</summary>
-    private async Task DisplaySearchResults(string query, SearchResults results, IMusicProvider provider)
+    /// <summary>Dispatches non-library search modes to the appropriate sonic handler based on mode string</summary>
+    public async Task HandleSonicModeAsync(string query, string mode)
+    {
+        switch (mode)
+        {
+            case "mood":
+                await HandleMoodSearchAsync(query);
+                break;
+            case "genre":
+                await HandleGenreSearchAsync(query);
+                break;
+            case "radio":
+                await HandleRadioSearchAsync(query);
+                break;
+            default:
+                await FollowupAsync(components: ComponentV2Builder.Error("Unknown Mode", $"Search mode '{mode}' is not recognized."), ephemeral: true);
+                break;
+        }
+    }
+
+    /// <summary>Matches query against Plex mood tags by ID (from autocomplete) or name (free-text),
+    /// then displays tracks filtered by the matched mood</summary>
+    public async Task HandleMoodSearchAsync(string query)
+    {
+        List<MoodTag> moods = await plexSonicService.GetAvailableMoodsAsync();
+        if (moods.Count == 0)
+        {
+            await FollowupAsync(components: ComponentV2Builder.Info("No Moods", "No mood tags found. Sonic analysis may not be enabled on your Plex server."), ephemeral: true);
+            return;
+        }
+
+        // Match by ID first (autocomplete sends the numeric ID), then by name
+        MoodTag? matched = moods.FirstOrDefault(m => m.Id == query)
+            ?? moods.FirstOrDefault(m => m.Name.Equals(query, StringComparison.OrdinalIgnoreCase))
+            ?? moods.FirstOrDefault(m => m.Name.Contains(query, StringComparison.OrdinalIgnoreCase));
+
+        if (matched is null)
+        {
+            string suggestions = string.Join(", ", moods.Take(20).Select(m => m.Name));
+            await FollowupAsync(components: ComponentV2Builder.Error("Mood Not Found", $"No mood matching '{query}'. Try: {suggestions}"), ephemeral: true);
+            return;
+        }
+
+        List<Track> tracks = await plexSonicService.GetMoodTracksAsync(matched.Id);
+        if (tracks.Count == 0)
+        {
+            await FollowupAsync(components: ComponentV2Builder.Info("No Tracks", $"No tracks found for mood '{matched.Name}'."), ephemeral: true);
+            return;
+        }
+
+        await DisplaySonicResults($"Mood: {matched.Name}", $"Found {tracks.Count} tracks matching this mood", tracks);
+    }
+
+    /// <summary>Matches query against Plex genre tags by ID (from autocomplete) or name (free-text),
+    /// then displays tracks filtered by the matched genre</summary>
+    public async Task HandleGenreSearchAsync(string query)
+    {
+        List<GenreTag> genres = await plexSonicService.GetAvailableGenresAsync();
+        if (genres.Count == 0)
+        {
+            await FollowupAsync(components: ComponentV2Builder.Info("No Genres", "No genre tags found in your library."), ephemeral: true);
+            return;
+        }
+
+        // Match by ID first (autocomplete sends the numeric ID), then by name
+        GenreTag? matched = genres.FirstOrDefault(g => g.Id == query)
+            ?? genres.FirstOrDefault(g => g.Name.Equals(query, StringComparison.OrdinalIgnoreCase))
+            ?? genres.FirstOrDefault(g => g.Name.Contains(query, StringComparison.OrdinalIgnoreCase));
+
+        if (matched is null)
+        {
+            string suggestions = string.Join(", ", genres.Take(20).Select(g => g.Name));
+            await FollowupAsync(components: ComponentV2Builder.Error("Genre Not Found", $"No genre matching '{query}'. Try: {suggestions}"), ephemeral: true);
+            return;
+        }
+
+        List<Track> tracks = await plexSonicService.GetGenreTracksAsync(matched.Id);
+        if (tracks.Count == 0)
+        {
+            await FollowupAsync(components: ComponentV2Builder.Info("No Tracks", $"No tracks found for genre '{matched.Name}'."), ephemeral: true);
+            return;
+        }
+
+        await DisplaySonicResults($"Genre: {matched.Name}", $"Found {tracks.Count} tracks in this genre", tracks);
+    }
+
+    /// <summary>Seeds a radio station from a search result track, plays a station selected from autocomplete,
+    /// or lists available stations when query is empty</summary>
+    public async Task HandleRadioSearchAsync(string query)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            List<RadioStation> stations = await plexSonicService.GetRadioStationsAsync();
+            if (stations.Count == 0)
+            {
+                await FollowupAsync(components: ComponentV2Builder.Info("No Stations", "No radio stations found. Enter a track name to start radio from a specific track."), ephemeral: true);
+                return;
+            }
+            await DisplayRadioStations(stations);
+            return;
+        }
+
+        // Check if query is a station key (from autocomplete, e.g. "/library/sections/6/stations/1")
+        if (query.StartsWith("/library/sections/", StringComparison.OrdinalIgnoreCase))
+        {
+            await HandleStationPlayAsync(query);
+            return;
+        }
+
+        // Otherwise treat as a track search to seed radio
+        SearchResults searchResults = await plexMusicService.SearchLibraryAsync(query);
+        if (searchResults.Tracks.Count == 0)
+        {
+            await FollowupAsync(components: ComponentV2Builder.Error("No Results", $"No tracks found for '{query}'. Try a different search term."), ephemeral: true);
+            return;
+        }
+
+        Track seedTrack = searchResults.Tracks.First();
+        string ratingKey = PlexJsonParser.ExtractRatingKey(seedTrack.SourceKey);
+        if (string.IsNullOrEmpty(ratingKey))
+        {
+            await FollowupAsync(components: ComponentV2Builder.Error("Error", "Could not extract track identifier."), ephemeral: true);
+            return;
+        }
+
+        List<Track> radioTracks = await plexSonicService.GetRadioTracksAsync(ratingKey);
+        if (radioTracks.Count == 0)
+        {
+            await FollowupAsync(components: ComponentV2Builder.Info("Radio Unavailable", $"Could not generate radio from '{seedTrack.Title}'. Sonic analysis may not be enabled."), ephemeral: true);
+            return;
+        }
+
+        await DisplaySonicResults(
+            $"Radio from: {seedTrack.Title}",
+            $"Generated {radioTracks.Count} radio tracks seeded from **{seedTrack.Artist}** - {seedTrack.Title}",
+            radioTracks);
+    }
+
+    /// <summary>Fetches tracks from a Plex radio station key and queues them for playback</summary>
+    public async Task HandleStationPlayAsync(string stationKey)
+    {
+        try
+        {
+            List<RadioStation> stations = await plexSonicService.GetRadioStationsAsync();
+            RadioStation? station = stations.FirstOrDefault(s => s.SourceKey == stationKey);
+            string stationName = station?.Title ?? "Radio Station";
+
+            // Fetch tracks from the station endpoint
+            string response = await plexSonicService.GetStationTracksAsync(stationKey);
+            if (string.IsNullOrEmpty(response))
+            {
+                await FollowupAsync(components: ComponentV2Builder.Info("No Tracks", $"Could not load tracks from '{stationName}'."), ephemeral: true);
+                return;
+            }
+
+            List<Track> tracks = plexSonicService.ParseTracksFromResponse(response);
+            if (tracks.Count == 0)
+            {
+                await FollowupAsync(components: ComponentV2Builder.Info("No Tracks", $"No tracks available from '{stationName}'."), ephemeral: true);
+                return;
+            }
+
+            await DisplaySonicResults(
+                $"Station: {stationName}",
+                $"Loaded {tracks.Count} tracks from {stationName}",
+                tracks);
+        }
+        catch (Exception ex)
+        {
+            Logs.Error($"Error loading station: {ex.Message}");
+            await FollowupAsync(components: ComponentV2Builder.Error("Station Error", "Failed to load radio station tracks."), ephemeral: true);
+        }
+    }
+
+    /// <summary>Builds a track select menu with optional "Play All" button, reusing the search:plex:track
+    /// interaction pattern so tracks route through the existing selection handler</summary>
+    public async Task DisplaySonicResults(string title, string description, List<Track> tracks)
+    {
+        ComponentBuilder builder = new();
+        SelectMenuBuilder trackMenu = new SelectMenuBuilder()
+            .WithPlaceholder("Select a track to play")
+            .WithCustomId("search:plex:track")
+            .WithMinValues(1)
+            .WithMaxValues(1);
+
+        foreach (Track track in tracks.Take(25))
+        {
+            string trackTitle = string.IsNullOrEmpty(track.Title) ? "Unknown Track" : track.Title;
+            trackTitle = trackTitle.Length > 80 ? trackTitle[..77] + "..." : trackTitle;
+            string key = string.IsNullOrEmpty(track.SourceKey) ? $"unknown_{Guid.NewGuid()}" : track.SourceKey;
+            string trackArtist = track.Artist ?? "Unknown Artist";
+            string desc = !string.IsNullOrEmpty(track.DurationDisplay)
+                ? $"{trackArtist} | {track.DurationDisplay}"
+                : $"Track by {trackArtist}";
+            trackMenu.AddOption(trackTitle, key, TruncateDescription(desc));
+        }
+        builder.WithSelectMenu(trackMenu);
+
+        if (tracks.Count > 1)
+        {
+            string firstTrackKey = PlexJsonParser.ExtractRatingKey(tracks.First().SourceKey);
+            builder.WithButton("Play All", $"sonic:playall:{title.Replace(":", "-")}:{firstTrackKey}", ButtonStyle.Success);
+        }
+
+        await FollowupAsync(components: ComponentV2Builder.BuildSonicResults(title, description, builder), ephemeral: true);
+    }
+
+    /// <summary>Builds a station select menu using the search:plex:radio_station interaction pattern
+    /// so selection routes through the existing search handler's radio_station case</summary>
+    public async Task DisplayRadioStations(List<RadioStation> stations)
+    {
+        ComponentBuilder builder = new();
+        SelectMenuBuilder stationMenu = new SelectMenuBuilder()
+            .WithPlaceholder("Select a radio station")
+            .WithCustomId("search:plex:radio_station")
+            .WithMinValues(1)
+            .WithMaxValues(1);
+
+        foreach (RadioStation station in stations.Take(25))
+        {
+            string title = string.IsNullOrEmpty(station.Title) ? "Unknown Station" : station.Title;
+            title = title.Length > 80 ? title[..77] + "..." : title;
+            string desc = !string.IsNullOrEmpty(station.Description)
+                ? TruncateDescription(station.Description)
+                : $"{station.Type} station";
+            stationMenu.AddOption(title, station.SourceKey, desc);
+        }
+        builder.WithSelectMenu(stationMenu);
+
+        await FollowupAsync(components: ComponentV2Builder.BuildSonicResults(
+            "Radio Stations", $"Found {stations.Count} stations", builder), ephemeral: true);
+    }
+
+    /// <summary>Builds up to three select menus (artists, albums, tracks) dynamically based on which
+    /// result types the provider returned, each routing through the search:*:* interaction handler</summary>
+    public async Task DisplaySearchResults(string query, SearchResults results, IMusicProvider provider)
     {
         Logs.Debug($"Found {results.Artists.Count} artists, {results.Albums.Count} albums, {results.Tracks.Count} tracks from {provider.DisplayName}");
         string sourceId = provider.Id;
         ComponentBuilder builder = new();
 
-        // Add artist select menu if we have artists
         if (results.Artists.Count > 0)
         {
             SelectMenuBuilder artistMenu = new SelectMenuBuilder()
@@ -94,7 +333,6 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
             builder.WithSelectMenu(artistMenu);
         }
 
-        // Add album select menu if we have albums
         if (results.Albums.Count > 0 && (builder.ActionRows?.Count ?? 0) < 5)
         {
             SelectMenuBuilder albumMenu = new SelectMenuBuilder()
@@ -115,7 +353,6 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
             builder.WithSelectMenu(albumMenu);
         }
 
-        // Add track select menu if we have tracks
         if (results.Tracks.Count > 0 && (builder.ActionRows?.Count ?? 0) < 5)
         {
             SelectMenuBuilder trackMenu = new SelectMenuBuilder()
@@ -137,7 +374,6 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
             builder.WithSelectMenu(trackMenu);
         }
 
-        // Build summary
         List<string> summaryParts = [];
         if (results.Artists.Count > 0) summaryParts.Add($"{results.Artists.Count} artists");
         if (results.Albums.Count > 0) summaryParts.Add($"{results.Albums.Count} albums");
@@ -147,11 +383,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         await FollowupAsync(components: ComponentV2Builder.BuildSearchResults(query, summary, builder), ephemeral: true);
     }
 
-    /// <summary>Plays music from a Plex or custom playlist.
-    /// Routes to the appropriate provider based on the playlist key prefix.</summary>
-    /// <param name="playlist">The playlist to play (Plex key or custom:id)</param>
-    /// <param name="shuffle">Whether to shuffle the playlist</param>
-    /// <returns>A task representing the asynchronous operation</returns>
+    /// <summary>Loads a Plex or custom playlist, optionally shuffles it, and queues all tracks for playback</summary>
     [SlashCommand("playlist", "Play a playlist")]
     public async Task PlaylistCommand([Summary("playlist", "The playlist to play")]
     [Autocomplete(typeof(PlaylistAutocompleteHandler))]
@@ -170,7 +402,6 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
 
             Playlist? playlistDetails = null;
 
-            // Route to custom playlist provider if prefixed with "custom:"
             if (playlist.StartsWith("custom:", StringComparison.OrdinalIgnoreCase))
             {
                 IMusicProvider? customProvider = providerRegistry.GetProvider("playlists");
@@ -208,10 +439,8 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         }
     }
 
-    /// <summary>Plays a single track by URL or search term.
-    /// Provides a convenient shortcut for playing individual tracks without searching first.</summary>
-    /// <param name="query">The track to play (URL or search term)</param>
-    /// <returns>A task representing the asynchronous operation</returns>
+    /// <summary>Attempts URL playback via registered providers first, then Lavalink fallback,
+    /// or searches Plex library and auto-plays the best match (track → album → artist)</summary>
     [SlashCommand("play", "Play a track by URL or search term")]
     public async Task PlayCommand(
         [Summary("query", "The track to play (URL or search term)")]
@@ -226,28 +455,24 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
                 await FollowupAsync(components: ComponentV2Builder.Error("Invalid Query", "Please enter a URL or search term."), ephemeral: true);
                 return;
             }
-            // Check if the query is a URL — route through Lavalink directly
             if (Uri.TryCreate(query, UriKind.Absolute, out Uri? parsedUri) &&
                 (parsedUri.Scheme == "http" || parsedUri.Scheme == "https"))
             {
                 await HandleUrlPlaybackAsync(query, parsedUri);
                 return;
             }
-            // Not a URL — search Plex library
             SearchResults results = await plexMusicService.SearchLibraryAsync(query);
             if (!results.HasResults)
             {
                 await FollowupAsync(components: ComponentV2Builder.Error("No Results", $"No results found for '{query}'."), ephemeral: true);
                 return;
             }
-            // If we found tracks, play the first one
             if (results.Tracks.Count != 0)
             {
                 Track track = results.Tracks.First();
                 await playerService.AddToQueueAsync(Context.Interaction, [track]);
                 return;
             }
-            // If we found albums but no tracks, play the first album
             if (results.Albums.Count != 0)
             {
                 Album album = results.Albums.First();
@@ -258,7 +483,6 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
                     return;
                 }
             }
-            // If we found artists but no tracks or albums, play the first artist
             if (results.Artists.Count != 0)
             {
                 Artist artist = results.Artists.First();
@@ -269,7 +493,6 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
                     return;
                 }
             }
-            // If we get here, we found results but couldn't play anything
             await FollowupAsync(components: ComponentV2Builder.Error("Playback Error", "Found results, but couldn't play any tracks."), ephemeral: true);
         }
         catch (Exception ex)
@@ -279,13 +502,12 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         }
     }
 
-    /// <summary>Handles playback of a direct URL by routing through registered providers first,
-    /// then falling back to generic Lavalink loading for unclaimed URLs.</summary>
-    private async Task HandleUrlPlaybackAsync(string url, Uri parsedUri)
+    /// <summary>Tries each registered provider's CanHandleUrl first (e.g. YouTube provider claims youtube.com),
+    /// then falls back to generic Lavalink loading for unclaimed URLs</summary>
+    public async Task HandleUrlPlaybackAsync(string url, Uri parsedUri)
     {
         try
         {
-            // Check if any registered provider claims this URL
             foreach (IMusicProvider provider in providerRegistry.GetAvailableProviders())
             {
                 if (provider.CanHandleUrl(parsedUri))
@@ -300,13 +522,12 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
                 }
             }
 
-            // No provider claimed it — generic Lavalink fallback
             using CancellationTokenSource cts = new(TimeSpan.FromSeconds(30));
             TrackLoadResult loadResult = await audioService.Tracks.LoadTracksAsync(
                 url, TrackSearchMode.None, cancellationToken: cts.Token);
 
             LavalinkTrack? lavalinkTrack = loadResult.Track;
-            if (lavalinkTrack == null)
+            if (lavalinkTrack is null)
             {
                 await FollowupAsync(components: ComponentV2Builder.Error("Not Found",
                     "Could not load a playable track from this URL."), ephemeral: true);
@@ -332,10 +553,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         }
     }
 
-    /// <summary>Shows information about the bot and available commands.
-    /// Provides a user-friendly help interface with command examples.</summary>
-    /// <returns>A task representing the asynchronous operation</returns>
-    /// <summary>Diagnostic command to test interaction response timing</summary>
+    /// <summary>Quick health check to verify the Discord interaction pipeline is responding</summary>
     [SlashCommand("ping", "Test if interactions are working")]
     public async Task PingCommand()
     {
@@ -359,12 +577,8 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         }
     }
 
-    /// <summary>Truncates a description to fit within Discord's select menu limits.
-    /// Discord select menu option descriptions must be 100 characters or less.</summary>
-    /// <param name="description">The description to truncate</param>
-    /// <param name="maxLength">Maximum allowed length</param>
-    /// <returns>The truncated description</returns>
-    private static string TruncateDescription(string? description, int maxLength = 100)
+    /// <summary>Ensures description fits Discord's 100-char select menu option limit</summary>
+    public static string TruncateDescription(string? description, int maxLength = 100)
     {
         if (string.IsNullOrEmpty(description))
         {

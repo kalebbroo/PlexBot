@@ -100,6 +100,7 @@ namespace PlexBot.Main
             services.AddSingleton<IPlexAuthService, PlexAuthService>();
             services.AddSingleton<IPlexApiService, PlexApiService>();
             services.AddSingleton<IPlexMusicService, PlexMusicService>();
+            services.AddSingleton<IPlexSonicService, PlexSonicService>();
         }
 
         /// <summary>Configures Lavalink audio streaming services and player management for music playback</summary>
@@ -162,6 +163,7 @@ namespace PlexBot.Main
         {
             services.AddSingleton<MusicProviderRegistry>();
             services.AddSingleton<IMusicProvider, PlexMusicProvider>();
+            services.AddSingleton<RadioSessionManager>();
         }
 
         /// <summary>Sets up the extension system with two-phase startup: discover and register services
