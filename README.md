@@ -12,14 +12,14 @@
 
 ## What Does this bot do and why did I make it?
 
-**PlexBot** is a next-generation Discord music bot designed for Plex users. Seamlessly stream your personal music library (and more!) into your server’s voice channels, enjoy a beautiful visual player, and take advantage of a robust extension system for ultimate flexibility.
+**PlexBot** is a next-generation Discord music bot designed for Plex users. Seamlessly stream your personal music library (and more!) into your server's voice channels, enjoy a beautiful visual player, and take advantage of a robust extension system for ultimate flexibility.
 
 ---
 
-## ⭐ Features
+## Features
 
 - **Stream from Plex**: Play tracks, albums, artists, and playlists directly from your Plex server.
-- **Plex Sonic Features**: Mood & genre browsing via `/search`, plus Similar Tracks, Radio, and Sonic Adventure buttons on the player — all powered by Plex's neural audio analysis.
+- **Plex Sonic Features**: Mood & genre browsing via `/search`, plus Similar Tracks, Radio, and Sonic Adventure buttons on the player, all powered by Plex's neural audio analysis.
 - **Radio**: Start a radio station from any track with one button press. Optionally enable infinite radio to auto-refill the queue.
 - **YouTube Support**: Search and play music from YouTube via extension.
 - **Interactive Player UI**: Choose between a modern image-based player or a classic Discord embed.
@@ -32,7 +32,7 @@
 
 ---
 
-## 🚧 Planned & Upcoming Features
+## Planned & Upcoming Features
 
 - **More Music Sources**: Spotify, SoundCloud, and additional streaming integrations.
 - **User Custom Playlists**: Save, manage, and share your own playlists within Discord.
@@ -43,7 +43,7 @@
 
 ---
 
-## 🎨 Visual Player Styles
+## Visual Player Styles
 
 PlexBot offers two distinct player UIs:
 
@@ -55,13 +55,13 @@ PlexBot offers two distinct player UIs:
 - **Traditional Discord embed**: Familiar, compact, and works anywhere.
 - **Great for multi-purpose channels**: Shows album art as a thumbnail.
 
-All player settings are in `config.fds` (see [Configuration](#-configuration) below).
+All player settings are in `config.fds` (see [Configuration](#configuration) below).
 
 For more, see the [Player UI Guide](./Docs/Guides/Player-UI-Guide.md).
 
 ---
 
-## ⚡ Slash Commands
+## Slash Commands
 
 <details>
 <summary><b>/search [mode] [query]</b></summary>
@@ -78,9 +78,9 @@ Search across all sources with a unified mode selector. The mode dropdown includ
 
 **Examples:**
 - <code>/search mode:Plex Library query:"The Beatles"</code>
-- <code>/search mode:Find by Mood query:Happy</code> — pick a mood from the autocomplete dropdown
-- <code>/search mode:Find by Genre query:Rock</code> — pick a genre from the autocomplete dropdown
-- <code>/search mode:Radio Station query:Library Radio</code> — pick a station from autocomplete, or type a track name to seed radio
+- <code>/search mode:Find by Mood query:Happy</code> pick a mood from the autocomplete dropdown
+- <code>/search mode:Find by Genre query:Rock</code> pick a genre from the autocomplete dropdown
+- <code>/search mode:Radio Station query:Library Radio</code> pick a station from autocomplete, or type a track name to seed radio
 </details>
 
 <details>
@@ -113,13 +113,13 @@ The visual player's second row includes three Plex Sonic buttons that use neural
 |--------|-------|--------------|
 | **Radio** | 📻 | Opens a panel with **Replace Queue** / **Add to Queue** / **Similar Tracks** options, seeded from the current track |
 | **Similar** | 🔍 | Instantly shows 25 sonically similar tracks in a select menu |
-| **Adventure** | 🧭 | Opens a popup where you type a destination track — builds a sonic path from what's playing to the destination |
+| **Adventure** | 🧭 | Opens a popup where you type a destination track, then builds a sonic path from what's playing to the destination |
 
 All three require a Plex track to be playing. When infinite radio is enabled in `config.fds`, the queue automatically refills when it runs low.
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
 See the [Installation Guide](./Docs/Setup/Installation.md) and [Configuration Guide](./Docs/Setup/Configuration.md) for full details.
 
@@ -134,20 +134,20 @@ git clone https://github.com/kalebbroo/PlexBot.git
 cd PlexBot
 ```
 
-1. **Secrets** — Copy `RenameMe.env.txt` to `.env` and fill in your credentials:
+1. **Secrets**: Copy `RenameMe.env.txt` to `.env` and fill in your credentials:
    ```env
    DISCORD_TOKEN=your-discord-bot-token
    PLEX_URL=http://your-plex-ip:32400
    PLEX_TOKEN=your-plex-token
    ```
 
-2. **App settings** *(optional)* — `config.fds` is auto-created from the template with sensible defaults if it doesn't exist. To customize player style, logging, or behavior, copy `RenameMe.config.fds` to `config.fds` and edit it before starting (see [Configuration](#-configuration) below).
+2. **App settings** *(optional)*: `config.fds` is auto-created from the template with sensible defaults if it doesn't exist. To customize player style, logging, or behavior, copy `RenameMe.config.fds` to `config.fds` and edit it before starting (see [Configuration](#configuration) below).
 
-3. **Run the install script** — `Install/win-install.bat` (Windows) or `Install/linux-install.sh` (Linux). This builds the Docker images, installs dependencies, and starts the bot.
+3. **Run the install script**: `Install/win-install.bat` (Windows) or `Install/linux-install.sh` (Linux). This generates the Lavalink config, builds the Docker images, and starts the bot.
 
 ---
 
-## 🔧 Configuration
+## Configuration
 
 PlexBot uses **two config files**:
 
@@ -156,21 +156,21 @@ PlexBot uses **two config files**:
 | `.env` | Secrets & infrastructure (tokens, URLs, passwords) | `RenameMe.env.txt` (manual copy required) |
 | `config.fds` | Application settings (player UI, logging, behavior) | `RenameMe.config.fds` (auto-created if missing) |
 
-### `.env` — Secrets & Infrastructure
+### `.env` Secrets & Infrastructure
 
 | Variable | Description | Required |
 |----------|-------------|----------|
 | `DISCORD_TOKEN` | Discord bot token | Yes |
 | `PLEX_URL` | Plex server URL with port (e.g. `http://192.168.1.50:32400`) | Yes |
 | `PLEX_TOKEN` | Plex authentication token | Yes |
-| `LAVALINK_HOST` | Lavalink hostname — `Lavalink` for Docker, or IP/hostname for remote (default: `Lavalink`) | No |
+| `LAVALINK_HOST` | Lavalink hostname. Use `Lavalink` for Docker, or an IP/hostname for remote (default: `Lavalink`) | No |
 | `LAVALINK_SERVER_PORT` | Lavalink port (default: `2333`) | No |
 | `LAVALINK_SERVER_PASSWORD` | Lavalink password (default: `youshallnotpass`) | No |
-| `LAVALINK_SECURE` | Use HTTPS/WSS for Lavalink connection — set `true` for remote servers behind SSL (default: `false`) | No |
+| `LAVALINK_SECURE` | Use HTTPS/WSS for Lavalink. Set `true` for remote servers behind SSL (default: `false`) | No |
 
-### `config.fds` — Application Settings
+### `config.fds` Application Settings
 
-Uses [Frenetic Data Syntax](https://github.com/FreneticLLC/FreneticUtilities) (YAML-like format). All settings have sensible defaults — you only need to change what you want to customize.
+Uses [Frenetic Data Syntax](https://github.com/FreneticLLC/FreneticUtilities) (YAML-like format). All settings have sensible defaults and you only need to change what you want to customize.
 
 #### Visual Player
 
@@ -190,7 +190,7 @@ Uses [Frenetic Data Syntax](https://github.com/FreneticLLC/FreneticUtilities) (Y
 |-----|------|---------|-------------|
 | `plex.maxConcurrentResolves` | int | `3` | Max parallel track resolves when loading playlists/albums from Plex. Lower if tracks fail to load; higher loads faster but may overwhelm Plex |
 | `plex.maxConcurrentYouTubeResolves` | int | `5` | Max parallel track resolves when loading from YouTube. Separate limit allows higher concurrency for YouTube sources |
-| `plex.radio.infinite` | bool | `false` | Enable infinite radio — automatically refills the queue when it runs low |
+| `plex.radio.infinite` | bool | `false` | Enable infinite radio, which automatically refills the queue when it runs low |
 | `plex.radio.refillThreshold` | int | `5` | Queue size threshold that triggers a refill when infinite radio is enabled |
 | `plex.radio.batchSize` | int | `30` | Number of tracks to fetch per radio request (initial batch or refill) |
 
@@ -217,16 +217,16 @@ PlexBot includes 30 custom emoji for a smooth-fill progress bar. Without them, t
 
 1. Go to the [Discord Developer Portal](https://discord.com/developers/applications) and select your bot application
 2. Click **Emojis** in the left sidebar
-3. Upload all 30 `.png` files from `Images/Icons/progress/` — the filenames become the emoji names automatically
+3. Upload all 30 `.png` files from `Images/Icons/progress/`. The filenames become the emoji names automatically
 4. Copy each emoji's numeric ID and paste it into `config.fds` under `visualPlayer.progressBar.emoji`
 
 The 30 emoji are organized into three groups:
 
 | Group | Count | Keys |
 |-------|-------|------|
-| Left cap | 8 | `bar_left_empty`, `bar_left_filled_1` – `bar_left_filled_6`, `bar_left_filled` |
-| Middle | 14 | `bar_mid_empty`, `bar_filled_1` – `bar_filled_12`, `bar_mid_filled` |
-| Right cap | 8 | `bar_right_empty`, `bar_right_filled_1` – `bar_right_filled_6`, `bar_right_filled` |
+| Left cap | 8 | `bar_left_empty`, `bar_left_filled_1` to `bar_left_filled_6`, `bar_left_filled` |
+| Middle | 14 | `bar_mid_empty`, `bar_filled_1` to `bar_filled_12`, `bar_mid_filled` |
+| Right cap | 8 | `bar_right_empty`, `bar_right_filled_1` to `bar_right_filled_6`, `bar_right_filled` |
 
 All 30 IDs must be provided for custom emoji to activate. If any are missing, the bot falls back to unicode.
 
@@ -235,15 +235,15 @@ See the [Configuration Guide](./Docs/Setup/Configuration.md) for a detailed walk
 
 ---
 
-## 🐳 Docker Support
+## Docker Support
 
 PlexBot supports Docker for easy deployment. See the [Docker Guide](./Docs/Setup/Docker-Guide.md).
 
-The default install runs both PlexBot and Lavalink together in Docker — no extra setup needed.
+The default install runs both PlexBot and Lavalink together in Docker with no extra setup needed.
 
 ---
 
-## 🌐 Remote Lavalink (Advanced)
+## Remote Lavalink (Advanced)
 
 By default, the install scripts run Lavalink alongside PlexBot in Docker. If you want to run Lavalink on a separate machine (e.g. a dedicated audio server, or a shared Lavalink instance), you can point PlexBot to it by changing three values in your `.env`:
 
@@ -254,32 +254,32 @@ LAVALINK_SERVER_PASSWORD=mypassword  # Must match Lavalink's application.yml
 LAVALINK_SECURE=false              # Set true if behind a reverse proxy with SSL
 ```
 
-Then remove or comment out the `lavalink` service and `depends_on` block in `Install/Docker/docker-compose.yml` — PlexBot will connect to your remote Lavalink instead.
+Then remove or comment out the `lavalink` service and `depends_on` block in `Install/Docker/docker-compose.yml`. PlexBot will connect to your remote Lavalink instead.
 
 > **Note:** When running Lavalink separately, you are responsible for installing Java 17+, downloading the [Lavalink server jar](https://github.com/lavalink-devs/Lavalink/releases), configuring its `application.yml`, and keeping it updated. See the [Lavalink docs](https://lavalink.dev) for setup instructions.
 
 ---
 
-## 🛠️ Extensions & Customization
+## Extensions & Customization
 
-PlexBot’s [Extensions system](./Docs/Extensions/CreatingExtensions.md) lets you add custom features, integrations, and automations. Build your own or browse community extensions.
+PlexBot's [Extensions system](./Docs/Extensions/CreatingExtensions.md) lets you add custom features, integrations, and automations. Build your own or browse community extensions.
 
 ---
 
-## ❓ Support & Troubleshooting
+## Support & Troubleshooting
 
 - [Troubleshooting Guide](./Docs/Guides/Troubleshooting.md)
 - [Player UI Guide](./Docs/Guides/Player-UI-Guide.md)
 - [Command Reference](./Docs/Guides/Commands.md)
-- [Discord Dev Server](https://discord.com/invite/5m4Wyu52Ek )
+- [Discord Dev Server](https://discord.com/invite/5m4Wyu52Ek)
 
 ---
 
 ## Performance Tuning (Audio Stuttering Fix)
 
-If you experience brief audio stuttering or "CD skip" sounds during playback — especially when other applications are running on the same machine — this is caused by Lavalink's audio thread being interrupted by the OS.
+If you experience brief audio stuttering or "CD skip" sounds during playback, especially when other applications are running on the same machine, this is caused by Lavalink's audio thread being interrupted by the OS.
 
-**How audio streaming works:** Lavalink (a Java process) must send an Opus audio frame to Discord exactly every 20 milliseconds. When your CPU is under load, the OS scheduler can preempt Lavalink's thread, causing a missed frame and an audible glitch. PlexBot itself does not touch the audio stream — it only handles commands and UI.
+**How audio streaming works:** Lavalink (a Java process) must send an Opus audio frame to Discord exactly every 20 milliseconds. When your CPU is under load, the OS scheduler can preempt Lavalink's thread, causing a missed frame and an audible glitch. PlexBot itself does not touch the audio stream and only handles commands and UI.
 
 Two optional settings can help:
 
@@ -312,11 +312,11 @@ cpu_shares: 2048
 
 ---
 
-## 📜 License
+## License
 
 MIT License. See [LICENSE](./LICENSE).
 
-DOWNLOADING OR USING THIS SOFTWARE CONSTITUTES ACCEPTANCE OF THE TERMS AND CONDITIONS OF THE MIT LICENSE. THIS SOFTWARE IS PROVIDED "AS IS" AND WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESSED OR IMPLIED. 
+DOWNLOADING OR USING THIS SOFTWARE CONSTITUTES ACCEPTANCE OF THE TERMS AND CONDITIONS OF THE MIT LICENSE. THIS SOFTWARE IS PROVIDED "AS IS" AND WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESSED OR IMPLIED.
 
 ---
 

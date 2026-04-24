@@ -86,6 +86,14 @@ plex:
     maxConcurrentResolves: 3
     # Max concurrent track resolves for YouTube sources (separate from Plex)
     maxConcurrentYouTubeResolves: 5
+    # Radio / Sonic settings
+    radio:
+        # Enable infinite radio to automatically refill the queue when it runs low
+        infinite: false
+        # Queue size threshold that triggers a refill when infinite radio is enabled
+        refillThreshold: 5
+        # Number of tracks to fetch per radio request (initial batch or refill)
+        batchSize: 30
 
 # ============================================
 # Logging Settings
