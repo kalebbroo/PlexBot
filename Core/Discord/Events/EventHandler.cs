@@ -103,10 +103,33 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
             // Set bot status
             await client.SetGameAsync("/help", type: ActivityType.Listening);
 
+            // Subscribe to track events for rich presence (show now-playing as bot status)
+            BotEventBus eventBus = services.GetRequiredService<BotEventBus>();
+            if (BotConfig.GetBool("bot.showNowPlaying", true))
+            {
+                eventBus.Subscribe(BotEvents.TrackStarted, async e =>
+                {
+                    string title = e.Data.GetValueOrDefault("title") as string ?? "Unknown";
+                    string artist = e.Data.GetValueOrDefault("artist") as string ?? "Unknown";
+                    string status = artist != "Unknown" ? $"{artist} - {title}" : title;
+                    // Discord truncates activity text at 128 chars
+                    if (status.Length > 128) status = status[..125] + "...";
+                    await client.SetGameAsync(status, type: ActivityType.Listening);
+                });
+                eventBus.Subscribe(BotEvents.TrackEnded, async _ =>
+                {
+                    await client.SetGameAsync("/help", type: ActivityType.Listening);
+                });
+                eventBus.Subscribe(BotEvents.PlayerDestroyed, async _ =>
+                {
+                    await client.SetGameAsync("/help", type: ActivityType.Listening);
+                });
+                Logs.Init("Rich presence enabled — bot status will show now-playing track");
+            }
+
             Logs.Init($"Bot is ready. Connected to {client.Guilds.Count} guilds");
 
             // Publish bot ready event for extensions
-            BotEventBus eventBus = services.GetRequiredService<BotEventBus>();
             _ = eventBus.PublishAsync(new BotEvent
             {
                 EventType = BotEvents.BotReady,
