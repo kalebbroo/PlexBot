@@ -1,33 +1,11 @@
 ﻿using PlexBot.Core.Models.Media;
 using PlexBot.Core.Services;
 using PlexBot.Core.Services.Music;
+using PlexBot.Core.Services.PlexApi;
 using PlexBot.Utils;
 
 namespace PlexBot.Core.Discord.Autocomplete;
 
-/// <summary>Provides autocomplete suggestions for music sources.
-/// Dynamically lists all available providers from MusicProviderRegistry.</summary>
-public class SourceAutocompleteHandler : AutocompleteHandler
-{
-    public override Task<AutocompletionResult> GenerateSuggestionsAsync(IInteractionContext context,
-        IAutocompleteInteraction autocompleteInteraction, IParameterInfo parameter, IServiceProvider service)
-    {
-        try
-        {
-            MusicProviderRegistry registry = service.GetRequiredService<MusicProviderRegistry>();
-            List<AutocompleteResult> results = registry.GetAvailableProviders()
-                .Select(p => new AutocompleteResult(p.DisplayName, p.Id))
-                .ToList();
-
-            return Task.FromResult(AutocompletionResult.FromSuccess(results));
-        }
-        catch (Exception ex)
-        {
-            Logs.Error($"Error generating source suggestions: {ex.Message}");
-            return Task.FromResult(AutocompletionResult.FromError(ex));
-        }
-    }
-}
 
 /// <summary>Provides autocomplete suggestions for playlists from all sources.
 /// Fetches Plex playlists and custom user playlists (if extension loaded),
@@ -103,5 +81,151 @@ public class PlaylistAutocompleteHandler : AutocompleteHandler
             Logs.Error($"Error generating playlist suggestions: {ex.Message}");
             return AutocompletionResult.FromSuccess([]);
         }
+    }
+}
+
+/// <summary>Unified search mode autocomplete that combines Plex sonic features with
+/// dynamically registered extension providers (YouTube, SoundCloud, etc.) into one dropdown</summary>
+public class SearchModeAutocompleteHandler : AutocompleteHandler
+{
+    private static readonly List<(string Name, string Value)> BuiltInModes =
+    [
+        ("Plex Library", "plex"),
+        ("Find by Mood", "mood"),
+        ("Find by Genre", "genre"),
+        ("Radio Station", "radio")
+    ];
+
+    public override Task<AutocompletionResult> GenerateSuggestionsAsync(IInteractionContext context,
+        IAutocompleteInteraction autocompleteInteraction, IParameterInfo parameter, IServiceProvider service)
+    {
+        string input = autocompleteInteraction.Data.Current.Value as string ?? "";
+        List<(string Name, string Value)> allModes = [.. BuiltInModes];
+
+        try
+        {
+            MusicProviderRegistry registry = service.GetRequiredService<MusicProviderRegistry>();
+            foreach (IMusicProvider provider in registry.GetAvailableProviders())
+            {
+                if (provider.Id.Equals("plex", StringComparison.OrdinalIgnoreCase)) continue;
+                if (!provider.Capabilities.HasFlag(MusicProviderCapabilities.Search)) continue;
+                allModes.Add((provider.DisplayName, provider.Id));
+            }
+        }
+        catch (Exception ex)
+        {
+            Logs.Warning($"Could not load extension providers for autocomplete: {ex.Message}");
+        }
+
+        IEnumerable<(string Name, string Value)> filtered = allModes.AsEnumerable();
+        if (!string.IsNullOrWhiteSpace(input))
+            filtered = filtered.Where(m => m.Name.Contains(input, StringComparison.OrdinalIgnoreCase)
+                || m.Value.Contains(input, StringComparison.OrdinalIgnoreCase));
+
+        List<AutocompleteResult> results = filtered
+            .Select(m => new AutocompleteResult(m.Name, m.Value))
+            .ToList();
+
+        return Task.FromResult(AutocompletionResult.FromSuccess(results));
+    }
+}
+
+/// <summary>Context-aware query autocomplete that populates suggestions based on the selected search mode.
+/// For mood/genre/radio modes, fetches real options from the Plex API. Other modes return no suggestions
+/// (user types free-text).</summary>
+public class SearchQueryAutocompleteHandler : AutocompleteHandler
+{
+    public override async Task<AutocompletionResult> GenerateSuggestionsAsync(IInteractionContext context,
+        IAutocompleteInteraction autocompleteInteraction, IParameterInfo parameter, IServiceProvider service)
+    {
+        try
+        {
+            string currentInput = autocompleteInteraction.Data.Current.Value as string ?? "";
+
+            // Read the mode parameter value from the interaction
+            string mode = "";
+            foreach (AutocompleteOption option in autocompleteInteraction.Data.Options)
+            {
+                if (option.Name == "mode" && option.Value is string modeValue)
+                {
+                    mode = modeValue.ToLowerInvariant();
+                    break;
+                }
+            }
+
+            Logs.Debug($"Query autocomplete: mode='{mode}', input='{currentInput}'");
+
+            if (string.IsNullOrEmpty(mode))
+                return AutocompletionResult.FromSuccess([]);
+
+            IPlexSonicService sonicService = service.GetRequiredService<IPlexSonicService>();
+
+            return mode switch
+            {
+                "mood" => await GetMoodSuggestionsAsync(sonicService, currentInput),
+                "genre" => await GetGenreSuggestionsAsync(sonicService, currentInput),
+                "radio" => await GetStationSuggestionsAsync(sonicService, currentInput),
+                _ => GetSearchHint(currentInput)
+            };
+        }
+        catch (Exception ex)
+        {
+            Logs.Warning($"Query autocomplete error: {ex.Message}");
+            return AutocompletionResult.FromSuccess([]);
+        }
+    }
+
+    private static async Task<AutocompletionResult> GetMoodSuggestionsAsync(IPlexSonicService sonicService, string input)
+    {
+        List<MoodTag> moods = await sonicService.GetAvailableMoodsAsync();
+        IEnumerable<MoodTag> filtered = moods.AsEnumerable();
+        if (!string.IsNullOrWhiteSpace(input))
+            filtered = filtered.Where(m => m.Name.Contains(input, StringComparison.OrdinalIgnoreCase));
+        else
+            filtered = filtered.OrderBy(_ => Random.Shared.Next()); // Randomize when no filter (278 moods, Discord limit 25)
+
+        List<AutocompleteResult> results = filtered
+            .Take(25)
+            .Select(m => new AutocompleteResult(m.Name, m.Id))
+            .ToList();
+        return AutocompletionResult.FromSuccess(results);
+    }
+
+    private static async Task<AutocompletionResult> GetGenreSuggestionsAsync(IPlexSonicService sonicService, string input)
+    {
+        List<GenreTag> genres = await sonicService.GetAvailableGenresAsync();
+        IEnumerable<GenreTag> filtered = genres.AsEnumerable();
+        if (!string.IsNullOrWhiteSpace(input))
+            filtered = filtered.Where(g => g.Name.Contains(input, StringComparison.OrdinalIgnoreCase));
+
+        List<AutocompleteResult> results = filtered
+            .Take(25)
+            .Select(g => new AutocompleteResult(g.Name, g.Id))
+            .ToList();
+        return AutocompletionResult.FromSuccess(results);
+    }
+
+    private static async Task<AutocompletionResult> GetStationSuggestionsAsync(IPlexSonicService sonicService, string input)
+    {
+        List<RadioStation> stations = await sonicService.GetRadioStationsAsync();
+        IEnumerable<RadioStation> filtered = stations.AsEnumerable();
+        if (!string.IsNullOrWhiteSpace(input))
+            filtered = filtered.Where(s => s.Title.Contains(input, StringComparison.OrdinalIgnoreCase));
+
+        List<AutocompleteResult> results = filtered
+            .Take(25)
+            .Select(s => new AutocompleteResult(s.Title, s.SourceKey))
+            .ToList();
+        return AutocompletionResult.FromSuccess(results);
+    }
+
+    private static AutocompletionResult GetSearchHint(string input)
+    {
+        if (string.IsNullOrWhiteSpace(input))
+            return AutocompletionResult.FromSuccess(
+            [
+                new AutocompleteResult("\u266b Type to search for artists, albums, or tracks", "hint_search")
+            ]);
+        return AutocompletionResult.FromSuccess([]);
     }
 }

@@ -149,12 +149,33 @@ namespace PlexBot.Core.Discord.Embeds
                     .WithCustomId("queue_options:options:1")
                     .WithStyle(ButtonStyle.Secondary);
             });
-            // Row 2: vol down, kill (vol down stacked under vol up)
+            // Row 2: vol down, radio, kill (vol down stacked under vol up)
             RegisterButton("vol_down", ButtonFlag.VisualPlayer, 60, _ =>
             {
                 return new ButtonBuilder()
                     .WithEmote(new Emoji("\uD83D\uDD09"))
                     .WithCustomId("volume:down")
+                    .WithStyle(ButtonStyle.Secondary);
+            });
+            RegisterButton("radio", ButtonFlag.VisualPlayer, 65, _ =>
+            {
+                return new ButtonBuilder()
+                    .WithEmote(new Emoji("\uD83D\uDCFB"))
+                    .WithCustomId("radio:start")
+                    .WithStyle(ButtonStyle.Secondary);
+            });
+            RegisterButton("similar", ButtonFlag.VisualPlayer, 66, _ =>
+            {
+                return new ButtonBuilder()
+                    .WithEmote(new Emoji("\uD83D\uDD0D"))
+                    .WithCustomId("sonic:similar")
+                    .WithStyle(ButtonStyle.Secondary);
+            });
+            RegisterButton("adventure", ButtonFlag.VisualPlayer, 67, _ =>
+            {
+                return new ButtonBuilder()
+                    .WithEmote(new Emoji("\uD83E\uDDED"))
+                    .WithCustomId("sonic:adventure")
                     .WithStyle(ButtonStyle.Secondary);
             });
             RegisterButton("kill", ButtonFlag.VisualPlayer, 70, _ =>

@@ -8,16 +8,31 @@ PlexBot uses Discord's slash command system. Type `/` in any channel to see avai
 
 ### `/search`
 
-Search your Plex library or YouTube for music.
+Unified search across all sources and Plex sonic features.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `query` | Yes | What to search for |
-| `source` | No | Where to search — `plex` (default) or `youtube` |
+| `mode` | Yes | Where and how to search (autocomplete dropdown) |
+| `query` | Yes | What to search for — for Mood, Genre, and Radio modes the autocomplete populates with choices from your library |
 
-**Example:** `/search query:The Beatles source:plex`
+**Modes:**
 
-Returns interactive select menus for browsing artists, albums, and tracks. Select an item to play it or add it to the queue.
+| Mode | What it does | Query autocomplete |
+|------|-------------|-------------------|
+| **Plex Library** | Standard library search — returns artists, albums, and tracks | Free text (hint shown) |
+| **Find by Mood** | Browse tracks matching a mood tag (e.g. "Happy", "Aggressive") | Randomized sample of 25 moods; type to filter |
+| **Find by Genre** | Browse tracks matching a genre (e.g. "Rock", "Jazz") | Lists all available genres |
+| **Radio Station** | Pick a station or search for a track to seed radio from | Lists available stations |
+| *Extension providers* | Any loaded extensions (YouTube, SoundCloud, etc.) appear automatically in the dropdown | Free text (hint shown) |
+
+> **Note:** Similar Tracks and Sonic Adventure are available as buttons on the Visual Player (see [Player Controls](#player-controls-buttons) below), not as search modes. They require a currently playing Plex track as context.
+
+**Examples:**
+- `/search mode:Plex Library query:The Beatles` — Search Plex for The Beatles
+- `/search mode:Find by Mood query:Happy` — Pick a mood from autocomplete or type one
+- `/search mode:Find by Genre query:Rock` — Pick a genre from autocomplete or type one
+- `/search mode:Radio Station query:Library Radio` — Pick a station from autocomplete
+- `/search mode:Radio Station query:Bohemian Rhapsody` — Seed radio from a track search
 
 ### `/playlist`
 
@@ -63,11 +78,12 @@ All playback controls are buttons on the player message itself — no slash comm
 | Pause / Resume | Toggle playback |
 | Skip | Skip to next track in queue |
 | Repeat | Cycle repeat mode: Off → Queue → Track → Off |
-| Shuffle | Shuffle the current queue |
-| Volume Up | Increase volume by 10% |
-| Volume Down | Decrease volume by 10% |
+| Queue Options | View queue, shuffle, or clear |
+| Volume Up / Down | Adjust volume by 10% |
+| Radio 📻 | Start a radio station from the current Plex track (replace queue, append, or browse similar tracks) |
+| Similar 🔍 | Show 25 sonically similar tracks to the currently playing Plex track |
+| Adventure 🧭 | Opens a popup to type a destination track — builds a sonic path from what's playing to the destination |
 | Kill | Stop playback, clear queue, and disconnect from voice |
-| Queue | View and manage the queue |
 
 ### Queue Options
 

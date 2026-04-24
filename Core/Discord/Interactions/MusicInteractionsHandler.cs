@@ -1,37 +1,33 @@
 using System.Collections.Concurrent;
 using Discord.Net;
 using PlexBot.Core.Models.Media;
+using PlexBot.Core.Services.PlexApi;
 using PlexBot.Utils;
 using Discord.WebSocket;
 using PlexBot.Core.Discord.Embeds;
 using PlexBot.Core.Services;
 using PlexBot.Core.Services.LavaLink;
 using PlexBot.Core.Services.Music;
+using PlexBot.Core.Discord.Modals;
+using PlexBot.Core.Models;
 
 namespace PlexBot.Core.Discord.Interactions;
 
 /// <summary>Handles interactive components for the music player.
 /// This module processes button clicks, select menu choices, and other
 /// interactive elements of the music player interface.</summary>
-/// <remarks>Initializes a new instance of the <see cref="MusicInteractionHandler"/> class.
-/// Sets up the interaction handler with necessary services.</remarks>
-/// <param name="plexMusicService">Service for interacting with Plex music</param>
-/// <param name="playerService">Service for managing audio playback</param>
-/// <param name="audioService">Service for managing audio playback</param>
 public class MusicInteractionHandler(IPlayerService playerService,
     VisualPlayer visualPlayer, DiscordButtonBuilder buttonBuilder,
-    MusicProviderRegistry providerRegistry) : InteractionModuleBase<SocketInteractionContext>
+    MusicProviderRegistry providerRegistry, IPlexSonicService plexSonicService,
+    RadioSessionManager radioSessionManager, IPlexMusicService plexMusicService) : InteractionModuleBase<SocketInteractionContext>
 {
 
     // Cooldown tracking to prevent spamming
     private static readonly ConcurrentDictionary<(ulong UserId, string CommandId), DateTime> _lastInteracted = new();
     private static readonly TimeSpan _cooldownPeriod = TimeSpan.FromSeconds(2);
 
-    /// <summary>Handles search result selection from search command menu.
-    /// Routes through the music provider registry based on the encoded provider ID.</summary>
-    /// <param name="providerId">The music provider that produced these results</param>
-    /// <param name="type">The type of content selected (artist, album, track)</param>
-    /// <param name="values">The selected content IDs</param>
+    /// <summary>Routes select menu choices to the correct handler by decoding the provider ID and content type
+    /// from the custom ID pattern search:{providerId}:{type}</summary>
     [ComponentInteraction("search:*:*")]
     public async Task HandleSearchSelectionAsync(string providerId, string type, string[] values)
     {
@@ -53,7 +49,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
             Logs.Debug($"Search selection: provider={providerId}, type={type}, key={selectedKey}");
 
             IMusicProvider? provider = providerRegistry.GetProvider(providerId);
-            if (provider == null)
+            if (provider is null)
             {
                 await FollowupAsync(components: ComponentV2Builder.Error("Unknown Source", $"Music source '{providerId}' is no longer available."), ephemeral: true);
                 return;
@@ -69,6 +65,9 @@ public class MusicInteractionHandler(IPlayerService playerService,
                     break;
                 case "artist":
                     await HandleArtistSelectionAsync(provider, selectedKey);
+                    break;
+                case "radio_station":
+                    await HandleRadioStationTrackSelectionAsync(selectedKey);
                     break;
                 default:
                     await FollowupAsync(components: ComponentV2Builder.Error("Unknown Type", $"Unrecognized selection type: {type}"), ephemeral: true);
@@ -87,10 +86,8 @@ public class MusicInteractionHandler(IPlayerService playerService,
         }
     }
 
-    /// <summary>Handles the pause/resume button click.
-    /// Toggles playback state between playing and paused.</summary>
-    /// <param name="action">The specific action (pause/resume)</param>
-    /// <returns>A task representing the asynchronous operation</returns>
+    /// <summary>Toggles between playing and paused states, with the button emoji
+    /// swapping dynamically via the DiscordButtonBuilder context</summary>
     [ComponentInteraction("pause_resume:*")]
     public async Task HandlePauseResumeAsync(string action)
     {
@@ -104,8 +101,6 @@ public class MusicInteractionHandler(IPlayerService playerService,
         {
             string result = await playerService.TogglePauseResumeAsync(Context.Interaction);
             Logs.Info($"Playback {result.ToLowerInvariant()} by {Context.User.Username}");
-
-            // The player UI is automatically updated by the player service
         }
         catch (Exception ex)
         {
@@ -114,9 +109,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
         }
     }
 
-    /// <summary>Handles the skip button click.
-    /// Skips the current track and plays the next one in the queue.</summary>
-    /// <returns>A task representing the asynchronous operation</returns>
+    /// <summary>Advances to the next track in queue, triggering the player's TrackEnded event chain</summary>
     [ComponentInteraction("skip:*")]
     public async Task HandleSkipAsync()
     {
@@ -138,19 +131,14 @@ public class MusicInteractionHandler(IPlayerService playerService,
         }
     }
 
-    /// <summary>Handles queue option button clicks via ephemeral messages.
-    /// "options" creates a new ephemeral panel; all other actions (view, shuffle, clear, pagination)
-    /// update that same panel in-place so the user sees a single coherent message.</summary>
-    /// <param name="action">The specific queue action (options, view, etc.)</param>
-    /// <param name="pageStr">The current page number (for pagination)</param>
+    /// <summary>"options" creates a new ephemeral panel from the main player; all other actions
+    /// (view, shuffle, clear, pagination) edit that same panel in-place via DEFERRED_UPDATE_MESSAGE</summary>
     [ComponentInteraction("queue_options:*:*")]
     public async Task HandleQueueOptionsAsync(string action, string pageStr)
     {
         string normalizedAction = action.ToLowerInvariant();
         bool isInitialOpen = normalizedAction == "options";
 
-        // "options" creates a new ephemeral panel from the main player;
-        // all other actions update the existing ephemeral panel in-place
         if (isInitialOpen)
             await DeferAsync(ephemeral: true);
         else
@@ -160,7 +148,6 @@ public class MusicInteractionHandler(IPlayerService playerService,
         {
             if (isInitialOpen)
                 await FollowupAsync(components: ComponentV2Builder.Error("Cooldown", "Please wait a moment before clicking again."), ephemeral: true);
-            // For updates, silently ignore the cooldown (don't replace the panel with an error)
             return;
         }
         SocketInteraction interaction = Context.Interaction;
@@ -184,7 +171,6 @@ public class MusicInteractionHandler(IPlayerService playerService,
             switch (normalizedAction)
             {
                 case "options":
-                    // Send new ephemeral queue management panel
                     string nowPlaying = (player.CurrentItem as CustomTrackQueueItem)?.Title ?? "Nothing";
                     string artist = (player.CurrentItem as CustomTrackQueueItem)?.Artist ?? "";
                     string displayNow = string.IsNullOrEmpty(artist) ? nowPlaying : $"{nowPlaying} - {artist}";
@@ -240,9 +226,8 @@ public class MusicInteractionHandler(IPlayerService playerService,
         }
     }
 
-    /// <summary>Handles volume up/down button clicks.
-    /// Adjusts volume by 10% increments.</summary>
-    /// <param name="direction">The direction (up/down)</param>
+    /// <summary>Adjusts volume in 10% steps and triggers a Visual Player image rebuild
+    /// to reflect the new volume level in the overlay bar</summary>
     [ComponentInteraction("volume:*")]
     public async Task HandleVolumeAsync(string direction)
     {
@@ -268,7 +253,6 @@ public class MusicInteractionHandler(IPlayerService playerService,
             await player.SetVolumeAsync(newVolume);
             Logs.Debug($"Volume set to {newVolume * 100:F0}% by {Context.User.Username}");
 
-            // Update player UI (recreate image to update volume bar overlay)
             ButtonContext context = new() { Player = player, Interaction = Context.Interaction };
             ComponentBuilder components = buttonBuilder.BuildButtons(ButtonFlag.VisualPlayer, context);
             await visualPlayer.AddOrUpdateVisualPlayerAsync(components, recreateImage: true);
@@ -280,8 +264,8 @@ public class MusicInteractionHandler(IPlayerService playerService,
         }
     }
 
-    /// <summary>Handles the repeat button click.
-    /// Cycles through repeat modes: None → Queue → Track → None.</summary>
+    /// <summary>Cycles through None → Queue → Track → None, updating the button emoji
+    /// to indicate the active mode</summary>
     [ComponentInteraction("repeat:*")]
     public async Task HandleRepeatAsync()
     {
@@ -298,7 +282,6 @@ public class MusicInteractionHandler(IPlayerService playerService,
                 await FollowupAsync(components: ComponentV2Builder.Error("No Player", "No active player found."), ephemeral: true);
                 return;
             }
-            // Cycle: None → Queue → Track → None
             TrackRepeatMode nextMode = player.RepeatMode switch
             {
                 TrackRepeatMode.None => TrackRepeatMode.Queue,
@@ -315,9 +298,8 @@ public class MusicInteractionHandler(IPlayerService playerService,
         }
     }
 
-    /// <summary>Handles the kill button click.
-    /// Stops playback and disconnects the bot from voice.</summary>
-    /// <returns>A task representing the asynchronous operation</returns>
+    /// <summary>Stops playback, disconnects from voice, clears any active radio session,
+    /// and halts the progress bar timer</summary>
     [ComponentInteraction("kill:*")]
     public async Task HandleKillAsync()
     {
@@ -329,6 +311,9 @@ public class MusicInteractionHandler(IPlayerService playerService,
         }
         try
         {
+            if (Context.Guild is not null)
+                radioSessionManager.StopSession(Context.Guild.Id);
+
             visualPlayer.StopProgressTimer();
             await playerService.StopAsync(Context.Interaction, true);
             Logs.Info($"Player killed by {Context.User.Username}");
@@ -340,11 +325,464 @@ public class MusicInteractionHandler(IPlayerService playerService,
         }
     }
 
-    /// <summary>Handles track selection from search results using the appropriate provider</summary>
-    private async Task HandleTrackSelectionAsync(IMusicProvider provider, string trackKey)
+    /// <summary>Extracts the rating key from the currently playing Plex track and opens an ephemeral
+    /// panel with Replace Queue / Add to Queue / Similar Tracks options</summary>
+    [ComponentInteraction("radio:start")]
+    public async Task HandleRadioStartAsync()
+    {
+        await DeferAsync(ephemeral: true);
+        if (IsOnCooldown(Context.User.Id, "radio:start"))
+        {
+            await FollowupAsync(components: ComponentV2Builder.Error("Cooldown", "Please wait a moment before clicking again."), ephemeral: true);
+            return;
+        }
+        try
+        {
+            if (await playerService.GetPlayerAsync(Context.Interaction, false) is not CustomLavaLinkPlayer player)
+            {
+                await FollowupAsync(components: ComponentV2Builder.Error("No Player", "No active player found."), ephemeral: true);
+                return;
+            }
+            if (player.CurrentItem is not CustomTrackQueueItem currentItem)
+            {
+                await FollowupAsync(components: ComponentV2Builder.Error("No Track", "No track is currently playing."), ephemeral: true);
+                return;
+            }
+            if (!currentItem.SourceTrack.SourceSystem.Equals("plex", StringComparison.OrdinalIgnoreCase))
+            {
+                await FollowupAsync(components: ComponentV2Builder.Error("Not Supported", "Radio is only available for Plex tracks."), ephemeral: true);
+                return;
+            }
+            string ratingKey = PlexJsonParser.ExtractRatingKey(currentItem.SourceTrack.SourceKey);
+            if (string.IsNullOrEmpty(ratingKey))
+            {
+                await FollowupAsync(components: ComponentV2Builder.Error("Error", "Could not determine track key for radio."), ephemeral: true);
+                return;
+            }
+
+            ComponentBuilder actionButtons = new();
+            actionButtons.WithButton("Replace Queue", $"radio:replace:{ratingKey}", ButtonStyle.Primary);
+            actionButtons.WithButton("Add to Queue", $"radio:append:{ratingKey}", ButtonStyle.Success);
+            actionButtons.WithButton("Similar Tracks", $"radio:similar:{ratingKey}", ButtonStyle.Secondary);
+
+            await FollowupAsync(components: ComponentV2Builder.BuildRadioOptions(
+                currentItem.SourceTrack.Title ?? "Unknown",
+                currentItem.SourceTrack.Artist ?? "Unknown",
+                actionButtons), ephemeral: true);
+        }
+        catch (Exception ex)
+        {
+            Logs.Error($"Error handling radio start: {ex.Message}");
+            await FollowupAsync(components: ComponentV2Builder.Error("Radio Error", "An error occurred while opening radio options."), ephemeral: true);
+        }
+    }
+
+    /// <summary>Clears the existing queue, generates radio tracks from the seed, and starts
+    /// a radio session for potential infinite refill based on config</summary>
+    [ComponentInteraction("radio:replace:*")]
+    public async Task HandleRadioReplaceAsync(string ratingKey)
+    {
+        await DeferAsync(); // Update the ephemeral panel
+        try
+        {
+            int batchSize = BotConfig.GetInt("plex.radio.batchSize", 30);
+            List<Track> tracks = await plexSonicService.GetRadioTracksAsync(ratingKey, batchSize);
+            if (tracks.Count == 0)
+            {
+                await Context.Interaction.ModifyOriginalResponseAsync(msg =>
+                {
+                    msg.Components = ComponentV2Builder.Warning("No Tracks", "No radio tracks were returned. This track may not have sonic analysis data.");
+                    msg.Embed = null;
+                    msg.Flags = MessageFlags.ComponentsV2;
+                });
+                return;
+            }
+
+            if (await playerService.GetPlayerAsync(Context.Interaction, false) is CustomLavaLinkPlayer player)
+                await player.Queue.ClearAsync();
+
+            await playerService.AddToQueueAsync(Context.Interaction, tracks);
+
+            if (Context.Guild is not null)
+                radioSessionManager.StartSession(Context.Guild.Id, ratingKey);
+
+            await Context.Interaction.ModifyOriginalResponseAsync(msg =>
+            {
+                msg.Components = ComponentV2Builder.Success("Radio Started", $"Replaced queue with {tracks.Count} radio tracks.");
+                msg.Embed = null;
+                msg.Flags = MessageFlags.ComponentsV2;
+            });
+            Logs.Info($"Radio started (replace) by {Context.User.Username}: {tracks.Count} tracks from key {ratingKey}");
+        }
+        catch (Exception ex)
+        {
+            Logs.Error($"Error handling radio replace: {ex.Message}");
+            try
+            {
+                await Context.Interaction.ModifyOriginalResponseAsync(msg =>
+                {
+                    msg.Components = ComponentV2Builder.Error("Radio Error", "Failed to start radio. Please try again.");
+                    msg.Embed = null;
+                    msg.Flags = MessageFlags.ComponentsV2;
+                });
+            }
+            catch { /* interaction may be dead */ }
+        }
+    }
+
+    /// <summary>Appends radio tracks to the existing queue without clearing, and starts
+    /// a radio session for potential infinite refill based on config</summary>
+    [ComponentInteraction("radio:append:*")]
+    public async Task HandleRadioAppendAsync(string ratingKey)
+    {
+        await DeferAsync(); // Update the ephemeral panel
+        try
+        {
+            int batchSize = BotConfig.GetInt("plex.radio.batchSize", 30);
+            List<Track> tracks = await plexSonicService.GetRadioTracksAsync(ratingKey, batchSize);
+            if (tracks.Count == 0)
+            {
+                await Context.Interaction.ModifyOriginalResponseAsync(msg =>
+                {
+                    msg.Components = ComponentV2Builder.Warning("No Tracks", "No radio tracks were returned. This track may not have sonic analysis data.");
+                    msg.Embed = null;
+                    msg.Flags = MessageFlags.ComponentsV2;
+                });
+                return;
+            }
+
+            await playerService.AddToQueueAsync(Context.Interaction, tracks);
+
+            if (Context.Guild is not null)
+                radioSessionManager.StartSession(Context.Guild.Id, ratingKey);
+
+            await Context.Interaction.ModifyOriginalResponseAsync(msg =>
+            {
+                msg.Components = ComponentV2Builder.Success("Radio Tracks Added", $"Added {tracks.Count} radio tracks to the queue.");
+                msg.Embed = null;
+                msg.Flags = MessageFlags.ComponentsV2;
+            });
+            Logs.Info($"Radio started (append) by {Context.User.Username}: {tracks.Count} tracks from key {ratingKey}");
+        }
+        catch (Exception ex)
+        {
+            Logs.Error($"Error handling radio append: {ex.Message}");
+            try
+            {
+                await Context.Interaction.ModifyOriginalResponseAsync(msg =>
+                {
+                    msg.Components = ComponentV2Builder.Error("Radio Error", "Failed to add radio tracks. Please try again.");
+                    msg.Embed = null;
+                    msg.Flags = MessageFlags.ComponentsV2;
+                });
+            }
+            catch { /* interaction may be dead */ }
+        }
+    }
+
+    /// <summary>Fetches sonically similar tracks and replaces the ephemeral panel with a track select menu
+    /// that reuses the search:plex:track interaction pattern for seamless queueing</summary>
+    [ComponentInteraction("radio:similar:*")]
+    public async Task HandleRadioSimilarAsync(string ratingKey)
+    {
+        await DeferAsync(); // Update the ephemeral panel
+        try
+        {
+            List<Track> similarTracks = await plexSonicService.GetSimilarTracksAsync(ratingKey, 25);
+            if (similarTracks.Count == 0)
+            {
+                await Context.Interaction.ModifyOriginalResponseAsync(msg =>
+                {
+                    msg.Components = ComponentV2Builder.Warning("No Similar Tracks", "No sonically similar tracks were found for this track.");
+                    msg.Embed = null;
+                    msg.Flags = MessageFlags.ComponentsV2;
+                });
+                return;
+            }
+
+            SelectMenuBuilder selectMenu = new SelectMenuBuilder()
+                .WithCustomId("search:plex:track")
+                .WithPlaceholder("Select a similar track to play")
+                .WithMaxValues(1);
+
+            foreach (Track track in similarTracks.Take(25))
+            {
+                string label = track.Title?.Length > 100 ? track.Title[..97] + "..." : track.Title ?? "Unknown";
+                string desc = $"{track.Artist} - {track.Album}";
+                if (desc.Length > 100) desc = desc[..97] + "...";
+                selectMenu.AddOption(label, track.SourceKey, desc);
+            }
+
+            ComponentBuilder components = new();
+            components.WithSelectMenu(selectMenu);
+
+            components.WithButton("Play All Similar", $"sonic:playall:plex:{ratingKey}", ButtonStyle.Success, row: 1);
+
+            await Context.Interaction.ModifyOriginalResponseAsync(msg =>
+            {
+                msg.Components = ComponentV2Builder.BuildSonicResults(
+                    "Similar Tracks",
+                    $"Found {similarTracks.Count} sonically similar tracks.",
+                    components);
+                msg.Embed = null;
+                msg.Flags = MessageFlags.ComponentsV2;
+            });
+        }
+        catch (Exception ex)
+        {
+            Logs.Error($"Error handling similar tracks: {ex.Message}");
+            try
+            {
+                await Context.Interaction.ModifyOriginalResponseAsync(msg =>
+                {
+                    msg.Components = ComponentV2Builder.Error("Error", "Failed to find similar tracks. Please try again.");
+                    msg.Embed = null;
+                    msg.Flags = MessageFlags.ComponentsV2;
+                });
+            }
+            catch { /* interaction may be dead */ }
+        }
+    }
+
+    /// <summary>Visual Player button — reads the currently playing Plex track and directly shows
+    /// sonically similar tracks in an ephemeral select menu</summary>
+    [ComponentInteraction("sonic:similar")]
+    public async Task HandleSonicSimilarButtonAsync()
+    {
+        await DeferAsync(ephemeral: true);
+        if (IsOnCooldown(Context.User.Id, "sonic:similar"))
+        {
+            await FollowupAsync(components: ComponentV2Builder.Error("Cooldown", "Please wait a moment before clicking again."), ephemeral: true);
+            return;
+        }
+        try
+        {
+            if (await playerService.GetPlayerAsync(Context.Interaction, false) is not CustomLavaLinkPlayer player
+                || player.CurrentItem is not CustomTrackQueueItem currentItem)
+            {
+                await FollowupAsync(components: ComponentV2Builder.Error("No Track", "No track is currently playing."), ephemeral: true);
+                return;
+            }
+            if (!currentItem.SourceTrack.SourceSystem.Equals("plex", StringComparison.OrdinalIgnoreCase))
+            {
+                await FollowupAsync(components: ComponentV2Builder.Error("Not Supported", "Similar tracks is only available for Plex tracks."), ephemeral: true);
+                return;
+            }
+            string ratingKey = PlexJsonParser.ExtractRatingKey(currentItem.SourceTrack.SourceKey);
+            if (string.IsNullOrEmpty(ratingKey))
+            {
+                await FollowupAsync(components: ComponentV2Builder.Error("Error", "Could not determine track key."), ephemeral: true);
+                return;
+            }
+
+            List<Track> similarTracks = await plexSonicService.GetSimilarTracksAsync(ratingKey, 25);
+            if (similarTracks.Count == 0)
+            {
+                await FollowupAsync(components: ComponentV2Builder.Info("No Similar Tracks", $"No sonically similar tracks found for '{currentItem.SourceTrack.Title}'."), ephemeral: true);
+                return;
+            }
+
+            SelectMenuBuilder selectMenu = new SelectMenuBuilder()
+                .WithCustomId("search:plex:track")
+                .WithPlaceholder("Select a similar track to play")
+                .WithMaxValues(1);
+
+            foreach (Track track in similarTracks.Take(25))
+            {
+                string label = track.Title?.Length > 100 ? track.Title[..97] + "..." : track.Title ?? "Unknown";
+                string desc = $"{track.Artist} - {track.Album}";
+                if (desc.Length > 100) desc = desc[..97] + "...";
+                selectMenu.AddOption(label, track.SourceKey, desc);
+            }
+
+            ComponentBuilder components = new();
+            components.WithSelectMenu(selectMenu);
+            components.WithButton("Play All Similar", $"sonic:playall:plex:{ratingKey}", ButtonStyle.Success, row: 1);
+
+            await FollowupAsync(components: ComponentV2Builder.BuildSonicResults(
+                $"Similar to: {currentItem.SourceTrack.Title}",
+                $"Found {similarTracks.Count} sonically similar tracks to **{currentItem.SourceTrack.Artist}** - {currentItem.SourceTrack.Title}",
+                components), ephemeral: true);
+        }
+        catch (Exception ex)
+        {
+            Logs.Error($"Error handling similar button: {ex.Message}");
+            await FollowupAsync(components: ComponentV2Builder.Error("Error", "Failed to find similar tracks."), ephemeral: true);
+        }
+    }
+
+    /// <summary>Visual Player button — opens a modal for the user to enter a destination track name
+    /// for a Sonic Adventure path from the currently playing track</summary>
+    [ComponentInteraction("sonic:adventure")]
+    public async Task HandleSonicAdventureButtonAsync()
+    {
+        try
+        {
+            if (await playerService.GetPlayerAsync(Context.Interaction, false) is not CustomLavaLinkPlayer player
+                || player.CurrentItem is not CustomTrackQueueItem currentItem
+                || !currentItem.SourceTrack.SourceSystem.Equals("plex", StringComparison.OrdinalIgnoreCase))
+            {
+                await RespondAsync(components: ComponentV2Builder.Error("Not Available", "Play a Plex track first to use Sonic Adventure."), ephemeral: true);
+                return;
+            }
+
+            await Context.Interaction.RespondWithModalAsync<SonicAdventureModal>("sonic:adventure_modal");
+        }
+        catch (Exception ex)
+        {
+            Logs.Error($"Error opening adventure modal: {ex.Message}");
+            try { await RespondAsync(components: ComponentV2Builder.Error("Error", "Failed to open adventure dialog."), ephemeral: true); }
+            catch { /* interaction may be dead */ }
+        }
+    }
+
+    /// <summary>Processes the Sonic Adventure modal submission — takes the destination track name,
+    /// searches the library, and builds a sonic path from the currently playing track</summary>
+    [ModalInteraction("sonic:adventure_modal")]
+    public async Task HandleSonicAdventureModalAsync(SonicAdventureModal modal)
+    {
+        await DeferAsync(ephemeral: true);
+        try
+        {
+            if (await playerService.GetPlayerAsync(Context.Interaction, false) is not CustomLavaLinkPlayer player
+                || player.CurrentItem is not CustomTrackQueueItem currentItem
+                || !currentItem.SourceTrack.SourceSystem.Equals("plex", StringComparison.OrdinalIgnoreCase))
+            {
+                await FollowupAsync(components: ComponentV2Builder.Error("No Start Track", "The Plex track you were playing has stopped. Play a Plex track and try again."), ephemeral: true);
+                return;
+            }
+
+            string startRatingKey = PlexJsonParser.ExtractRatingKey(currentItem.SourceTrack.SourceKey);
+            if (string.IsNullOrEmpty(startRatingKey))
+            {
+                await FollowupAsync(components: ComponentV2Builder.Error("Error", "Could not identify the currently playing track."), ephemeral: true);
+                return;
+            }
+
+            SearchResults searchResults = await plexMusicService.SearchLibraryAsync(modal.Destination);
+            if (searchResults.Tracks.Count == 0)
+            {
+                await FollowupAsync(components: ComponentV2Builder.Error("No Results", $"No tracks found for '{modal.Destination}'."), ephemeral: true);
+                return;
+            }
+
+            Track endTrack = searchResults.Tracks.First();
+            string endRatingKey = PlexJsonParser.ExtractRatingKey(endTrack.SourceKey);
+            if (string.IsNullOrEmpty(endRatingKey))
+            {
+                await FollowupAsync(components: ComponentV2Builder.Error("Error", "Could not extract destination track identifier."), ephemeral: true);
+                return;
+            }
+
+            List<Track> adventureTracks = await plexSonicService.GetSonicAdventureAsync(startRatingKey, endRatingKey);
+            if (adventureTracks.Count == 0)
+            {
+                await FollowupAsync(components: ComponentV2Builder.Info("No Path Found", $"Could not find a sonic path from '{currentItem.SourceTrack.Title}' to '{endTrack.Title}'."), ephemeral: true);
+                return;
+            }
+
+            SelectMenuBuilder selectMenu = new SelectMenuBuilder()
+                .WithCustomId("search:plex:track")
+                .WithPlaceholder("Select a track from the adventure path")
+                .WithMaxValues(1);
+
+            foreach (Track track in adventureTracks.Take(25))
+            {
+                string label = track.Title?.Length > 100 ? track.Title[..97] + "..." : track.Title ?? "Unknown";
+                string desc = $"{track.Artist} - {track.Album}";
+                if (desc.Length > 100) desc = desc[..97] + "...";
+                selectMenu.AddOption(label, track.SourceKey, desc);
+            }
+
+            ComponentBuilder components = new();
+            components.WithSelectMenu(selectMenu);
+            components.WithButton("Play All", $"sonic:playall:adventure:{startRatingKey}-{endRatingKey}", ButtonStyle.Success, row: 1);
+
+            await FollowupAsync(components: ComponentV2Builder.BuildSonicResults(
+                "Sonic Adventure",
+                $"Path from **{currentItem.SourceTrack.Artist}** - {currentItem.SourceTrack.Title} to **{endTrack.Artist}** - {endTrack.Title} ({adventureTracks.Count} tracks)",
+                components), ephemeral: true);
+
+            Logs.Info($"Sonic adventure by {Context.User.Username}: {currentItem.SourceTrack.Title} → {endTrack.Title}, {adventureTracks.Count} tracks");
+        }
+        catch (Exception ex)
+        {
+            Logs.Error($"Error handling adventure modal: {ex.Message}");
+            try { await FollowupAsync(components: ComponentV2Builder.Error("Error", "Failed to build sonic adventure path."), ephemeral: true); }
+            catch { /* interaction may be dead */ }
+        }
+    }
+
+    /// <summary>Queues all tracks from a sonic result set. Routes to similar tracks or adventure path
+    /// based on the provider ID encoded in the custom ID</summary>
+    [ComponentInteraction("sonic:playall:*:*")]
+    public async Task HandleSonicPlayAllAsync(string sonicType, string keyData)
+    {
+        await DeferAsync(ephemeral: true);
+        try
+        {
+            List<Track> tracks;
+            if (sonicType.Equals("adventure", StringComparison.OrdinalIgnoreCase))
+            {
+                // keyData format: "startKey-endKey"
+                string[] keys = keyData.Split('-', 2);
+                if (keys.Length != 2)
+                {
+                    await FollowupAsync(components: ComponentV2Builder.Error("Error", "Invalid adventure path data."), ephemeral: true);
+                    return;
+                }
+                tracks = await plexSonicService.GetSonicAdventureAsync(keys[0], keys[1]);
+            }
+            else
+            {
+                tracks = await plexSonicService.GetSimilarTracksAsync(keyData, 50);
+            }
+
+            if (tracks.Count == 0)
+            {
+                await FollowupAsync(components: ComponentV2Builder.Warning("No Tracks", "No tracks found to play."), ephemeral: true);
+                return;
+            }
+
+            await playerService.AddToQueueAsync(Context.Interaction, tracks);
+            await FollowupAsync(components: ComponentV2Builder.Success("Tracks Added", $"Added {tracks.Count} tracks to the queue."), ephemeral: true);
+            Logs.Info($"Sonic play all ({sonicType}) by {Context.User.Username}: {tracks.Count} tracks");
+        }
+        catch (Exception ex)
+        {
+            Logs.Error($"Error handling sonic play all: {ex.Message}");
+            try { await FollowupAsync(components: ComponentV2Builder.Error("Error", "Failed to add tracks. Please try again."), ephemeral: true); }
+            catch { /* interaction may be dead */ }
+        }
+    }
+
+    /// <summary>Generates radio tracks from a station key selected via the search:plex:radio_station
+    /// select menu, routed here through the search:*:* wildcard handler's radio_station case</summary>
+    public async Task HandleRadioStationTrackSelectionAsync(string stationKey)
+    {
+        int batchSize = BotConfig.GetInt("plex.radio.batchSize", 30);
+        List<Track> tracks = await plexSonicService.GetRadioTracksAsync(stationKey, batchSize);
+        if (tracks.Count == 0)
+        {
+            await FollowupAsync(components: ComponentV2Builder.Warning("No Tracks", "No tracks returned for this station."), ephemeral: true);
+            return;
+        }
+
+        await playerService.AddToQueueAsync(Context.Interaction, tracks);
+
+        // Start radio session for potential infinite refill
+        if (Context.Guild is not null)
+            radioSessionManager.StartSession(Context.Guild.Id, stationKey);
+
+        await FollowupAsync(components: ComponentV2Builder.Success("Station Playing", $"Added {tracks.Count} tracks from the radio station."), ephemeral: true);
+        Logs.Info($"Radio station selected by {Context.User.Username}: {stationKey}, {tracks.Count} tracks");
+    }
+
+    /// <summary>Fetches full track details from the provider and queues it for playback</summary>
+    public async Task HandleTrackSelectionAsync(IMusicProvider provider, string trackKey)
     {
         Track? track = await provider.GetTrackDetailsAsync(trackKey);
-        if (track == null)
+        if (track is null)
         {
             await FollowupAsync(components: ComponentV2Builder.Error("Track Error", "Failed to retrieve track details."), ephemeral: true);
             return;
@@ -352,8 +790,8 @@ public class MusicInteractionHandler(IPlayerService playerService,
         await playerService.AddToQueueAsync(Context.Interaction, [track]);
     }
 
-    /// <summary>Handles album selection from search results using the appropriate provider</summary>
-    private async Task HandleAlbumSelectionAsync(IMusicProvider provider, string albumKey)
+    /// <summary>Loads all tracks from the selected album via the provider and queues them</summary>
+    public async Task HandleAlbumSelectionAsync(IMusicProvider provider, string albumKey)
     {
         List<Track> tracks = await provider.GetTracksAsync(albumKey);
         if (tracks.Count == 0)
@@ -364,8 +802,8 @@ public class MusicInteractionHandler(IPlayerService playerService,
         await playerService.AddToQueueAsync(Context.Interaction, tracks);
     }
 
-    /// <summary>Handles artist selection from search results using the appropriate provider</summary>
-    private async Task HandleArtistSelectionAsync(IMusicProvider provider, string artistKey)
+    /// <summary>Fetches the full discography for the selected artist and queues all tracks</summary>
+    public async Task HandleArtistSelectionAsync(IMusicProvider provider, string artistKey)
     {
         List<Track> allTracks = await provider.GetAllArtistTracksAsync(artistKey);
         if (allTracks.Count == 0)
@@ -376,16 +814,12 @@ public class MusicInteractionHandler(IPlayerService playerService,
         await playerService.AddToQueueAsync(Context.Interaction, allTracks);
     }
 
-    /// <summary>Shows the current queue by updating the existing ephemeral panel in-place.
-    /// Displays the currently playing track and upcoming tracks with pagination.</summary>
-    /// <param name="player">The player to show the queue for</param>
-    /// <param name="page">The page number to show</param>
-    /// <returns>A task representing the asynchronous operation</returns>
-    private async Task ShowQueueAsync(CustomLavaLinkPlayer player, int page)
+    /// <summary>Updates the existing ephemeral queue panel in-place with paginated track listing,
+    /// keeping the same message so users don't get spammed with new panels</summary>
+    public async Task ShowQueueAsync(CustomLavaLinkPlayer player, int page)
     {
         try
         {
-            // Get the current track and queue
             CustomTrackQueueItem? currentTrack = player.CurrentItem as CustomTrackQueueItem;
             List<CustomTrackQueueItem?> queue = player.Queue.Select(item => item as CustomTrackQueueItem).ToList();
 
@@ -394,29 +828,26 @@ public class MusicInteractionHandler(IPlayerService playerService,
             int totalPages = Math.Max(1, (totalTracks + itemsPerPage - 1) / itemsPerPage);
             page = Math.Clamp(page, 1, totalPages);
 
-            // Build now playing line
-            string? nowPlayingLine = (page == 1 && currentTrack != null)
+            string? nowPlayingLine = (page == 1 && currentTrack is not null)
                 ? $"**\u25B6\uFE0F Now Playing:** {currentTrack.Title} - {currentTrack.Artist} ({currentTrack.Duration})"
                 : null;
 
-            // Build queue text for current page
             int startIndex = (page - 1) * itemsPerPage;
             int endIndex = Math.Min(startIndex + itemsPerPage, totalTracks);
             StringBuilder queueSb = new();
             for (int i = startIndex; i < endIndex; i++)
             {
                 CustomTrackQueueItem? item = queue[i];
-                if (item != null)
+                if (item is not null)
                     queueSb.AppendLine($"**#{i + 1}:** {item.Title} - {item.Artist} ({item.Duration})");
             }
             string queueText = queueSb.ToString().TrimEnd();
 
-            if (totalTracks == 0 && currentTrack == null)
+            if (totalTracks == 0 && currentTrack is null)
                 queueText = "The queue is currently empty.";
 
             string footerLine = $"Page {page} of {totalPages} | {totalTracks} tracks queued";
 
-            // Build pagination buttons
             ComponentBuilder components = new();
             if (totalPages > 1)
             {
@@ -426,7 +857,6 @@ public class MusicInteractionHandler(IPlayerService playerService,
                                    ButtonStyle.Secondary, disabled: page >= totalPages);
             }
 
-            // Update the existing ephemeral panel in-place
             await Context.Interaction.ModifyOriginalResponseAsync(msg =>
             {
                 msg.Components = ComponentV2Builder.BuildQueueDisplay(
@@ -451,20 +881,16 @@ public class MusicInteractionHandler(IPlayerService playerService,
         }
     }
 
-    /// <summary>Checks if a user is on cooldown for a specific command.
-    /// Prevents command spam by enforcing a cooldown period.</summary>
-    /// <param name="userId">The user ID to check</param>
-    /// <param name="commandId">The command ID to check</param>
-    /// <returns>True if the user is on cooldown; otherwise, false</returns>
-    private static bool IsOnCooldown(ulong userId, string commandId)
+    /// <summary>Returns true if the user has interacted with this command within the cooldown window,
+    /// auto-pruning stale entries when the dictionary exceeds 100 items to prevent unbounded growth</summary>
+    public static bool IsOnCooldown(ulong userId, string commandId)
     {
-        var key = (userId, commandId);
+        (ulong, string) key = (userId, commandId);
         DateTime now = DateTime.UtcNow;
 
-        // Prune stale entries periodically to prevent unbounded growth
         if (_lastInteracted.Count > 100)
         {
-            foreach (var staleKey in _lastInteracted
+            foreach ((ulong, string) staleKey in _lastInteracted
                 .Where(kvp => now - kvp.Value > TimeSpan.FromMinutes(5))
                 .Select(kvp => kvp.Key)
                 .ToList())

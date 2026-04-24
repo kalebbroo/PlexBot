@@ -51,6 +51,10 @@ public interface IMusicProvider
     /// Only called if CanHandleUrl returned true. Default: empty list.</summary>
     Task<List<Track>> ResolveUrlAsync(string url, CancellationToken cancellationToken = default) =>
         Task.FromResult(new List<Track>());
+
+    /// <summary>Get radio/similar tracks seeded from a track key. Returns empty if not supported.</summary>
+    Task<List<Track>> GetRadioTracksAsync(string seedKey, CancellationToken cancellationToken = default) =>
+        Task.FromResult(new List<Track>());
 }
 
 /// <summary>Flags indicating which capabilities a music provider supports</summary>
@@ -63,5 +67,6 @@ public enum MusicProviderCapabilities
     Albums = 1 << 2,
     Playlists = 1 << 3,
     ArtistBrowse = 1 << 4,
-    UrlPlayback = 1 << 5
+    UrlPlayback = 1 << 5,
+    Radio = 1 << 6
 }
