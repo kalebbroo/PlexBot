@@ -385,15 +385,18 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
 
     /// <summary>Loads a Plex or custom playlist, optionally shuffles it, and queues all tracks for playback</summary>
     [SlashCommand("playlist", "Play a playlist")]
-    public async Task PlaylistCommand([Summary("playlist", "The playlist to play")]
-    [Autocomplete(typeof(PlaylistAutocompleteHandler))]
-    string playlist, [Summary("shuffle", "Shuffle the playlist")] bool shuffle = true)
+    public async Task PlaylistCommand(
+        [Summary("playlist", "The playlist to play")]
+        [Autocomplete(typeof(PlaylistAutocompleteHandler))]
+        string playlist,
+        [Summary("shuffle", "Shuffle the playlist")] bool shuffle = true,
+        [Summary("next", "Add to front of queue instead of end")] bool next = false)
     {
         await RespondAsync(components: ComponentV2Builder.Info("Loading", "Loading playlist..."), ephemeral: true);
         IUserMessage ackMessage = await GetOriginalResponseAsync();
         try
         {
-            Logs.Debug($"Loading playlist: {playlist}, shuffle: {shuffle}");
+            Logs.Debug($"Loading playlist: {playlist}, shuffle: {shuffle}, next: {next}");
             if (string.IsNullOrWhiteSpace(playlist))
             {
                 await ackMessage.ModifyAsync(msg => { msg.Components = ComponentV2Builder.Error("Invalid Playlist", "Please select a playlist."); msg.Embed = null; msg.Flags = MessageFlags.ComponentsV2; });
@@ -430,7 +433,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
                 Random rng = new();
                 tracks = [.. tracks.OrderBy(x => rng.Next())];
             }
-            await playerService.AddToQueueAsync(Context.Interaction, tracks);
+            await playerService.AddToQueueAsync(Context.Interaction, tracks, next);
         }
         catch (Exception ex)
         {
@@ -444,55 +447,94 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
     [SlashCommand("play", "Play a track by URL or search term")]
     public async Task PlayCommand(
         [Summary("query", "The track to play (URL or search term)")]
-        string query)
+        string query,
+        [Summary("next", "Add to front of queue instead of end")]
+        bool next = false,
+        [Summary("mode", "What to search for")]
+        [Choice("Track", "track"), Choice("Album", "album"), Choice("Artist", "artist")]
+        string mode = "track")
     {
         await DeferAsync(ephemeral: true);
         try
         {
-            Logs.Info($"Play command: {query}");
+            Logs.Info($"Play command: query='{query}', mode={mode}, next={next}");
             if (string.IsNullOrWhiteSpace(query))
             {
                 await FollowupAsync(components: ComponentV2Builder.Error("Invalid Query", "Please enter a URL or search term."), ephemeral: true);
                 return;
             }
+
+            // URL detection takes priority regardless of mode
             if (Uri.TryCreate(query, UriKind.Absolute, out Uri? parsedUri) &&
                 (parsedUri.Scheme == "http" || parsedUri.Scheme == "https"))
             {
-                await HandleUrlPlaybackAsync(query, parsedUri);
+                await HandleUrlPlaybackAsync(query, parsedUri, next);
                 return;
             }
+
             SearchResults results = await plexMusicService.SearchLibraryAsync(query);
             if (!results.HasResults)
             {
                 await FollowupAsync(components: ComponentV2Builder.Error("No Results", $"No results found for '{query}'."), ephemeral: true);
                 return;
             }
+
+            // Route based on mode — fall back to auto-priority if the requested mode has no results
+            switch (mode.ToLowerInvariant())
+            {
+                case "album":
+                    if (results.Albums.Count != 0)
+                    {
+                        Album album = results.Albums.First();
+                        List<Track> albumTracks = await plexMusicService.GetTracksAsync(album.SourceKey);
+                        if (albumTracks.Count != 0)
+                        {
+                            await playerService.AddToQueueAsync(Context.Interaction, albumTracks, next);
+                            return;
+                        }
+                    }
+                    break;
+
+                case "artist":
+                    if (results.Artists.Count != 0)
+                    {
+                        Artist artist = results.Artists.First();
+                        List<Track> artistTracks = await plexMusicService.GetAllArtistTracksAsync(artist.SourceKey);
+                        if (artistTracks.Count != 0)
+                        {
+                            await playerService.AddToQueueAsync(Context.Interaction, artistTracks, next);
+                            return;
+                        }
+                    }
+                    break;
+
+                default: // "track"
+                    if (results.Tracks.Count != 0)
+                    {
+                        Track track = results.Tracks.First();
+                        await playerService.AddToQueueAsync(Context.Interaction, [track], next);
+                        return;
+                    }
+                    break;
+            }
+
+            // Fallback: auto-priority (track → album → artist) if the chosen mode had no results
             if (results.Tracks.Count != 0)
             {
-                Track track = results.Tracks.First();
-                await playerService.AddToQueueAsync(Context.Interaction, [track]);
+                await playerService.AddToQueueAsync(Context.Interaction, [results.Tracks.First()], next);
                 return;
             }
             if (results.Albums.Count != 0)
             {
-                Album album = results.Albums.First();
-                List<Track> tracks = await plexMusicService.GetTracksAsync(album.SourceKey);
-                if (tracks.Count != 0)
-                {
-                    await playerService.AddToQueueAsync(Context.Interaction, tracks);
-                    return;
-                }
+                List<Track> tracks = await plexMusicService.GetTracksAsync(results.Albums.First().SourceKey);
+                if (tracks.Count != 0) { await playerService.AddToQueueAsync(Context.Interaction, tracks, next); return; }
             }
             if (results.Artists.Count != 0)
             {
-                Artist artist = results.Artists.First();
-                List<Track> allTracks = await plexMusicService.GetAllArtistTracksAsync(artist.SourceKey);
-                if (allTracks.Count != 0)
-                {
-                    await playerService.AddToQueueAsync(Context.Interaction, allTracks);
-                    return;
-                }
+                List<Track> tracks = await plexMusicService.GetAllArtistTracksAsync(results.Artists.First().SourceKey);
+                if (tracks.Count != 0) { await playerService.AddToQueueAsync(Context.Interaction, tracks, next); return; }
             }
+
             await FollowupAsync(components: ComponentV2Builder.Error("Playback Error", "Found results, but couldn't play any tracks."), ephemeral: true);
         }
         catch (Exception ex)
@@ -504,7 +546,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
 
     /// <summary>Tries each registered provider's CanHandleUrl first (e.g. YouTube provider claims youtube.com),
     /// then falls back to generic Lavalink loading for unclaimed URLs</summary>
-    public async Task HandleUrlPlaybackAsync(string url, Uri parsedUri)
+    public async Task HandleUrlPlaybackAsync(string url, Uri parsedUri, bool playNext = false)
     {
         try
         {
@@ -516,7 +558,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
                     List<Track> tracks = await provider.ResolveUrlAsync(url);
                     if (tracks.Count > 0)
                     {
-                        await playerService.AddToQueueAsync(Context.Interaction, tracks);
+                        await playerService.AddToQueueAsync(Context.Interaction, tracks, playNext);
                         return;
                     }
                 }
@@ -543,7 +585,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
             track.DurationMs = (long)lavalinkTrack.Duration.TotalMilliseconds;
             track.DurationDisplay = FormatHelper.FormatDuration(lavalinkTrack.Duration);
 
-            await playerService.AddToQueueAsync(Context.Interaction, [track]);
+            await playerService.AddToQueueAsync(Context.Interaction, [track], playNext);
         }
         catch (Exception ex)
         {
