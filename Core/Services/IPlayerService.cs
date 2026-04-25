@@ -25,10 +25,12 @@ public interface IPlayerService
     /// <summary>Adds multiple tracks to the playback queue, enabling batch operations for albums, playlists, and search results</summary>
     /// <param name="interaction">The Discord interaction providing context for queue management</param>
     /// <param name="tracks">The collection of tracks to append to the current queue</param>
+    /// <param name="playNext">When true, inserts tracks at the front of the queue instead of appending to the end</param>
     /// <param name="cancellationToken">Optional token to cancel the operation if it takes too long</param>
     /// <returns>A task that completes when all tracks have been processed and added to the queue</returns>
     /// <exception cref="PlayerException">Thrown when the tracks cannot be added to the queue due to format or connection issues</exception>
-    Task AddToQueueAsync(IDiscordInteraction interaction, IEnumerable<Track> tracks, CancellationToken cancellationToken = default);
+    Task AddToQueueAsync(IDiscordInteraction interaction, IEnumerable<Track> tracks,
+        bool playNext = false, CancellationToken cancellationToken = default);
 
     /// <summary>Toggles between paused and playing states, serving as a convenience method for the most common playback control action</summary>
     /// <param name="interaction">The Discord interaction containing guild context to identify the correct player</param>
@@ -36,6 +38,13 @@ public interface IPlayerService
     /// <returns>A user-friendly status message indicating the new state ("Paused" or "Resumed") for display in Discord</returns>
     /// <exception cref="PlayerException">Thrown when the player cannot toggle state due to connection issues or invalid player state</exception>
     Task<string> TogglePauseResumeAsync(IDiscordInteraction interaction, CancellationToken cancellationToken = default);
+
+    /// <summary>Returns to the previously played track by pulling from the player's track history</summary>
+    /// <param name="interaction">The Discord interaction containing guild context to identify the correct player</param>
+    /// <param name="cancellationToken">Optional token to cancel the operation</param>
+    /// <returns>A task that completes when the previous track has been restored and playback started</returns>
+    /// <exception cref="PlayerException">Thrown when there is no history or the player cannot be found</exception>
+    Task PreviousTrackAsync(IDiscordInteraction interaction, CancellationToken cancellationToken = default);
 
     /// <summary>Advances playback to the next track in queue, overriding any active repeat settings to force progression</summary>
     /// <param name="interaction">The Discord interaction containing guild context to identify the correct player</param>

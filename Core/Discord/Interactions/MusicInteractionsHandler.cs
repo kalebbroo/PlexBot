@@ -9,6 +9,7 @@ using PlexBot.Core.Services;
 using PlexBot.Core.Services.LavaLink;
 using PlexBot.Core.Services.Music;
 using PlexBot.Core.Discord.Modals;
+using PlexBot.Core.Exceptions;
 using PlexBot.Core.Models;
 
 namespace PlexBot.Core.Discord.Interactions;
@@ -106,6 +107,32 @@ public class MusicInteractionHandler(IPlayerService playerService,
         {
             Logs.Error($"Error handling pause/resume: {ex.Message}");
             await FollowupAsync(components: ComponentV2Builder.Error("Playback Error", "An error occurred while toggling playback. Please try again later."), ephemeral: true);
+        }
+    }
+
+    /// <summary>Returns to the previously played track using the player's track history</summary>
+    [ComponentInteraction("previous:*")]
+    public async Task HandlePreviousAsync()
+    {
+        await DeferAsync();
+        if (IsOnCooldown(Context.User.Id, "previous"))
+        {
+            await FollowupAsync(components: ComponentV2Builder.Error("Cooldown", "Please wait a moment before clicking again."), ephemeral: true);
+            return;
+        }
+        try
+        {
+            await playerService.PreviousTrackAsync(Context.Interaction);
+            Logs.Info($"Previous track requested by {Context.User.Username}");
+        }
+        catch (PlayerException pex)
+        {
+            await FollowupAsync(components: ComponentV2Builder.Error("Previous Track", pex.Message), ephemeral: true);
+        }
+        catch (Exception ex)
+        {
+            Logs.Error($"Error handling previous: {ex.Message}");
+            await FollowupAsync(components: ComponentV2Builder.Error("Playback Error", "An error occurred while going to previous track."), ephemeral: true);
         }
     }
 
@@ -322,6 +349,156 @@ public class MusicInteractionHandler(IPlayerService playerService,
         {
             Logs.Error($"Error handling kill: {ex.Message}");
             await FollowupAsync(components: ComponentV2Builder.Error("Playback Error", "An error occurred while stopping playback. Please try again later."), ephemeral: true);
+        }
+    }
+
+    /// <summary>Opens a modal for managing a queue track — select a track and choose
+    /// an action (Remove or Move to Top) via a radio group</summary>
+    [ComponentInteraction("queue_manage:*")]
+    public async Task HandleQueueManageAsync(string pageStr)
+    {
+        try
+        {
+            if (await playerService.GetPlayerAsync(Context.Interaction, false) is not CustomLavaLinkPlayer player
+                || player.Queue.Count == 0)
+            {
+                await RespondAsync(components: ComponentV2Builder.Error("No Queue", "The queue is empty."), ephemeral: true);
+                return;
+            }
+
+            int page = int.TryParse(pageStr, out int p) ? p : 1;
+            const int itemsPerPage = 10;
+            int totalTracks = player.Queue.Count;
+            int totalPages = Math.Max(1, (totalTracks + itemsPerPage - 1) / itemsPerPage);
+            page = Math.Clamp(page, 1, totalPages);
+            int startIndex = (page - 1) * itemsPerPage;
+            int endIndex = Math.Min(startIndex + itemsPerPage, totalTracks);
+
+            // Build track select menu options for current page
+            List<SelectMenuOptionBuilder> trackOptions = [];
+            for (int i = startIndex; i < endIndex; i++)
+            {
+                if (player.Queue[i] is not CustomTrackQueueItem item) continue;
+                string label = $"#{i + 1}: {item.Title}";
+                if (label.Length > 100) label = label[..97] + "...";
+                string desc = $"{item.Artist} ({item.Duration})";
+                if (desc.Length > 100) desc = desc[..97] + "...";
+                trackOptions.Add(new SelectMenuOptionBuilder(label, i.ToString(), desc));
+            }
+
+            ModalBuilder modal = new ModalBuilder()
+                .WithTitle("Manage Queue")
+                .WithCustomId($"queue_manage_modal:{page}")
+                .AddSelectMenu("Select a track", new SelectMenuBuilder()
+                    .WithCustomId("track_select")
+                    .WithPlaceholder("Pick a track...")
+                    .WithMinValues(1)
+                    .WithMaxValues(1)
+                    .WithOptions(trackOptions))
+                .AddRadioGroup("Action", "action_select",
+                [
+                    new RadioGroupOptionProperties { Label = "Remove from Queue", Value = "remove", Description = "Remove this track from the queue" },
+                    new RadioGroupOptionProperties { Label = "Move to Top", Value = "movetop", Description = "Move this track to play next" },
+                ]);
+
+            await RespondWithModalAsync(modal.Build());
+        }
+        catch (Exception ex)
+        {
+            Logs.Error($"Error opening queue manage modal: {ex.Message}");
+            try { await RespondAsync(components: ComponentV2Builder.Error("Error", "Failed to open track manager."), ephemeral: true); }
+            catch { /* interaction may be dead */ }
+        }
+    }
+
+    /// <summary>Processes the queue management modal submission — reads the selected track
+    /// and action, performs the operation, and refreshes the queue view</summary>
+    [ModalInteraction("queue_manage_modal:*")]
+    public async Task HandleQueueManageModalAsync(string pageStr)
+    {
+        await DeferAsync();
+        try
+        {
+            SocketModal modal = (SocketModal)Context.Interaction;
+            // Parse submitted values
+            string? trackIndexStr = modal.Data.Components.FirstOrDefault(c => c.CustomId == "track_select")?.Values?.FirstOrDefault();
+            string? action = modal.Data.Components.FirstOrDefault(c => c.CustomId == "action_select")?.Value;
+
+            if (trackIndexStr is null || action is null || !int.TryParse(trackIndexStr, out int trackIndex))
+            {
+                await Context.Interaction.ModifyOriginalResponseAsync(msg =>
+                {
+                    msg.Components = ComponentV2Builder.Error("Invalid Input", "Please select a track and an action.");
+                    msg.Embed = null;
+                    msg.Flags = MessageFlags.ComponentsV2;
+                });
+                return;
+            }
+
+            if (await playerService.GetPlayerAsync(Context.Interaction, false) is not CustomLavaLinkPlayer player)
+            {
+                await Context.Interaction.ModifyOriginalResponseAsync(msg =>
+                {
+                    msg.Components = ComponentV2Builder.Error("No Player", "No active player found.");
+                    msg.Embed = null;
+                    msg.Flags = MessageFlags.ComponentsV2;
+                });
+                return;
+            }
+
+            if (trackIndex < 0 || trackIndex >= player.Queue.Count)
+            {
+                await Context.Interaction.ModifyOriginalResponseAsync(msg =>
+                {
+                    msg.Components = ComponentV2Builder.Error("Invalid Track", "That track is no longer in the queue.");
+                    msg.Embed = null;
+                    msg.Flags = MessageFlags.ComponentsV2;
+                });
+                return;
+            }
+
+            int page = int.TryParse(pageStr, out int pg) ? pg : 1;
+            string trackName = (player.Queue[trackIndex] as CustomTrackQueueItem)?.Title ?? "Unknown";
+
+            switch (action)
+            {
+                case "remove":
+                    await player.Queue.RemoveAtAsync(trackIndex);
+                    Logs.Info($"Track #{trackIndex + 1} '{trackName}' removed from queue by {Context.User.Username}");
+                    break;
+                case "movetop":
+                    ITrackQueueItem item = player.Queue[trackIndex];
+                    await player.Queue.RemoveAtAsync(trackIndex);
+                    await player.Queue.InsertAsync(0, item);
+                    page = 1; // Show page 1 since the moved track is now at the top
+                    Logs.Info($"Track '{trackName}' moved to top of queue by {Context.User.Username}");
+                    break;
+                default:
+                    await Context.Interaction.ModifyOriginalResponseAsync(msg =>
+                    {
+                        msg.Components = ComponentV2Builder.Error("Unknown Action", $"Unrecognized action: {action}");
+                        msg.Embed = null;
+                        msg.Flags = MessageFlags.ComponentsV2;
+                    });
+                    return;
+            }
+
+            // Refresh queue view
+            await ShowQueueAsync(player, page);
+        }
+        catch (Exception ex)
+        {
+            Logs.Error($"Error handling queue manage modal: {ex.Message}");
+            try
+            {
+                await Context.Interaction.ModifyOriginalResponseAsync(msg =>
+                {
+                    msg.Components = ComponentV2Builder.Error("Queue Error", "Failed to manage the queue.");
+                    msg.Embed = null;
+                    msg.Flags = MessageFlags.ComponentsV2;
+                });
+            }
+            catch { /* interaction may be dead */ }
         }
     }
 
@@ -815,7 +992,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
     }
 
     /// <summary>Updates the existing ephemeral queue panel in-place with paginated track listing,
-    /// keeping the same message so users don't get spammed with new panels</summary>
+    /// select menus for remove/move-to-top actions, and RequestedBy + total duration in footer</summary>
     public async Task ShowQueueAsync(CustomLavaLinkPlayer player, int page)
     {
         try
@@ -828,9 +1005,12 @@ public class MusicInteractionHandler(IPlayerService playerService,
             int totalPages = Math.Max(1, (totalTracks + itemsPerPage - 1) / itemsPerPage);
             page = Math.Clamp(page, 1, totalPages);
 
-            string? nowPlayingLine = (page == 1 && currentTrack is not null)
-                ? $"**\u25B6\uFE0F Now Playing:** {currentTrack.Title} - {currentTrack.Artist} ({currentTrack.Duration})"
-                : null;
+            string? nowPlayingLine = null;
+            if (page == 1 && currentTrack is not null)
+            {
+                string requestedBy = !string.IsNullOrEmpty(currentTrack.RequestedBy) ? $" — {currentTrack.RequestedBy}" : "";
+                nowPlayingLine = $"**\u25B6\uFE0F Now Playing:** {currentTrack.Title} - {currentTrack.Artist} ({currentTrack.Duration}){requestedBy}";
+            }
 
             int startIndex = (page - 1) * itemsPerPage;
             int endIndex = Math.Min(startIndex + itemsPerPage, totalTracks);
@@ -839,23 +1019,39 @@ public class MusicInteractionHandler(IPlayerService playerService,
             {
                 CustomTrackQueueItem? item = queue[i];
                 if (item is not null)
-                    queueSb.AppendLine($"**#{i + 1}:** {item.Title} - {item.Artist} ({item.Duration})");
+                {
+                    string requestedBy = !string.IsNullOrEmpty(item.RequestedBy) ? $" — {item.RequestedBy}" : "";
+                    queueSb.AppendLine($"**#{i + 1}:** {item.Title} - {item.Artist} ({item.Duration}){requestedBy}");
+                }
             }
             string queueText = queueSb.ToString().TrimEnd();
 
             if (totalTracks == 0 && currentTrack is null)
                 queueText = "The queue is currently empty.";
 
-            string footerLine = $"Page {page} of {totalPages} | {totalTracks} tracks queued";
+            // Calculate total duration across all queue items
+            long totalMs = queue.Where(i => i is not null).Sum(i => i!.SourceTrack.DurationMs);
+            if (currentTrack is not null)
+                totalMs += currentTrack.SourceTrack.DurationMs;
+            TimeSpan totalDuration = TimeSpan.FromMilliseconds(totalMs);
+            string durationStr = totalDuration.TotalHours >= 1
+                ? $"{(int)totalDuration.TotalHours}h {totalDuration.Minutes:D2}m"
+                : $"{(int)totalDuration.TotalMinutes}m {totalDuration.Seconds:D2}s";
+            string footerLine = $"Page {page} of {totalPages} | {totalTracks} tracks queued | {durationStr} total";
 
             ComponentBuilder components = new();
+
+            // Action buttons row
+            if (totalTracks > 0)
+                components.WithButton("Manage Track", $"queue_manage:{page}", ButtonStyle.Primary);
             if (totalPages > 1)
             {
-                components.WithButton("Previous", $"queue_options:view:{Math.Max(1, page - 1)}",
-                                   ButtonStyle.Secondary, disabled: page <= 1);
-                components.WithButton("Next", $"queue_options:view:{Math.Min(totalPages, page + 1)}",
-                                   ButtonStyle.Secondary, disabled: page >= totalPages);
+                components.WithButton("\u25C0 Prev", $"queue_options:view:{Math.Max(1, page - 1)}",
+                    ButtonStyle.Secondary, disabled: page <= 1);
+                components.WithButton("Next \u25B6", $"queue_options:view:{Math.Min(totalPages, page + 1)}",
+                    ButtonStyle.Secondary, disabled: page >= totalPages);
             }
+            components.WithButton("Back", $"queue_options:options:{page}", ButtonStyle.Secondary);
 
             await Context.Interaction.ModifyOriginalResponseAsync(msg =>
             {

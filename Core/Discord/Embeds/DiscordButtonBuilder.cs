@@ -123,11 +123,20 @@ namespace PlexBot.Core.Discord.Embeds
                     .WithCustomId(isPaused ? "pause_resume:resume" : "pause_resume:pause")
                     .WithStyle(ButtonStyle.Secondary);
             });
+            RegisterButton("previous", ButtonFlag.VisualPlayer, 25, context =>
+            {
+                bool hasHistory = context.Player?.Queue.HasHistory == true
+                    && context.Player.Queue.History is { Count: > 0 };
+                return new ButtonBuilder()
+                    .WithEmote(new Emoji("\u23EE\uFE0F"))
+                    .WithCustomId("previous:prev")
+                    .WithStyle(ButtonStyle.Secondary)
+                    .WithDisabled(!hasHistory);
+            });
             RegisterButton("skip", ButtonFlag.VisualPlayer, 30, _ =>
             {
                 return new ButtonBuilder()
                     .WithEmote(new Emoji("\u23ED\uFE0F"))
-                    .WithLabel("Skip")
                     .WithCustomId("skip:skip")
                     .WithStyle(ButtonStyle.Secondary);
             });
