@@ -43,6 +43,10 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
                     : null,
                 DefaultVolume = defaultVolume,
                 InitialVolume = defaultVolume,
+                // Track history for "previous" button — stores last N played tracks
+                HistoryCapacity = 50,
+                HistoryBehavior = TrackHistoryBehavior.Filtered,
+                ClearHistoryOnStop = false,
             };
             // Wrap options for DI
             var optionsWrapper = Options.Create(playerOptions);
@@ -78,12 +82,12 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
         Track track,
         CancellationToken cancellationToken = default)
     {
-        await AddToQueueAsync(interaction, [track], cancellationToken);
+        await AddToQueueAsync(interaction, [track], false, cancellationToken);
     }
 
     /// <inheritdoc />
     public async Task AddToQueueAsync(IDiscordInteraction interaction, IEnumerable<Track> tracks,
-    CancellationToken cancellationToken = default)
+    bool playNext = false, CancellationToken cancellationToken = default)
     {
         QueuedLavalinkPlayer? player = await GetPlayerAsync(interaction, true, cancellationToken);
         if (player == null)
@@ -132,6 +136,10 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
             {
                 Logs.Debug($"Playing first track: {firstTrack.Title} by {firstTrack.Artist}");
                 await player.PlayAsync(firstItem, cancellationToken: cancellationToken);
+            }
+            else if (playNext)
+            {
+                await player.Queue.InsertAsync(0, firstItem, cancellationToken);
             }
             else
             {
@@ -195,16 +203,26 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
                     progress: progress,
                     cancellationToken: cancellationToken);
 
-                // Add all resolved tracks to queue in original order
-                foreach (var (index, track, resolved) in resolveResult.ResolvedTracks)
-                {
-                    CustomTrackQueueItem item = new()
+                // Build resolved queue items in original order
+                List<CustomTrackQueueItem> resolvedItems = resolveResult.ResolvedTracks
+                    .Select(r => new CustomTrackQueueItem
                     {
-                        SourceTrack = track,
+                        SourceTrack = r.Track,
                         RequestedBy = interaction.User.Username,
-                        Reference = new TrackReference(resolved)
-                    };
-                    await player.Queue.AddAsync(item, cancellationToken);
+                        Reference = new TrackReference(r.Resolved)
+                    })
+                    .ToList();
+
+                // Insert at front or append to end
+                if (playNext)
+                {
+                    // Insert after the first track we already inserted at position 0
+                    int insertIndex = shouldPlay ? 0 : 1;
+                    await player.Queue.InsertRangeAsync(insertIndex, resolvedItems, cancellationToken);
+                }
+                else
+                {
+                    await player.Queue.AddRangeAsync(resolvedItems, cancellationToken);
                 }
 
                 int totalSuccess = resolveResult.SuccessCount + 1; // +1 for the first track
@@ -231,9 +249,10 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
                 }
                 else
                 {
+                    string position = playNext ? "to the front of the queue" : "to the queue";
                     await interaction.ModifyOriginalResponseAsync(msg =>
                     {
-                        msg.Components = ComponentV2Builder.Success("Tracks Added", $"Added {totalSuccess} tracks to the queue");
+                        msg.Components = ComponentV2Builder.Success("Tracks Added", $"Added {totalSuccess} tracks {position}");
                         msg.Embed = null;
                         msg.Flags = MessageFlags.ComponentsV2;
                     });
@@ -242,9 +261,10 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
             else
             {
                 // Single track — show appropriate message
+                string queuePosition = playNext ? "Playing next" : "Added to queue";
                 string message = shouldPlay
                     ? $"Playing: {firstTrack.Title} by {firstTrack.Artist}"
-                    : $"Added to queue: {firstTrack.Title} by {firstTrack.Artist}";
+                    : $"{queuePosition}: {firstTrack.Title} by {firstTrack.Artist}";
                 await interaction.ModifyOriginalResponseAsync(msg =>
                 {
                     msg.Components = ComponentV2Builder.Success("Track Added", message);
@@ -374,6 +394,36 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
         {
             Logs.Error($"Error setting repeat mode: {ex.Message}");
             throw new PlayerException($"Failed to set repeat mode: {ex.Message}", "Repeat", ex);
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task PreviousTrackAsync(IDiscordInteraction interaction, CancellationToken cancellationToken = default)
+    {
+        QueuedLavalinkPlayer? player = await GetPlayerAsync(interaction, false, cancellationToken);
+        if (player == null)
+            throw new PlayerException("No active player found", "Previous");
+
+        if (!player.Queue.HasHistory || player.Queue.History is not { Count: > 0 } history)
+            throw new PlayerException("No track history available", "Previous");
+
+        try
+        {
+            // Get the most recent history entry and remove it so it doesn't re-appear
+            ITrackQueueItem previousItem = history[history.Count - 1];
+            await history.RemoveAtAsync(history.Count - 1, cancellationToken);
+
+            // Insert at front of queue so it plays next
+            await player.Queue.InsertAsync(0, previousItem, cancellationToken);
+
+            // Skip current track — the inserted history item will auto-play
+            await player.SkipAsync(1, cancellationToken);
+            Logs.Debug($"Previous track restored by {interaction.User.Username}");
+        }
+        catch (Exception ex) when (ex is not PlayerException)
+        {
+            Logs.Error($"Error going to previous track: {ex.Message}");
+            throw new PlayerException($"Failed to go to previous track: {ex.Message}", "Previous", ex);
         }
     }
 
