@@ -163,6 +163,37 @@ namespace PlexBot.Core.Services.PlexApi
         }
 
         /// <inheritdoc />
+        public async Task<string> PerformPutRequestAsync(string uri, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                string fullUrl = uri.StartsWith("http") ? uri : $"{_plexUrl}{uri}";
+                if (!fullUrl.Contains("X-Plex-Token="))
+                {
+                    fullUrl += (fullUrl.Contains('?') ? "&" : "?") + $"X-Plex-Token={_plexToken}";
+                }
+                Logs.Debug($"Performing Plex API PUT to: {fullUrl.Replace(_plexToken!, "[REDACTED]")}");
+                var headers = new Dictionary<string, string>
+                {
+                    ["Accept"] = "application/json"
+                };
+                string response = await _httpClient.SendRequestForStringAsync(HttpMethod.Put, fullUrl, null, headers, cancellationToken);
+                if (string.IsNullOrEmpty(response))
+                {
+                    throw new PlexApiException("Plex API PUT returned an empty response");
+                }
+                Logs.Debug($"Received Plex API PUT response ({response.Length} bytes)");
+                return response;
+            }
+            catch (PlexApiException) { throw; }
+            catch (AuthenticationException) { throw; }
+            catch (Exception ex)
+            {
+                throw new PlexApiException($"Error performing Plex API PUT request: {ex.Message}", ex);
+            }
+        }
+
+        /// <inheritdoc />
         public async Task<string> GetMachineIdentifierAsync(CancellationToken cancellationToken = default)
         {
             if (!string.IsNullOrEmpty(_machineIdentifier))

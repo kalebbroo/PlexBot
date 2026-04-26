@@ -52,4 +52,18 @@ public interface IPlexMusicService
     /// <param name="cancellationToken">Optional token to cancel the operation</param>
     /// <returns>A flat list of all tracks by the artist across all albums</returns>
     Task<List<Track>> GetAllArtistTracksAsync(string artistKey, CancellationToken cancellationToken = default);
+
+    /// <summary>Creates a new audio playlist on the Plex server with an initial set of tracks</summary>
+    /// <param name="title">Display name for the new playlist</param>
+    /// <param name="trackRatingKeys">Plex rating keys of tracks to include initially</param>
+    /// <param name="cancellationToken">Optional token to cancel the operation</param>
+    /// <returns>The created Playlist with its server-assigned ID and metadata</returns>
+    Task<Playlist> CreatePlaylistAsync(string title, IReadOnlyList<string> trackRatingKeys, CancellationToken cancellationToken = default);
+
+    /// <summary>Appends tracks to an existing Plex playlist by their rating keys</summary>
+    /// <param name="playlistId">The Plex rating key of the target playlist</param>
+    /// <param name="trackRatingKeys">Plex rating keys of tracks to add</param>
+    /// <param name="cancellationToken">Optional token to cancel the operation</param>
+    /// <returns>True if the tracks were successfully added</returns>
+    Task<bool> AddTracksToPlaylistAsync(string playlistId, IReadOnlyList<string> trackRatingKeys, CancellationToken cancellationToken = default);
 }

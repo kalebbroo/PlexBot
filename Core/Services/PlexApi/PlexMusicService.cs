@@ -389,4 +389,78 @@ public class PlexMusicService(IPlexApiService plexApiService, IMemoryCache cache
         return allTracks;
     }
 
+    /// <inheritdoc />
+    public async Task<Playlist> CreatePlaylistAsync(string title, IReadOnlyList<string> trackRatingKeys, CancellationToken cancellationToken = default)
+    {
+        Logs.Info($"Creating Plex playlist '{title}' with {trackRatingKeys.Count} tracks");
+        try
+        {
+            string machineId = await plexApiService.GetMachineIdentifierAsync(cancellationToken);
+            string ids = string.Join(",", trackRatingKeys);
+            string metadataUri = $"server://{machineId}/com.plexapp.plugins.library/library/metadata/{ids}";
+            string encodedTitle = HttpUtility.UrlEncode(title);
+            string encodedUri = HttpUtility.UrlEncode(metadataUri);
+            string uri = $"/playlists?type=audio&title={encodedTitle}&smart=0&uri={encodedUri}";
+
+            string response = await plexApiService.PerformPostRequestAsync(uri, cancellationToken);
+            JToken? mediaContainer = PlexJsonParser.ParseMediaContainer(response);
+
+            if (mediaContainer == null)
+                throw new PlexApiException("Invalid response when creating playlist");
+
+            JToken? metadata = mediaContainer["Metadata"];
+            if (metadata != null && metadata.Any())
+            {
+                Playlist playlist = PlexJsonParser.ParsePlaylist(metadata.First(), plexApiService);
+                Logs.Info($"Created Plex playlist: {playlist.Title} (ID: {playlist.Id})");
+                cache.Remove("playlists:audio");
+                return playlist;
+            }
+
+            // Fallback: some Plex versions return playlist info at MediaContainer level
+            cache.Remove("playlists:audio");
+            return new Playlist
+            {
+                Id = mediaContainer["ratingKey"]?.ToString() ?? Guid.NewGuid().ToString(),
+                Title = title,
+                TrackCount = trackRatingKeys.Count,
+                SourceSystem = "plex",
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow
+            };
+        }
+        catch (Exception ex) when (ex is not PlexApiException)
+        {
+            Logs.Error($"Error creating playlist: {ex.Message}");
+            throw new PlexApiException($"Failed to create playlist: {ex.Message}", ex);
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> AddTracksToPlaylistAsync(string playlistId, IReadOnlyList<string> trackRatingKeys, CancellationToken cancellationToken = default)
+    {
+        Logs.Info($"Adding {trackRatingKeys.Count} tracks to playlist {playlistId}");
+        try
+        {
+            string machineId = await plexApiService.GetMachineIdentifierAsync(cancellationToken);
+            string ids = string.Join(",", trackRatingKeys);
+            string metadataUri = $"server://{machineId}/com.plexapp.plugins.library/library/metadata/{ids}";
+            string encodedUri = HttpUtility.UrlEncode(metadataUri);
+            string uri = $"/playlists/{playlistId}/items?uri={encodedUri}";
+
+            await plexApiService.PerformPutRequestAsync(uri, cancellationToken);
+
+            cache.Remove($"playlist:{playlistId}");
+            cache.Remove("playlists:audio");
+
+            Logs.Info($"Successfully added {trackRatingKeys.Count} tracks to playlist {playlistId}");
+            return true;
+        }
+        catch (Exception ex) when (ex is not PlexApiException)
+        {
+            Logs.Error($"Error adding tracks to playlist: {ex.Message}");
+            throw new PlexApiException($"Failed to add tracks to playlist: {ex.Message}", ex);
+        }
+    }
+
 }
