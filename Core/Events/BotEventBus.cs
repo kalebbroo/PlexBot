@@ -62,6 +62,16 @@ public class BotEventBus
             }
         }
     }
+
+    /// <summary>Announces that a guild's player has disconnected. Fire-and-forget so the caller never waits on handlers.</summary>
+    public void PublishPlayerDestroyed(ulong guildId)
+    {
+        _ = PublishAsync(new BotEvent
+        {
+            EventType = BotEvents.PlayerDestroyed,
+            Data = new Dictionary<string, object> { ["guildId"] = guildId }
+        });
+    }
 }
 
 /// <summary>Represents a bot event with type, timestamp, and arbitrary data</summary>

@@ -160,6 +160,52 @@ public class VisualPlayer(
         }
     }
 
+    /// <summary>Called when a guild's player disconnects (Kill button or inactivity timeout). Replaces the player message so
+    /// its controls can't be clicked against a player that no longer exists. With a static channel the idle card returns
+    /// in place; otherwise the message becomes a stopped card and the next /play posts a fresh player.</summary>
+    public async Task HandlePlayerDestroyedAsync(ulong guildId)
+    {
+        StopProgressTimer(guildId);
+        SemaphoreSlim updateLock = _updateLocks.GetOrAdd(guildId, _ => new SemaphoreSlim(1, 1));
+        await updateLock.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            IUserMessage? message = stateManager.GetMessage(guildId);
+            if (message is null) return;
+
+            MessageComponent cv2;
+            if (stateManager.UseStaticChannel)
+            {
+                ComponentBuilder buttons = buttonBuilder.BuildButtons(ButtonFlag.VisualPlayer, new ButtonContext());
+                cv2 = ComponentV2Builder.BuildIdlePlayer(buttons);
+            }
+            else
+            {
+                cv2 = ComponentV2Builder.BuildStoppedPlayer();
+            }
+
+            await message.ModifyAsync(msg =>
+            {
+                msg.Components = cv2;
+                msg.Embed = null;
+                msg.Attachments = new List<FileAttachment>();
+                msg.Flags = MessageFlags.ComponentsV2;
+            }).ConfigureAwait(false);
+
+            if (!stateManager.UseStaticChannel)
+                stateManager.SetMessage(guildId, null);
+            Logs.Debug($"[guild {guildId}] Player message replaced after disconnect");
+        }
+        catch (Exception ex)
+        {
+            Logs.Warning($"[guild {guildId}] Could not update player after disconnect: {ex.Message}");
+        }
+        finally
+        {
+            updateLock.Release();
+        }
+    }
+
     /// <summary>Stops the progress timer for a guild (call when the player is killed or stopped)</summary>
     public void StopProgressTimer(ulong guildId)
     {
