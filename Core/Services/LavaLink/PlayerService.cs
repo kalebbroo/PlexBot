@@ -24,6 +24,46 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
 
     private static long CurrentGeneration(ulong guildId) => _queueGenerations.GetOrAdd(guildId, 0);
 
+    // Queue additions are applied in the order they were requested. Batches resolve in parallel, but each one
+    // waits for its turn before it touches the queue, so a later request cannot land in the middle of an earlier
+    // playlist. A batch that fails still releases its turn, so it never blocks the batches behind it.
+    private static readonly ConcurrentDictionary<ulong, OrderedTurns> _queueTurns = new();
+
+    private sealed class OrderedTurns
+    {
+        private readonly object _sync = new();
+        private readonly Dictionary<long, TaskCompletionSource> _waiting = new();
+        private long _issued;
+        private long _next;
+
+        public long Take()
+        {
+            lock (_sync) return _issued++;
+        }
+
+        public Task WaitTurn(long ticket)
+        {
+            lock (_sync)
+            {
+                if (ticket == _next) return Task.CompletedTask;
+                var waiter = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                _waiting[ticket] = waiter;
+                return waiter.Task;
+            }
+        }
+
+        public void Done(long ticket)
+        {
+            lock (_sync)
+            {
+                if (ticket != _next) return; // only the holder of the current turn may finish it
+                _next++;
+                if (_waiting.Remove(_next, out var waiter))
+                    waiter.SetResult();
+            }
+        }
+    }
+
     private static long BumpGeneration(ulong guildId) => _queueGenerations.AddOrUpdate(guildId, 1, (_, value) => value + 1);
 
     /// <inheritdoc />
@@ -140,6 +180,9 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
 
         ulong guildId = player.GuildId;
         SemaphoreSlim gate = _guildQueueLocks.GetOrAdd(guildId, _ => new SemaphoreSlim(1, 1));
+        OrderedTurns turns = _queueTurns.GetOrAdd(guildId, _ => new OrderedTurns());
+        long ticket = turns.Take();
+        bool turnHeld = false;
 
         try
         {
@@ -175,6 +218,10 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
                 RequestedBy = interaction.User.Username,
                 Reference = new TrackReference(firstResolved)
             };
+
+            // Wait for this batch's place in the request order before touching the queue
+            await turns.WaitTurn(ticket);
+            turnHeld = true;
 
             bool shouldPlay;
             long generation;
@@ -328,6 +375,14 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
         {
             Logs.Error($"[guild {guildId}] Error adding tracks to queue: {ex.Message}");
             throw new PlayerException($"Failed to add tracks to queue: {ex.Message}", "Queue", ex);
+        }
+        finally
+        {
+            // Release this batch's place in the order, even on early return or failure. If it never reached the
+            // queue step, wait for its turn first so the order stays intact.
+            if (!turnHeld)
+                await turns.WaitTurn(ticket);
+            turns.Done(ticket);
         }
     }
 

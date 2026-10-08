@@ -19,7 +19,9 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
 
     private int _setupStarted;
     private int _eventsWired;
-    private bool _modulesLoaded;
+    // Assemblies whose modules are already registered. Only failed loads are retried, so a retry never adds a
+    // module definition twice (Discord.Net keeps earlier definitions when more are added).
+    private readonly HashSet<Assembly> _loadedAssemblies = new();
     private bool _commandsRegistered;
     private bool _subscribed;
 
@@ -82,27 +84,42 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
     {
         try
         {
-            if (!_modulesLoaded)
+            Assembly entry = Assembly.GetEntryAssembly()!;
+            if (_loadedAssemblies.Add(entry))
             {
-                await interactions.AddModulesAsync(Assembly.GetEntryAssembly(), services);
-
-                ExtensionManager extensionManager = services.GetRequiredService<ExtensionManager>();
-                foreach (Extension ext in extensionManager.GetAllExtensions())
+                try
                 {
-                    if (ext.SourceAssembly != null && ext.SourceAssembly != Assembly.GetEntryAssembly())
-                    {
-                        await interactions.AddModulesAsync(ext.SourceAssembly, services);
-                        Logs.Info($"Registered commands from extension: {ext.Name}");
-                    }
+                    await interactions.AddModulesAsync(entry, services);
                 }
-
-                foreach (ModuleInfo module in interactions.Modules)
+                catch
                 {
-                    Logs.Info($"Module: {module.Name}, Commands: {module.SlashCommands.Count}");
-                    foreach (SlashCommandInfo cmd in module.SlashCommands)
-                        Logs.Info($"  Command: {cmd.Name}");
+                    _loadedAssemblies.Remove(entry);
+                    throw;
                 }
-                _modulesLoaded = true;
+            }
+
+            ExtensionManager extensionManager = services.GetRequiredService<ExtensionManager>();
+            foreach (Extension ext in extensionManager.GetAllExtensions())
+            {
+                if (ext.SourceAssembly == null || ext.SourceAssembly == entry || !_loadedAssemblies.Add(ext.SourceAssembly))
+                    continue;
+                try
+                {
+                    await interactions.AddModulesAsync(ext.SourceAssembly, services);
+                    Logs.Info($"Registered commands from extension: {ext.Name}");
+                }
+                catch
+                {
+                    _loadedAssemblies.Remove(ext.SourceAssembly);
+                    throw;
+                }
+            }
+
+            foreach (ModuleInfo module in interactions.Modules)
+            {
+                Logs.Info($"Module: {module.Name}, Commands: {module.SlashCommands.Count}");
+                foreach (SlashCommandInfo cmd in module.SlashCommands)
+                    Logs.Info($"  Command: {cmd.Name}");
             }
 
             if (!_commandsRegistered)
