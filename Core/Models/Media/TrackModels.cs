@@ -46,6 +46,9 @@ public class Track
     /// <summary>Original source system that provided this track data (e.g., "plex", "spotify", "youtube")</summary>
     public string SourceSystem { get; set; } = "plex";
 
+    /// <summary>True when the track streams from a Plex server, so its loads go through the shared Plex gate and retries</summary>
+    public bool IsPlex => SourceSystem.Equals("plex", StringComparison.OrdinalIgnoreCase);
+
     /// <summary>Creates a human-readable representation of the track primarily for debugging and logging</summary>
     /// <returns>A string containing the track title, artist and duration</returns>
     public override string ToString()

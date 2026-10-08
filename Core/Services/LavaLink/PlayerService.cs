@@ -22,7 +22,7 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
     // remaining tracks, or the queue the user just cleared or replaced would come back.
     private static readonly ConcurrentDictionary<ulong, long> _queueGenerations = new();
 
-    internal static long CurrentGeneration(ulong guildId) => _queueGenerations.GetOrAdd(guildId, 0);
+    public static long CurrentGeneration(ulong guildId) => _queueGenerations.GetOrAdd(guildId, 0);
 
     // Queue additions are applied in the order they were requested. Batches resolve in parallel, but each one
     // waits for its turn before it touches the queue, so a later request cannot land in the middle of an earlier
@@ -203,14 +203,14 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
 
             // === STEP 1: Resolve and play the first track immediately ===
             Track firstTrack = trackList[0];
-            LavalinkTrack? firstResolved = await trackResolver.ResolveTrackAsync(firstTrack, cancellationToken);
+            TrackResolution firstResolution = await trackResolver.ResolveTrackAsync(firstTrack, cancellationToken);
 
-            if (firstResolved == null)
+            if (firstResolution.Track is not LavalinkTrack firstResolved)
             {
-                Logs.Error($"[guild {guildId}] Failed to load track: {firstTrack.Title}");
+                Logs.Error($"[guild {guildId}] Failed to load track ({firstResolution.Outcome}): {PlexUrlHelper.Describe(firstTrack)}");
                 await interaction.ModifyOriginalResponseAsync(msg =>
                 {
-                    msg.Components = ComponentV2Builder.Error("Load Failed", $"Failed to load: {firstTrack.Title}");
+                    msg.Components = ComponentV2Builder.Error("Load Failed", $"Couldn't play **{firstTrack.Title}**: {firstResolution.FailureReason}");
                     msg.Embed = null;
                     msg.Flags = MessageFlags.ComponentsV2;
                 });
@@ -418,9 +418,8 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
             {
                 throw new PlayerException("No track is currently playing", "Skip");
             }
-            // Load the next track first if it's still a placeholder, so the skip lands on a checked track
-            await queueResolver.EnsureHeadResolvedAsync(player, TimeSpan.FromSeconds(10), cancellationToken);
-            // Skip the current track — the player UI updates automatically via NotifyTrackStartedAsync
+            // Skip the current track. CustomLavaLinkPlayer resolves the next item first if it is still a placeholder;
+            // the player UI updates automatically via NotifyTrackStartedAsync.
             await player.SkipAsync(1, cancellationToken);
             Logs.Debug($"Track skipped by {interaction.User.Username}");
         }

@@ -56,44 +56,51 @@ public sealed class CustomLavaLinkPlayer(IPlayerProperties<CustomLavaLinkPlayer,
         }
     }
 
+    /// <summary>Times a Plex track is played again after its stream fails to open, before it is skipped</summary>
+    public const int MaxPlayRetries = 1;
+
     /// <inheritdoc />
     protected override async ValueTask NotifyTrackExceptionAsync(ITrackQueueItem track, TrackException exception, CancellationToken cancellationToken = default)
     {
         await base.NotifyTrackExceptionAsync(track, exception, cancellationToken).ConfigureAwait(false);
-        string where = track is CustomTrackQueueItem item ? $"{item.Title} ({TrackResolverService.PartId(item.SourceTrack)})" : track.Track?.Title ?? "Unknown Track";
+        string where = track is CustomTrackQueueItem item ? PlexUrlHelper.Describe(item.SourceTrack) : track.Track?.Title ?? "Unknown Track";
         Logs.Warning($"[guild {GuildId}] Playback failed: {where}: {exception.Severity}: {exception.Message} ({exception.Cause})");
     }
 
     /// <inheritdoc />
+    /// <remarks>Lavalink4NET calls this from the node's receive loop, which every guild shares, so nothing here may
+    /// wait on Plex. Work that has to wait (a replay after a failed stream, or resolving the next placeholder) is
+    /// handed to a background task.</remarks>
     protected override async ValueTask NotifyTrackEndedAsync(ITrackQueueItem queueItem, TrackEndReason endReason, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         ArgumentNullException.ThrowIfNull(queueItem);
 
         string trackTitle = (queueItem as CustomTrackQueueItem)?.Title ?? queueItem.Track?.Title ?? "Unknown Track";
+        CustomTrackQueueItem? endedItem = queueItem as CustomTrackQueueItem;
 
         // A Plex stream that fails to open at play time is usually the same dropped response seen at load time.
-        // Retry it once after the backoff, rather than skipping straight to the next track.
-        if (endReason == TrackEndReason.LoadFailed && queueItem is CustomTrackQueueItem failed
-            && failed.SourceTrack.SourceSystem.Equals("plex", StringComparison.OrdinalIgnoreCase))
+        // Retry it after the backoff, rather than skipping straight to the next track.
+        if (endReason == TrackEndReason.LoadFailed && endedItem is not null && endedItem.SourceTrack.IsPlex)
         {
-            if (failed.PlayRetries < 1)
+            if (endedItem.PlayRetries < MaxPlayRetries)
             {
                 // The track hasn't really ended: it's about to be played again, so neither the base class (which
                 // would move to the next item) nor the TrackEnded event for extensions runs here
-                failed.PlayRetries++;
-                ScheduleReplay(failed);
+                endedItem.PlayRetries++;
+                ScheduleReplay(endedItem);
                 return;
             }
             _ = NotifyChannelAsync("Track Skipped", $"Skipped **{trackTitle}**: Plex didn't return the file.");
         }
+        if (endReason == TrackEndReason.Finished && endedItem is not null)
+            endedItem.PlayRetries = 0;
 
-        // The base class moves to the next item. If that is a placeholder still loading, give it a few seconds so the
-        // player gets a checked track; after that, Lavalink loads the URL itself (with the play-time retry above).
-        if (endReason.MayStartNext() && AutoPlay)
-            await serviceProvider.GetRequiredService<QueueResolveService>().EnsureHeadResolvedBrieflyAsync(this).ConfigureAwait(false);
-
-        await base.NotifyTrackEndedAsync(queueItem, endReason, cancellationToken).ConfigureAwait(false);
+        // The base class plays the next item. If that is a placeholder, it is resolved first, off this thread.
+        if (endReason.MayStartNext() && AutoPlay && NextItemNeedsResolve())
+            AdvanceWhenResolved(queueItem, endReason);
+        else
+            await base.NotifyTrackEndedAsync(queueItem, endReason, cancellationToken).ConfigureAwait(false);
         Logs.Debug($"Track ended: {trackTitle}, Reason: {endReason}");
 
         // Publish track ended event for extensions
@@ -117,44 +124,80 @@ public sealed class CustomLavaLinkPlayer(IPlayerProperties<CustomLavaLinkPlayer,
         }
     }
 
-    /// <summary>Plays a failed item again after the Plex backoff. Runs off the event path so other player events
-    /// aren't held up. Dropped if the queue was cleared, stopped, or replaced meanwhile.</summary>
-    private void ScheduleReplay(CustomTrackQueueItem item)
+    /// <inheritdoc />
+    /// <remarks>Resolves the item the skip lands on first, so Lavalink never loads a placeholder's URL itself,
+    /// outside the Plex gate and its retries. Items that fail for good are removed while waiting.</remarks>
+    public override async ValueTask SkipAsync(int count = 1, CancellationToken cancellationToken = default)
     {
-        PlexStreamGate gate = serviceProvider.GetRequiredService<PlexStreamGate>();
+        ITrackQueueItem? skipping = CurrentItem;
+        await serviceProvider.GetRequiredService<QueueResolveService>()
+            .EnsureResolvedAtAsync(this, Math.Max(0, count - 1), cancellationToken).ConfigureAwait(false);
+
+        // The track may have ended on its own while the next one loaded, and the player already moved on
+        if (!ReferenceEquals(CurrentItem, skipping))
+        {
+            Logs.Debug($"[guild {GuildId}] Skip dropped: the player moved to the next track while it loaded");
+            return;
+        }
+        await base.SkipAsync(count, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>True when the base class would play a queued placeholder next. With track repeat, the ended item
+    /// plays again, so nothing needs resolving.</summary>
+    public bool NextItemNeedsResolve() =>
+        RepeatMode != TrackRepeatMode.Track
+        && Queue.TryPeek(out ITrackQueueItem? next)
+        && next is CustomTrackQueueItem item
+        && !item.IsResolved;
+
+    /// <summary>Resolves the next item in the background, then lets the base class move to it. Dropped if the user
+    /// starts something else, or stops, clears or replaces the queue, while it loads.</summary>
+    public void AdvanceWhenResolved(ITrackQueueItem endedItem, TrackEndReason endReason)
+    {
+        QueueResolveService queueResolver = serviceProvider.GetRequiredService<QueueResolveService>();
+        CancellationToken stopped = queueResolver.GetWorker(GuildId).Token;
+        long generation = PlayerService.CurrentGeneration(GuildId);
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await queueResolver.EnsureResolvedAtAsync(this).ConfigureAwait(false);
+                if (stopped.IsCancellationRequested || State != PlayerState.NotPlaying || PlayerService.CurrentGeneration(GuildId) != generation)
+                {
+                    Logs.Debug($"[guild {GuildId}] Moving to the next track dropped: the player or queue changed while it loaded");
+                    return;
+                }
+                await base.NotifyTrackEndedAsync(endedItem, endReason).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                Logs.Error($"[guild {GuildId}] Could not move to the next track: {ex.Message}");
+            }
+        });
+    }
+
+    /// <summary>Plays a failed item again after the Plex backoff. Runs off the event path so other player events
+    /// aren't held up. Dropped if the user skipped or started something else, or stopped, cleared or replaced the
+    /// queue, meanwhile.</summary>
+    public void ScheduleReplay(CustomTrackQueueItem item)
+    {
         TimeSpan delay = serviceProvider.GetRequiredService<PlexLoadRetryPolicy>().DelayBefore(1);
         long generation = PlayerService.CurrentGeneration(GuildId);
-        gate.Cooldown(delay);
-        Logs.Warning($"[guild {GuildId}] Retrying playback in {delay.TotalSeconds:N0}s: {item.Title} ({TrackResolverService.PartId(item.SourceTrack)})");
+        serviceProvider.GetRequiredService<PlexStreamGate>().Cooldown(delay);
+        Logs.Warning($"[guild {GuildId}] Retrying playback in {delay.TotalSeconds:N0}s: {PlexUrlHelper.Describe(item.SourceTrack)}");
 
         _ = Task.Run(async () =>
         {
             try
             {
                 await Task.Delay(delay).ConfigureAwait(false);
-                if (State == PlayerState.Destroyed || PlayerService.CurrentGeneration(GuildId) != generation)
+                if (State != PlayerState.NotPlaying || PlayerService.CurrentGeneration(GuildId) != generation)
                 {
-                    Logs.Debug($"[guild {GuildId}] Playback retry dropped: the queue changed");
+                    Logs.Debug($"[guild {GuildId}] Playback retry dropped: the player or queue changed");
                     return;
                 }
-                // A placeholder that Lavalink failed to load directly goes through the resolver's retries instead
-                if (!item.IsResolved)
-                {
-                    LavalinkTrack? resolved = await serviceProvider.GetRequiredService<ITrackResolverService>()
-                        .ResolveTrackAsync(item.SourceTrack).ConfigureAwait(false);
-                    if (resolved is null)
-                    {
-                        _ = NotifyChannelAsync("Track Skipped", $"Skipped **{item.Title}**: Plex didn't return the file.");
-                        if (State == PlayerState.NotPlaying && PlayerService.CurrentGeneration(GuildId) == generation)
-                            await SkipAsync().ConfigureAwait(false);
-                        return;
-                    }
-                    item.Reference = new TrackReference(resolved);
-                }
-                if (State == PlayerState.NotPlaying)
-                    await PlayAsync(item, enqueue: false).ConfigureAwait(false);
-                else
-                    await Queue.InsertAsync(0, item).ConfigureAwait(false); // something else started meanwhile
+                await PlayAsync(item, enqueue: false).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -164,7 +207,7 @@ public sealed class CustomLavaLinkPlayer(IPlayerProperties<CustomLavaLinkPlayer,
     }
 
     /// <summary>Posts a short notice in the player's channel, deleted after 30 seconds</summary>
-    internal async Task NotifyChannelAsync(string title, string description)
+    public async Task NotifyChannelAsync(string title, string description)
     {
         try
         {
@@ -201,6 +244,7 @@ public sealed class CustomLavaLinkPlayer(IPlayerProperties<CustomLavaLinkPlayer,
 
         try
         {
+            serviceProvider.GetRequiredService<QueueResolveService>().Stop(GuildId);
             await StopAsync(cancellationToken).ConfigureAwait(false);
             await DisconnectAsync(cancellationToken).ConfigureAwait(false);
         }

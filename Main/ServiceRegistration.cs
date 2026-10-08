@@ -148,8 +148,10 @@ namespace PlexBot.Main
                 options.DefaultRepeatMode = TrackRepeatMode.None;
             });
             // Add player services
-            services.AddSingleton(_ => PlexStreamGate.FromConfig());
-            services.AddSingleton(_ => PlexLoadRetryPolicy.FromConfig());
+            services.AddSingleton(_ => PlexStreamOptions.FromConfig());
+            services.AddSingleton(TimeProvider.System);
+            services.AddSingleton(sp => new PlexStreamGate(sp.GetRequiredService<PlexStreamOptions>().MaxConcurrentLoads, sp.GetRequiredService<TimeProvider>()));
+            services.AddSingleton(sp => new PlexLoadRetryPolicy(sp.GetRequiredService<PlexStreamOptions>().RetryDelays));
             services.AddSingleton<ITrackResolverService, TrackResolverService>();
             services.AddSingleton<QueueResolveService>();
             services.AddSingleton<ITrackPrefetchService, TrackPrefetchService>();
