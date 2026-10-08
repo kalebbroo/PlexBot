@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using PlexBot.Core.Discord.Embeds;
+using PlexBot.Core.Discord.Messages;
 using PlexBot.Core.Events;
 using PlexBot.Core.Exceptions;
 using PlexBot.Core.Models.Media;
@@ -153,7 +154,7 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
     {
         (QueuedLavalinkPlayer? player, string? failure) = await TryGetPlayerAsync(interaction, false, cancellationToken);
         if (player == null)
-            throw new PlayerException($"No player for clear: {failure}", "Queue", failure ?? "No active player found.");
+            throw new PlayerException($"No player for clear: {failure}", "Queue", failure ?? Notices.NoPlayer.Body);
         SemaphoreSlim gate = _guildQueueLocks.GetOrAdd(player.GuildId, _ => new SemaphoreSlim(1, 1));
         await gate.WaitAsync(cancellationToken);
         try
@@ -368,7 +369,7 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
     {
         (QueuedLavalinkPlayer? player, string? failure) = await TryGetPlayerAsync(interaction, false, cancellationToken);
         if (player == null)
-            throw new PlayerException($"No player for pause: {failure}", "Pause", failure ?? "No active player found.");
+            throw new PlayerException($"No player for pause: {failure}", "Pause", failure ?? Notices.NoPlayer.Body);
         try
         {
             string result;
@@ -412,7 +413,7 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
     {
         (QueuedLavalinkPlayer? player, string? failure) = await TryGetPlayerAsync(interaction, false, cancellationToken);
         if (player == null)
-            throw new PlayerException($"No player for skip: {failure}", "Skip", failure ?? "No active player found.");
+            throw new PlayerException($"No player for skip: {failure}", "Skip", failure ?? Notices.NoPlayer.Body);
         try
         {
             if (player.State != PlayerState.Playing && player.State != PlayerState.Paused)
@@ -437,7 +438,7 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
     {
         (QueuedLavalinkPlayer? player, string? failure) = await TryGetPlayerAsync(interaction, false, cancellationToken);
         if (player == null)
-            throw new PlayerException($"No player for repeat: {failure}", "Repeat", failure ?? "No active player found.");
+            throw new PlayerException($"No player for repeat: {failure}", "Repeat", failure ?? Notices.NoPlayer.Body);
         try
         {
             player.RepeatMode = repeatMode;
@@ -466,7 +467,7 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
     {
         (QueuedLavalinkPlayer? player, string? failure) = await TryGetPlayerAsync(interaction, false, cancellationToken);
         if (player == null)
-            throw new PlayerException($"No player for stop: {failure}", "Stop", failure ?? "No active player found.");
+            throw new PlayerException($"No player for stop: {failure}", "Stop", failure ?? Notices.NoPlayer.Body);
         SemaphoreSlim gate = _guildQueueLocks.GetOrAdd(player.GuildId, _ => new SemaphoreSlim(1, 1));
         try
         {
