@@ -1,4 +1,4 @@
-﻿namespace PlexBot.Core.Exceptions;
+namespace PlexBot.Core.Exceptions;
 
 /// <summary>Exception thrown when audio playback operations fail.
 /// Use this for connection issues, format problems, or any music player failures.</summary>
@@ -32,6 +32,18 @@ public class PlayerException : PlexBotException
     /// <param name="operation">The operation that failed (Connect, Play, Pause, etc.)</param>
     public PlayerException(string message, string operation)
         : base(message, GetUserFriendlyMessage(operation))
+    {
+        Operation = operation;
+        RequiresLogin = false;
+    }
+
+    /// <summary>Operation-specific constructor with an explicit user-facing message, for failures
+    /// whose cause (not voice channel, player gone) should be shown to the user as-is.</summary>
+    /// <param name="message">The technical error message for logs</param>
+    /// <param name="operation">The operation that failed</param>
+    /// <param name="userMessage">The message shown to the user</param>
+    public PlayerException(string message, string operation, string userMessage)
+        : base(message, userMessage)
     {
         Operation = operation;
         RequiresLogin = false;

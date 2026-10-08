@@ -77,18 +77,18 @@ echo ""
 cd "$DOCKER_DIR"
 
 # Stop existing containers gracefully (preserve volumes/data)
-$COMPOSE -p plexbot down --remove-orphans 2>/dev/null || true
+$COMPOSE --env-file "$ROOT_DIR/.env" -p plexbot down --remove-orphans 2>/dev/null || true
 
 # Build and start containers
-$COMPOSE -p plexbot up -d --build
+$COMPOSE --env-file "$ROOT_DIR/.env" -p plexbot up -d --build
 
 echo ""
 echo "PlexBot installation completed successfully!"
 echo "The bot should now be running in the background."
 echo ""
 echo "Useful commands:"
-echo "  View logs:       cd \"$DOCKER_DIR\" && $COMPOSE -p plexbot logs -f"
-echo "  Stop bot:        cd \"$DOCKER_DIR\" && $COMPOSE -p plexbot down"
-echo "  Restart bot:     cd \"$DOCKER_DIR\" && $COMPOSE -p plexbot restart"
-echo "  Rebuild & start: cd \"$DOCKER_DIR\" && $COMPOSE -p plexbot up -d --build"
+echo "  View logs:       cd \"$DOCKER_DIR\" && $COMPOSE --env-file "$ROOT_DIR/.env" -p plexbot logs -f"
+echo "  Stop bot:        cd \"$DOCKER_DIR\" && $COMPOSE --env-file "$ROOT_DIR/.env" -p plexbot down"
+echo "  Restart bot:     cd \"$DOCKER_DIR\" && $COMPOSE --env-file "$ROOT_DIR/.env" -p plexbot restart"
+echo "  Rebuild & start: cd \"$DOCKER_DIR\" && $COMPOSE --env-file "$ROOT_DIR/.env" -p plexbot up -d --build"
 echo ""

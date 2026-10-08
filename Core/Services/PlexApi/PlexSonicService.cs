@@ -296,6 +296,31 @@ public class PlexSonicService(IPlexApiService plexApiService, IMemoryCache cache
         }
     }
 
+    /// <summary>Returns the track's own genre tags, or the album's or artist's when the track has none</summary>
+    private async Task<JToken?> ResolveGenreTagsAsync(JToken metadata, CancellationToken cancellationToken)
+    {
+        if (metadata["Genre"] is JArray { Count: > 0 } own)
+            return own;
+
+        foreach (string parentKeyName in new[] { "parentKey", "grandparentKey" })
+        {
+            string key = metadata[parentKeyName]?.ToString() ?? "";
+            if (string.IsNullOrEmpty(key)) continue;
+            try
+            {
+                string response = await plexApiService.PerformRequestAsync(key, cancellationToken);
+                JToken? parent = PlexJsonParser.ParseMediaContainer(response)?["Metadata"]?.First;
+                if (parent?["Genre"] is JArray { Count: > 0 } inherited)
+                    return inherited;
+            }
+            catch (PlexApiException ex)
+            {
+                Logs.Debug($"Genre lookup via {parentKeyName} failed: {ex.Message}");
+            }
+        }
+        return null;
+    }
+
     /// <summary>Builds a radio-style track list by finding the seed track's genres,
     /// then pulling a randomized mix of tracks from those genres. No dedicated
     /// PMS radio endpoint exists — this mimics Plexamp's radio behavior using
@@ -312,11 +337,13 @@ public class PlexSonicService(IPlexApiService plexApiService, IMemoryCache cache
 
             if (metadata is null)
             {
-                Logs.Warning($"Could not fetch metadata for track {ratingKey}");
-                return [];
+                // An error, not an empty result: the caller shows "no sonic data" for an empty list
+                throw new PlexApiException($"Could not fetch metadata for seed track {ratingKey}");
             }
 
-            JToken? genreTags = metadata["Genre"];
+            // Plex often stores genres on the album or artist, not the track. Without this, radio returns nothing
+            // for many tracks that similar tracks handles (similar tracks falls back to same-artist tracks).
+            JToken? genreTags = await ResolveGenreTagsAsync(metadata, cancellationToken);
             JToken? moodTags = metadata["Mood"];
             string sectionId = await GetMusicSectionIdAsync(cancellationToken);
             List<Track> radioTracks = [];
@@ -365,6 +392,23 @@ public class PlexSonicService(IPlexApiService plexApiService, IMemoryCache cache
                         radioTracks.Add(track);
                     }
                     if (radioTracks.Count >= limit) break;
+                }
+            }
+
+            // Last resort: same-artist tracks, the same fallback similar tracks uses
+            if (radioTracks.Count < limit)
+            {
+                string artistKey = metadata["grandparentKey"]?.ToString() ?? "";
+                if (!string.IsNullOrEmpty(artistKey))
+                {
+                    string artistResponse = await plexApiService.PerformRequestAsync($"{artistKey}/allLeaves", cancellationToken);
+                    foreach (Track track in ParseTracksFromResponse(artistResponse))
+                    {
+                        if (seenKeys.Contains(track.Id)) continue;
+                        seenKeys.Add(track.Id);
+                        radioTracks.Add(track);
+                        if (radioTracks.Count >= limit) break;
+                    }
                 }
             }
 

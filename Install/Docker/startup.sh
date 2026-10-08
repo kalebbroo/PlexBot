@@ -74,19 +74,19 @@ if need_rebuild; then
     echo "Rebuild complete."
 fi
 
-# Copy config.fds into the app directory (after rebuild so publish doesn't delete it)
-if [ ! -f "$APP_DIR/config.fds" ]; then
-    if [ -f "$SOURCE_DIR/config.fds" ]; then
-        # User has a custom config in the project root — use it
-        echo "Found user config.fds — copying to app directory..."
-        cp "$SOURCE_DIR/config.fds" "$APP_DIR/config.fds"
-    elif [ -f "$SOURCE_DIR/RenameMe.config.fds" ]; then
-        # No user config — create from template with defaults
-        echo "No config.fds found — creating from template with defaults..."
-        cp "$SOURCE_DIR/RenameMe.config.fds" "$APP_DIR/config.fds"
-    else
-        echo "Warning: No config.fds found. Bot will use built-in defaults."
-    fi
+# Copy config.fds into the app directory (after rebuild so publish doesn't delete it).
+# The user's config.fds is copied on every start, so edits take effect on a container restart.
+# Previously this only copied when the file was missing, so a restart kept a stale config.
+if [ -f "$SOURCE_DIR/config.fds" ]; then
+    # User has a custom config in the project root — use it
+    echo "Found user config.fds — copying to app directory..."
+    cp "$SOURCE_DIR/config.fds" "$APP_DIR/config.fds"
+elif [ ! -f "$APP_DIR/config.fds" ] && [ -f "$SOURCE_DIR/RenameMe.config.fds" ]; then
+    # No user config — create from template with defaults
+    echo "No config.fds found — creating from template with defaults..."
+    cp "$SOURCE_DIR/RenameMe.config.fds" "$APP_DIR/config.fds"
+elif [ ! -f "$APP_DIR/config.fds" ]; then
+    echo "Warning: No config.fds found. Bot will use built-in defaults."
 fi
 
 # Start the application (exec replaces shell for proper signal handling)

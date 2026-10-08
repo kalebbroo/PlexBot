@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using PlexBot.Core.Discord.Embeds;
 using PlexBot.Core.Exceptions;
 using PlexBot.Core.Models.Media;
@@ -13,59 +14,66 @@ namespace PlexBot.Core.Services.LavaLink;
 public class PlayerService(VisualPlayerStateManager stateManager, IAudioService audioService, VisualPlayer visualPlayer, IServiceProvider serviceProvider, DiscordButtonBuilder buttonBuilder, ITrackResolverService trackResolver)
     : IPlayerService
 {
+    // Serializes queue mutations per guild. Without this, two concurrent adds can both see "not playing"
+    // and both call PlayAsync, and a replace can interleave with an add.
+    private static readonly ConcurrentDictionary<ulong, SemaphoreSlim> _guildQueueLocks = new();
+
     /// <inheritdoc />
     public async Task<QueuedLavalinkPlayer?> GetPlayerAsync(IDiscordInteraction interaction, bool connectToVoiceChannel = true,
         CancellationToken cancellationToken = default)
     {
-        // Check if the user is in a voice channel
+        (QueuedLavalinkPlayer? player, _) = await TryGetPlayerAsync(interaction, connectToVoiceChannel, cancellationToken);
+        return player;
+    }
+
+    /// <summary>Retrieves the guild's player and returns the reason it could not be retrieved, if it could not.
+    /// Does not send any Discord response: callers decide how to report the failure, once.</summary>
+    private async Task<(QueuedLavalinkPlayer? Player, string? Failure)> TryGetPlayerAsync(IDiscordInteraction interaction,
+        bool connectToVoiceChannel, CancellationToken cancellationToken)
+    {
         if (interaction.User is not IGuildUser user || user.VoiceChannel == null)
         {
-            await interaction.FollowupAsync("You must be in a voice channel to use the music player.", ephemeral: true);
-            return null;
+            Logs.Warning($"Player lookup: user {interaction.User?.Id} has no voice channel in the gateway cache");
+            return (null, "You must be in a voice channel to use the music player.");
         }
         try
         {
-            // Get guild and channel information
             ulong guildId = user.Guild.Id;
             ulong voiceChannelId = user.VoiceChannel.Id;
-            // Determine channel behavior based on connectToVoiceChannel parameter
             PlayerChannelBehavior channelBehavior = connectToVoiceChannel ? PlayerChannelBehavior.Join : PlayerChannelBehavior.None;
             PlayerRetrieveOptions retrieveOptions = new(channelBehavior);
             float defaultVolume = 0.2f;
-            // Create player options
             CustomPlayerOptions playerOptions = new()
             {
                 DisconnectOnStop = false,
                 SelfDeaf = true,
-                // Get text channel based on interaction type
                 TextChannel = interaction is SocketInteraction socketInteraction
                     ? socketInteraction.Channel as ITextChannel
                     : null,
                 DefaultVolume = defaultVolume,
                 InitialVolume = defaultVolume,
             };
-            // Wrap options for DI
             var optionsWrapper = Options.Create(playerOptions);
-            // Retrieve or create the player
             PlayerResult<CustomLavaLinkPlayer> result = await audioService.Players
-            .RetrieveAsync<CustomLavaLinkPlayer, CustomPlayerOptions>(guildId, voiceChannelId,
-                (properties, token) => ValueTask.FromResult(new CustomLavaLinkPlayer(properties, serviceProvider)),
-                optionsWrapper, retrieveOptions, cancellationToken).ConfigureAwait(false);
-            // Handle retrieval failures
+                .RetrieveAsync<CustomLavaLinkPlayer, CustomPlayerOptions>(guildId, voiceChannelId,
+                    (properties, token) => ValueTask.FromResult(new CustomLavaLinkPlayer(properties, serviceProvider)),
+                    optionsWrapper, retrieveOptions, cancellationToken).ConfigureAwait(false);
+
             if (!result.IsSuccess)
             {
-                string errorMessage = result.Status switch
+                // Log the real status: the user-facing text below is deliberately coarse
+                Logs.Warning($"Player lookup failed: status={result.Status}, guild={guildId}, userVoice={voiceChannelId}, connect={connectToVoiceChannel}");
+                string friendly = result.Status switch
                 {
                     PlayerRetrieveStatus.UserNotInVoiceChannel => "You are not connected to a voice channel.",
-                    PlayerRetrieveStatus.BotNotConnected => "The bot is currently not connected to a voice channel.",
-                    _ => "An unknown error occurred while trying to retrieve the player."
+                    PlayerRetrieveStatus.BotNotConnected => "No active player. Start playback with /play first.",
+                    _ => $"The player is unavailable right now ({result.Status}). Please try again."
                 };
-                await interaction.FollowupAsync(errorMessage, ephemeral: true);
-                return null;
+                return (null, friendly);
             }
-            return result.Player;
+            return (result.Player, null);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             Logs.Error($"Error getting player: {ex.Message}");
             throw new PlayerException($"Failed to get player: {ex.Message}", "Connect", ex);
@@ -82,24 +90,57 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
     }
 
     /// <inheritdoc />
-    public async Task AddToQueueAsync(IDiscordInteraction interaction, IEnumerable<Track> tracks,
-    CancellationToken cancellationToken = default)
+    public Task AddToQueueAsync(IDiscordInteraction interaction, IEnumerable<Track> tracks,
+        CancellationToken cancellationToken = default)
+        => AddTracksAsync(interaction, tracks, replaceQueue: false, cancellationToken);
+
+    /// <inheritdoc />
+    public Task ReplaceQueueAsync(IDiscordInteraction interaction, IEnumerable<Track> tracks,
+        CancellationToken cancellationToken = default)
+        => AddTracksAsync(interaction, tracks, replaceQueue: true, cancellationToken);
+
+    /// <inheritdoc />
+    public async Task<int> ClearQueueAsync(IDiscordInteraction interaction, CancellationToken cancellationToken = default)
     {
-        QueuedLavalinkPlayer? player = await GetPlayerAsync(interaction, true, cancellationToken);
+        (QueuedLavalinkPlayer? player, string? failure) = await TryGetPlayerAsync(interaction, false, cancellationToken);
         if (player == null)
+            throw new PlayerException($"No player for clear: {failure}", "Queue", failure ?? "No active player found.");
+        SemaphoreSlim gate = _guildQueueLocks.GetOrAdd(player.GuildId, _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(cancellationToken);
+        try
         {
-            Logs.Warning("Failed to get player for queueing");
-            return;
+            int removed = player.Queue.Count;
+            await player.Queue.ClearAsync(cancellationToken);
+            return removed;
         }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    /// <summary>Resolves the first track, then starts or queues it under the guild lock. The rest are resolved
+    /// outside the lock and appended in order. The existing queue is cleared only after the first track has
+    /// resolved, so a failed resolve leaves the queue intact.</summary>
+    private async Task AddTracksAsync(IDiscordInteraction interaction, IEnumerable<Track> tracks, bool replaceQueue,
+        CancellationToken cancellationToken)
+    {
+        (QueuedLavalinkPlayer? player, string? failure) = await TryGetPlayerAsync(interaction, true, cancellationToken);
+        if (player == null)
+            throw new PlayerException($"Queue add failed: {failure}", "Connect", failure ?? "The player is unavailable right now.");
+
+        ulong guildId = player.GuildId;
+        SemaphoreSlim gate = _guildQueueLocks.GetOrAdd(guildId, _ => new SemaphoreSlim(1, 1));
+
         try
         {
             IUserMessage response = await interaction.GetOriginalResponseAsync();
-            ITextChannel? channel = response.Channel as ITextChannel;
-            stateManager.CurrentPlayerChannel = channel ?? throw new InvalidOperationException("CurrentPlayerChannel is not set");
+            if (response.Channel is ITextChannel channel)
+                stateManager.SetChannel(guildId, channel);
 
             List<Track> trackList = tracks.ToList();
             int totalCount = trackList.Count;
-            Logs.Debug($"Adding {totalCount} tracks to queue");
+            Logs.Debug($"[guild {guildId}] Adding {totalCount} tracks to queue (replace={replaceQueue})");
 
             if (totalCount == 0) return;
 
@@ -109,7 +150,7 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
 
             if (firstResolved == null)
             {
-                Logs.Error($"Failed to load track: {firstTrack.Title}");
+                Logs.Error($"[guild {guildId}] Failed to load track: {firstTrack.Title}");
                 await interaction.ModifyOriginalResponseAsync(msg =>
                 {
                     msg.Components = ComponentV2Builder.Error("Load Failed", $"Failed to load: {firstTrack.Title}");
@@ -126,16 +167,23 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
                 Reference = new TrackReference(firstResolved)
             };
 
-            // Start playback if nothing is playing, otherwise add to queue
-            bool shouldPlay = player.State != PlayerState.Playing && player.State != PlayerState.Paused;
-            if (shouldPlay)
+            bool shouldPlay;
+            await gate.WaitAsync(cancellationToken);
+            try
             {
-                Logs.Debug($"Playing first track: {firstTrack.Title} by {firstTrack.Artist}");
-                await player.PlayAsync(firstItem, cancellationToken: cancellationToken);
+                if (replaceQueue)
+                    await player.Queue.ClearAsync(cancellationToken);
+
+                // Decide under the lock: a concurrent add may have just started playback
+                shouldPlay = player.State != PlayerState.Playing && player.State != PlayerState.Paused;
+                if (shouldPlay)
+                    await player.PlayAsync(firstItem, cancellationToken: cancellationToken);
+                else
+                    await player.Queue.AddAsync(firstItem, cancellationToken);
             }
-            else
+            finally
             {
-                await player.Queue.AddAsync(firstItem, cancellationToken);
+                gate.Release();
             }
 
             // === STEP 2: Resolve remaining tracks in parallel ===
@@ -143,7 +191,6 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
             {
                 List<Track> remaining = trackList.Skip(1).ToList();
 
-                // Show progress for large playlists
                 if (totalCount > 10)
                 {
                     await interaction.ModifyOriginalResponseAsync(msg =>
@@ -155,7 +202,6 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
                     });
                 }
 
-                // Progressive feedback for large playlists (throttled to avoid Discord rate limits)
                 IProgress<int>? progress = null;
                 if (totalCount > 20)
                 {
@@ -183,7 +229,6 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
                     });
                 }
 
-                // Select concurrency based on source system
                 string sourceSystem = remaining.FirstOrDefault()?.SourceSystem ?? "plex";
                 int maxConcurrency = sourceSystem.Equals("youtube", StringComparison.OrdinalIgnoreCase)
                     ? BotConfig.GetInt("plex.maxConcurrentYouTubeResolves", 5)
@@ -195,16 +240,24 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
                     progress: progress,
                     cancellationToken: cancellationToken);
 
-                // Add all resolved tracks to queue in original order
-                foreach (var (index, track, resolved) in resolveResult.ResolvedTracks)
+                // Append all resolved tracks in original order, as one locked batch
+                await gate.WaitAsync(cancellationToken);
+                try
                 {
-                    CustomTrackQueueItem item = new()
+                    foreach (var (_, track, resolved) in resolveResult.ResolvedTracks)
                     {
-                        SourceTrack = track,
-                        RequestedBy = interaction.User.Username,
-                        Reference = new TrackReference(resolved)
-                    };
-                    await player.Queue.AddAsync(item, cancellationToken);
+                        CustomTrackQueueItem item = new()
+                        {
+                            SourceTrack = track,
+                            RequestedBy = interaction.User.Username,
+                            Reference = new TrackReference(resolved)
+                        };
+                        await player.Queue.AddAsync(item, cancellationToken);
+                    }
+                }
+                finally
+                {
+                    gate.Release();
                 }
 
                 int totalSuccess = resolveResult.SuccessCount + 1; // +1 for the first track
@@ -214,10 +267,9 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
                 {
                     ButtonContext ctx = new() { Player = customPlayerRefresh, Interaction = interaction };
                     ComponentBuilder refreshComponents = buttonBuilder.BuildButtons(ButtonFlag.VisualPlayer, ctx);
-                    await visualPlayer.AddOrUpdateVisualPlayerAsync(refreshComponents, recreateImage: true);
+                    await visualPlayer.AddOrUpdateVisualPlayerAsync(guildId, refreshComponents, recreateImage: true);
                 }
 
-                // Final status message — include failed track names if any
                 if (resolveResult.FailedTracks.Count > 0)
                 {
                     string failedList = string.Join("\n", resolveResult.FailedTracks.Select(t => $"• {t}"));
@@ -241,7 +293,6 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
             }
             else
             {
-                // Single track — show appropriate message
                 string message = shouldPlay
                     ? $"Playing: {firstTrack.Title} by {firstTrack.Artist}"
                     : $"Added to queue: {firstTrack.Title} by {firstTrack.Artist}";
@@ -253,9 +304,9 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
                 });
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            Logs.Error($"Error adding tracks to queue: {ex.Message}");
+            Logs.Error($"[guild {guildId}] Error adding tracks to queue: {ex.Message}");
             throw new PlayerException($"Failed to add tracks to queue: {ex.Message}", "Queue", ex);
         }
     }
@@ -264,16 +315,12 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
     public async Task<string> TogglePauseResumeAsync(IDiscordInteraction interaction,
     CancellationToken cancellationToken = default)
     {
-        QueuedLavalinkPlayer? player = await GetPlayerAsync(interaction, false, cancellationToken);
+        (QueuedLavalinkPlayer? player, string? failure) = await TryGetPlayerAsync(interaction, false, cancellationToken);
         if (player == null)
-        {
-            Logs.Warning("Failed to get player for pause/resume");
-            throw new PlayerException("No active player found", "Pause");
-        }
+            throw new PlayerException($"No player for pause: {failure}", "Pause", failure ?? "No active player found.");
         try
         {
             string result;
-            // Toggle state based on current state
             if (player.State == PlayerState.Paused)
             {
                 await player.ResumeAsync(cancellationToken);
@@ -290,7 +337,6 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
             {
                 throw new PlayerException("No track is currently playing", "Pause");
             }
-            // Update player UI if it's our custom player
             if (player is CustomLavaLinkPlayer customPlayer)
             {
                 ButtonContext context = new()
@@ -299,7 +345,7 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
                     Interaction = interaction
                 };
                 ComponentBuilder components = buttonBuilder.BuildButtons(ButtonFlag.VisualPlayer, context);
-                await visualPlayer.AddOrUpdateVisualPlayerAsync(components);
+                await visualPlayer.AddOrUpdateVisualPlayerAsync(customPlayer.GuildId, components);
             }
             return result;
         }
@@ -313,12 +359,9 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
     /// <inheritdoc />
     public async Task SkipTrackAsync(IDiscordInteraction interaction, CancellationToken cancellationToken = default)
     {
-        QueuedLavalinkPlayer? player = await GetPlayerAsync(interaction, false, cancellationToken);
+        (QueuedLavalinkPlayer? player, string? failure) = await TryGetPlayerAsync(interaction, false, cancellationToken);
         if (player == null)
-        {
-            Logs.Warning("Failed to get player for skip");
-            throw new PlayerException("No active player found", "Skip");
-        }
+            throw new PlayerException($"No player for skip: {failure}", "Skip", failure ?? "No active player found.");
         try
         {
             if (player.State != PlayerState.Playing && player.State != PlayerState.Paused)
@@ -340,33 +383,21 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
     public async Task SetRepeatModeAsync(IDiscordInteraction interaction, TrackRepeatMode repeatMode,
         CancellationToken cancellationToken = default)
     {
-        QueuedLavalinkPlayer? player = await GetPlayerAsync(interaction, false, cancellationToken);
+        (QueuedLavalinkPlayer? player, string? failure) = await TryGetPlayerAsync(interaction, false, cancellationToken);
         if (player == null)
-        {
-            Logs.Warning("Failed to get player for setting repeat mode");
-            throw new PlayerException("No active player found", "Repeat");
-        }
+            throw new PlayerException($"No player for repeat: {failure}", "Repeat", failure ?? "No active player found.");
         try
         {
-            // Set the repeat mode
             player.RepeatMode = repeatMode;
-            string modeDescription = repeatMode switch
-            {
-                TrackRepeatMode.None => "Repeat mode disabled",
-                TrackRepeatMode.Track => "Now repeating current track",
-                TrackRepeatMode.Queue => "Now repeating the entire queue",
-                _ => "Unknown repeat mode"
-            };
             if (player is CustomLavaLinkPlayer customPlayer)
             {
-                // Update player UI if it's our custom player
                 ButtonContext context = new()
                 {
                     Player = customPlayer,
                     Interaction = interaction
                 };
                 ComponentBuilder components = buttonBuilder.BuildButtons(ButtonFlag.VisualPlayer, context);
-                await visualPlayer.AddOrUpdateVisualPlayerAsync(components, true); // Update Visual Player image
+                await visualPlayer.AddOrUpdateVisualPlayerAsync(customPlayer.GuildId, components, true);
             }
             Logs.Debug($"Repeat mode set to {repeatMode} by {interaction.User.Username}");
         }
@@ -381,19 +412,23 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
     public async Task StopAsync(IDiscordInteraction interaction, bool disconnect = false,
         CancellationToken cancellationToken = default)
     {
-        QueuedLavalinkPlayer? player = await GetPlayerAsync(interaction, false, cancellationToken);
+        (QueuedLavalinkPlayer? player, string? failure) = await TryGetPlayerAsync(interaction, false, cancellationToken);
         if (player == null)
-        {
-            Logs.Warning("Failed to get player for stop");
-            throw new PlayerException("No active player found", "Stop");
-        }
+            throw new PlayerException($"No player for stop: {failure}", "Stop", failure ?? "No active player found.");
+        SemaphoreSlim gate = _guildQueueLocks.GetOrAdd(player.GuildId, _ => new SemaphoreSlim(1, 1));
         try
         {
-            // Stop playback
-            await player.StopAsync(cancellationToken);
-            // Clear the queue
-            await player.Queue.ClearAsync(cancellationToken);
-            // Disconnect if requested
+            await gate.WaitAsync(cancellationToken);
+            try
+            {
+                await player.StopAsync(cancellationToken);
+                await player.Queue.ClearAsync(cancellationToken);
+            }
+            finally
+            {
+                gate.Release();
+            }
+
             if (disconnect)
             {
                 await player.DisconnectAsync(cancellationToken);
@@ -404,7 +439,7 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
                 Logs.Debug($"Player stopped by {interaction.User.Username}");
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             Logs.Error($"Error stopping player: {ex.Message}");
             throw new PlayerException($"Failed to stop player: {ex.Message}", "Stop", ex);
