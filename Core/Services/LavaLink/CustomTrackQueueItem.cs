@@ -28,7 +28,7 @@ public class CustomTrackQueueItem : ITrackQueueItem
     /// finishes playing, so a repeated track gets its retry again.</summary>
     public int PlayRetries { get; set; }
 
-    // Convenience accessors for backward compatibility with UI code (ImageBuilder, VisualPlayer, DiscordEmbedBuilder)
+    // Convenience accessors for backward compatibility with UI code (ImageBuilder, VisualPlayer)
     public string? Title => SourceTrack.Title;
     public string? Artist => SourceTrack.Artist;
     public string? Album => SourceTrack.Album;
