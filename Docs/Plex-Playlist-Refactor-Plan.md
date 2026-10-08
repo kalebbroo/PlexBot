@@ -51,11 +51,12 @@ Lavalink4NET caches failed loads for 30 minutes in its default `CacheMode.Dynami
   - each pass resolves the unresolved items among the first `plex.stream.resolveAhead` (default 3)
   - it re-reads the queue every pass, so shuffle, clear and replace never leave it holding stale positions
   - it's woken when a track starts, when tracks are added, and on shuffle, and also polls every 10 s
-- **The next track before playback**:
-  - skip waits up to 10 s for the next item to resolve
-  - the end of a track waits up to 5 s
-  - an item that fails every retry is removed, with a notice in the channel
-  - if a placeholder still reaches the player unresolved, Lavalink loads the URL itself, and the play-time retry goes through the resolver
+- **The next track before playback**: a placeholder never reaches Lavalink, so every Plex load goes through the gate and its retries
+  - skip (`CustomLavaLinkPlayer.SkipAsync`) resolves the item it lands on first; if the track ends on its own meanwhile, the skip is dropped
+  - at the end of a track, if the next item is still a placeholder, it is resolved on a background task and the player then moves on. Lavalink4NET raises track events from the node's receive loop, which every guild shares, so nothing waits there.
+  - an item that fails for good is removed, with a notice that says whether Plex had no file or stopped answering
+  - stop, kill and the inactivity timeout cancel the guild's resolves in progress
+  - a replay after a failed stream is dropped if the user skipped or started something else meanwhile
 - **Visual player**: updates are serialised per guild. A track start and the batch's queue refresh could otherwise both send a new player message.
 - **Play All Similar**: no longer sends a second "Tracks Added" follow-up.
 
@@ -78,7 +79,9 @@ Lavalink4NET caches failed loads for 30 minutes in its default `CacheMode.Dynami
 - the gate's concurrency limit and shared cooldown
 - cache keys and log IDs never containing the token
 
-Run it with `dotnet test Tests/PlexBot.Tests`. The project is excluded from the bot build and the Docker context.
+It also covers the resolve-ahead window and the failure notices. The cooldown tests use `FakeTimeProvider`, so they don't depend on the wall clock.
+
+Run it with `dotnet test PlexBot.sln`. The project is in the solution but excluded from the bot build and the Docker context; the Docker build publishes `PlexBot.csproj` directly.
 
 ## Follow-ups (not in this PR)
 
