@@ -205,7 +205,7 @@ public class HttpClientWrapper(HttpClient httpClient, string serviceName, int ma
                 lastException = ex;
                 Logs.Warning($"[{_serviceName}] Request timed out: {ex.Message}");
 
-                if (attemptCount <= _maxRetries)
+                if (attemptCount <= _maxRetries && IsRetriable(method))
                 {
                     TimeSpan delay = TimeSpan.FromMilliseconds(_retryDelay.TotalMilliseconds * Math.Pow(2, attemptCount - 1));
                     Logs.Debug($"[{_serviceName}] Retrying after {delay.TotalSeconds:N1} seconds...");
@@ -322,7 +322,7 @@ public class HttpClientWrapper(HttpClient httpClient, string serviceName, int ma
                 // This is a timeout rather than a cancellation request
                 lastException = ex;
                 Logs.Warning($"[{_serviceName}] Request timed out: {ex.Message}");
-                if (attemptCount <= _maxRetries)
+                if (attemptCount <= _maxRetries && IsRetriable(method))
                 {
                     TimeSpan delay = TimeSpan.FromMilliseconds(_retryDelay.TotalMilliseconds * Math.Pow(2, attemptCount - 1));
                     Logs.Debug($"[{_serviceName}] Retrying after {delay.TotalSeconds:N1} seconds...");
