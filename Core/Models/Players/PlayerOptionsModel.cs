@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using PlexBot.Utils;
 
 namespace PlexBot.Core.Models.Players;
@@ -56,9 +57,7 @@ public record PlayerOptions(ITextChannel? CurrentPlayerChannel) : QueuedLavalink
 /// <summary>Manages runtime state for the Visual Player across the application with thread-safe access</summary>
 public class VisualPlayerStateManager
 {
-    private readonly SemaphoreSlim _lock = new(1, 1);
-    private ITextChannel? _currentPlayerChannel;
-    private IUserMessage? _currentPlayerMessage;
+    private readonly ConcurrentDictionary<ulong, GuildPlayerState> _guilds = new();
 
     /// <summary>Controls whether to use visual album art display vs text-only player</summary>
     public bool UseModernPlayer { get; set; } = BotConfig.GetBool("visualPlayer.useModernPlayer", true);
@@ -72,17 +71,32 @@ public class VisualPlayerStateManager
     /// <summary>Optional channel ID to use as static player channel</summary>
     public ulong? StaticChannelId { get; set; } = BotConfig.GetULong("visualPlayer.staticChannel.channelId", 0);
 
-    /// <summary>Gets the current player channel in a thread-safe manner</summary>
-    public ITextChannel? CurrentPlayerChannel
+    /// <summary>Returns the channel the visual player for a guild is posted in, if any</summary>
+    public ITextChannel? GetChannel(ulong guildId) => GetState(guildId).Channel;
+
+    /// <summary>Returns the visual player message for a guild, if any</summary>
+    public IUserMessage? GetMessage(ulong guildId) => GetState(guildId).Message;
+
+    /// <summary>Sets the channel the visual player for a guild is posted in</summary>
+    public void SetChannel(ulong guildId, ITextChannel? channel)
     {
-        get { _lock.Wait(); try { return _currentPlayerChannel; } finally { _lock.Release(); } }
-        set { _lock.Wait(); try { _currentPlayerChannel = value; } finally { _lock.Release(); } }
+        GuildPlayerState state = GetState(guildId);
+        lock (state) { state.Channel = channel; }
     }
 
-    /// <summary>Gets the current player message in a thread-safe manner</summary>
-    public IUserMessage? CurrentPlayerMessage
+    /// <summary>Sets the visual player message for a guild</summary>
+    public void SetMessage(ulong guildId, IUserMessage? message)
     {
-        get { _lock.Wait(); try { return _currentPlayerMessage; } finally { _lock.Release(); } }
-        set { _lock.Wait(); try { _currentPlayerMessage = value; } finally { _lock.Release(); } }
+        GuildPlayerState state = GetState(guildId);
+        lock (state) { state.Message = message; }
+    }
+
+    private GuildPlayerState GetState(ulong guildId) => _guilds.GetOrAdd(guildId, _ => new GuildPlayerState());
+
+    /// <summary>Mutable visual player state for a single guild</summary>
+    private sealed class GuildPlayerState
+    {
+        public ITextChannel? Channel;
+        public IUserMessage? Message;
     }
 }
