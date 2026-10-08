@@ -22,7 +22,7 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
     // remaining tracks, or the queue the user just cleared or replaced would come back.
     private static readonly ConcurrentDictionary<ulong, long> _queueGenerations = new();
 
-    private static long CurrentGeneration(ulong guildId) => _queueGenerations.GetOrAdd(guildId, 0);
+    internal static long CurrentGeneration(ulong guildId) => _queueGenerations.GetOrAdd(guildId, 0);
 
     // Queue additions are applied in the order they were requested. Batches resolve in parallel, but each one
     // waits for its turn before it touches the queue, so a later request cannot land in the middle of an earlier
@@ -318,7 +318,7 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
                 string sourceSystem = remaining.FirstOrDefault()?.SourceSystem ?? "plex";
                 int maxConcurrency = sourceSystem.Equals("youtube", StringComparison.OrdinalIgnoreCase)
                     ? BotConfig.GetInt("plex.maxConcurrentYouTubeResolves", 5)
-                    : BotConfig.GetInt("plex.maxConcurrentResolves", 3);
+                    : BotConfig.GetInt("plex.maxConcurrentResolves", 2);
 
                 TrackResolveResult resolveResult = await trackResolver.ResolveTracksParallelAsync(
                     remaining,

@@ -17,6 +17,9 @@ public class CustomTrackQueueItem : ITrackQueueItem
     /// <summary>The Discord user who requested this track</summary>
     public string? RequestedBy { get; init; }
 
+    /// <summary>How many times playback was retried after Lavalink failed to open the stream</summary>
+    public int PlayRetries { get; set; }
+
     // Convenience accessors for backward compatibility with UI code (ImageBuilder, VisualPlayer, DiscordEmbedBuilder)
     public string? Title => SourceTrack.Title;
     public string? Artist => SourceTrack.Artist;

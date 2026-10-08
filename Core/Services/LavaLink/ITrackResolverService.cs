@@ -8,7 +8,10 @@ public interface ITrackResolverService
     /// <summary>Resolves a single track's playback through Lavalink. Returns null if resolution fails.</summary>
     Task<LavalinkTrack?> ResolveTrackAsync(Track track, CancellationToken cancellationToken = default);
 
-    /// <summary>Resolves multiple tracks in parallel with bounded concurrency and one retry for failures.
+    /// <summary>Drops a track's cached resolution, so the next resolve loads it again</summary>
+    void Invalidate(Track track);
+
+    /// <summary>Resolves multiple tracks in parallel with bounded concurrency. Plex loads retry with backoff.
     /// Returns results in original order for sequential queue insertion.</summary>
     Task<TrackResolveResult> ResolveTracksParallelAsync(
         IReadOnlyList<Track> tracks,

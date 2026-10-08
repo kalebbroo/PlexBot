@@ -148,6 +148,8 @@ namespace PlexBot.Main
                 options.DefaultRepeatMode = TrackRepeatMode.None;
             });
             // Add player services
+            services.AddSingleton(_ => PlexStreamGate.FromConfig());
+            services.AddSingleton(_ => PlexLoadRetryPolicy.FromConfig());
             services.AddSingleton<ITrackResolverService, TrackResolverService>();
             services.AddSingleton<ITrackPrefetchService, TrackPrefetchService>();
             services.AddSingleton<IPlayerService, PlayerService>();

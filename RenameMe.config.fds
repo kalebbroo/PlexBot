@@ -83,7 +83,17 @@ plex:
     # Max concurrent track resolves when loading playlists/albums
     # Lower this if tracks fail to load (Plex drops connections under heavy concurrency)
     # Higher values load playlists faster but may overwhelm your Plex server
-    maxConcurrentResolves: 3
+    maxConcurrentResolves: 2
+    # Resolved tracks are cached by Plex part, so replays and repeat don't reload them
+    resolveCacheSize: 500
+    resolveCacheMinutes: 60
+    # Limits on Lavalink loads of Plex files, shared by every server the bot is in
+    stream:
+        # Loads running at once. Plex drops file requests under parallel load (3 at once lost about 1 in 13
+        # in testing, 10 at once about 1 in 3). Defaults to maxConcurrentResolves when unset.
+        maxConcurrentLoads: 2
+        # Wait before each retry of a failed load, in seconds. While waiting, all Plex loads pause.
+        retryDelaysSeconds: 2, 5, 15
     # Max concurrent track resolves for YouTube sources (separate from Plex)
     maxConcurrentYouTubeResolves: 5
     # Radio / Sonic settings
