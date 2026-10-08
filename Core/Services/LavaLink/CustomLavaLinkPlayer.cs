@@ -13,9 +13,18 @@ public sealed class CustomLavaLinkPlayer(IPlayerProperties<CustomLavaLinkPlayer,
     IServiceProvider serviceProvider) : QueuedLavalinkPlayer(properties), IInactivityPlayerListener
 {
 
+    /// <summary>Counts track starts and ends. Work deferred off the event path (a replay, or moving to the next track)
+    /// records it and is dropped if any track has started or ended since, which covers a user who plays and skips
+    /// something else meanwhile. A field because it is updated with Interlocked.</summary>
+    private long _playbackEpoch;
+
+    /// <summary>The current value of the start/end counter, read from background tasks</summary>
+    public long PlaybackEpoch => Interlocked.Read(ref _playbackEpoch);
+
     /// <inheritdoc />
     protected override async ValueTask NotifyTrackStartedAsync(ITrackQueueItem track, CancellationToken cancellationToken = default)
     {
+        Interlocked.Increment(ref _playbackEpoch);
         try
         {
             VisualPlayer visualPlayer = serviceProvider.GetRequiredService<VisualPlayer>();
@@ -75,6 +84,7 @@ public sealed class CustomLavaLinkPlayer(IPlayerProperties<CustomLavaLinkPlayer,
     {
         cancellationToken.ThrowIfCancellationRequested();
         ArgumentNullException.ThrowIfNull(queueItem);
+        Interlocked.Increment(ref _playbackEpoch);
 
         string trackTitle = (queueItem as CustomTrackQueueItem)?.Title ?? queueItem.Track?.Title ?? "Unknown Track";
         CustomTrackQueueItem? endedItem = queueItem as CustomTrackQueueItem;
@@ -157,13 +167,14 @@ public sealed class CustomLavaLinkPlayer(IPlayerProperties<CustomLavaLinkPlayer,
         QueueResolveService queueResolver = serviceProvider.GetRequiredService<QueueResolveService>();
         CancellationToken stopped = queueResolver.GetWorker(GuildId).Token;
         long generation = PlayerService.CurrentGeneration(GuildId);
+        long epoch = PlaybackEpoch;
 
         _ = Task.Run(async () =>
         {
             try
             {
                 await queueResolver.EnsureResolvedAtAsync(this).ConfigureAwait(false);
-                if (stopped.IsCancellationRequested || State != PlayerState.NotPlaying || PlayerService.CurrentGeneration(GuildId) != generation)
+                if (stopped.IsCancellationRequested || !IsUnchangedSince(generation, epoch))
                 {
                     Logs.Debug($"[guild {GuildId}] Moving to the next track dropped: the player or queue changed while it loaded");
                     return;
@@ -184,6 +195,7 @@ public sealed class CustomLavaLinkPlayer(IPlayerProperties<CustomLavaLinkPlayer,
     {
         TimeSpan delay = serviceProvider.GetRequiredService<PlexLoadRetryPolicy>().DelayBefore(1);
         long generation = PlayerService.CurrentGeneration(GuildId);
+        long epoch = PlaybackEpoch;
         serviceProvider.GetRequiredService<PlexStreamGate>().Cooldown(delay);
         Logs.Warning($"[guild {GuildId}] Retrying playback in {delay.TotalSeconds:N0}s: {PlexUrlHelper.Describe(item.SourceTrack)}");
 
@@ -192,7 +204,7 @@ public sealed class CustomLavaLinkPlayer(IPlayerProperties<CustomLavaLinkPlayer,
             try
             {
                 await Task.Delay(delay).ConfigureAwait(false);
-                if (State != PlayerState.NotPlaying || PlayerService.CurrentGeneration(GuildId) != generation)
+                if (!IsUnchangedSince(generation, epoch))
                 {
                     Logs.Debug($"[guild {GuildId}] Playback retry dropped: the player or queue changed");
                     return;
@@ -205,6 +217,13 @@ public sealed class CustomLavaLinkPlayer(IPlayerProperties<CustomLavaLinkPlayer,
             }
         });
     }
+
+    /// <summary>True when the player is still idle, no track has started or ended, and the queue has not been
+    /// stopped, cleared or replaced since the given generation and epoch were recorded</summary>
+    public bool IsUnchangedSince(long generation, long epoch) =>
+        State == PlayerState.NotPlaying
+        && PlaybackEpoch == epoch
+        && PlayerService.CurrentGeneration(GuildId) == generation;
 
     /// <summary>Posts a short notice in the player's channel, deleted after 30 seconds</summary>
     public async Task NotifyChannelAsync(string title, string description)
