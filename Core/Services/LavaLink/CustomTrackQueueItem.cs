@@ -5,8 +5,18 @@ namespace PlexBot.Core.Services.LavaLink;
 /// <summary>Enhanced track queue item that holds a reference to the source Track model and exposes metadata through convenience properties for UI compatibility</summary>
 public class CustomTrackQueueItem : ITrackQueueItem
 {
-    /// <summary>The Lavalink track reference for audio streaming. Null until resolved.</summary>
+    /// <summary>The Lavalink track reference for audio streaming. For a placeholder, this holds only the playback
+    /// URL until <see cref="QueueResolveService"/> resolves it.</summary>
     public TrackReference Reference { get; set; }
+
+    /// <summary>True once a Lavalink track is attached</summary>
+    public bool IsResolved => Reference.IsPresent;
+
+    /// <summary>True if resolving failed after every retry</summary>
+    public bool ResolveFailed { get; set; }
+
+    /// <summary>The resolve in progress or finished, shared so an item is only resolved once</summary>
+    internal Task<bool>? ResolveTask { get; set; }
 
     /// <summary>Provides access to the underlying Lavalink track object through the interface implementation</summary>
     LavalinkTrack? ITrackQueueItem.Track => Reference.Track;
@@ -30,6 +40,15 @@ public class CustomTrackQueueItem : ITrackQueueItem
     public string? ArtistUrl => SourceTrack.ArtistUrl;
     public string? Duration => SourceTrack.DurationDisplay;
     public string? Studio => SourceTrack.Studio;
+
+    /// <summary>Creates a queue item that isn't resolved yet. If it reaches the player unresolved, Lavalink loads
+    /// the playback URL itself.</summary>
+    public static CustomTrackQueueItem Placeholder(Track track, string? requestedBy) => new()
+    {
+        SourceTrack = track,
+        RequestedBy = requestedBy,
+        Reference = new TrackReference(track.PlaybackUrl),
+    };
 
     /// <summary>Implementation of the interface's type conversion method to support Lavalink's player architecture</summary>
     public T? As<T>() where T : class, ITrackQueueItem => this as T;

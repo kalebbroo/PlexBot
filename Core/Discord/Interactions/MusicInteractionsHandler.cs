@@ -19,7 +19,8 @@ namespace PlexBot.Core.Discord.Interactions;
 public class MusicInteractionHandler(IPlayerService playerService,
     VisualPlayer visualPlayer, DiscordButtonBuilder buttonBuilder,
     MusicProviderRegistry providerRegistry, IPlexSonicService plexSonicService,
-    RadioSessionManager radioSessionManager, IPlexMusicService plexMusicService) : InteractionModuleBase<SocketInteractionContext>
+    RadioSessionManager radioSessionManager, IPlexMusicService plexMusicService,
+    QueueResolveService queueResolver) : InteractionModuleBase<SocketInteractionContext>
 {
 
     // Cooldown tracking to prevent spamming
@@ -185,6 +186,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
                 case "shuffle":
                     int countBefore = player.Queue.Count;
                     await player.Queue.ShuffleAsync();
+                    queueResolver.Wake(player.GuildId); // the next few items changed
                     await interaction.ModifyOriginalResponseAsync(msg =>
                     {
                         msg.Components = ComponentV2Builder.Success("Queue Shuffled", $"Shuffled {countBefore} tracks.");

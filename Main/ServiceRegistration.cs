@@ -151,6 +151,7 @@ namespace PlexBot.Main
             services.AddSingleton(_ => PlexStreamGate.FromConfig());
             services.AddSingleton(_ => PlexLoadRetryPolicy.FromConfig());
             services.AddSingleton<ITrackResolverService, TrackResolverService>();
+            services.AddSingleton<QueueResolveService>();
             services.AddSingleton<ITrackPrefetchService, TrackPrefetchService>();
             services.AddSingleton<IPlayerService, PlayerService>();
             // Register the state manager as a singleton
