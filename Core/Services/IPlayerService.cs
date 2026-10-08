@@ -28,7 +28,25 @@ public interface IPlayerService
     /// <param name="cancellationToken">Optional token to cancel the operation if it takes too long</param>
     /// <returns>A task that completes when all tracks have been processed and added to the queue</returns>
     /// <exception cref="PlayerException">Thrown when the tracks cannot be added to the queue due to format or connection issues</exception>
-    Task AddToQueueAsync(IDiscordInteraction interaction, IEnumerable<Track> tracks, CancellationToken cancellationToken = default);
+    /// <returns>True if the tracks were applied to the queue; false if the request was superseded by a clear, stop, or replace</returns>
+    Task<bool> AddToQueueAsync(IDiscordInteraction interaction, IEnumerable<Track> tracks, CancellationToken cancellationToken = default);
+
+    /// <summary>Replaces the guild's queue with the given tracks. The existing queue is cleared only after the
+    /// first track resolves, so a failed resolve leaves the queue untouched.</summary>
+    /// <param name="interaction">The Discord interaction providing context for queue management</param>
+    /// <param name="tracks">The tracks that become the new queue</param>
+    /// <param name="cancellationToken">Optional token to cancel the operation if it takes too long</param>
+    /// <returns>A task that completes when the replacement has been applied</returns>
+    /// <exception cref="PlayerException">Thrown when the player is unavailable or the tracks cannot be queued</exception>
+    /// <returns>True if the replacement was applied; false if it was cancelled before it could be applied</returns>
+    Task<bool> ReplaceQueueAsync(IDiscordInteraction interaction, IEnumerable<Track> tracks, CancellationToken cancellationToken = default);
+
+    /// <summary>Removes every queued track for the guild, under the same lock that guards queue adds</summary>
+    /// <param name="interaction">The Discord interaction providing context for the guild's player</param>
+    /// <param name="cancellationToken">Optional token to cancel the operation</param>
+    /// <returns>The number of tracks removed</returns>
+    /// <exception cref="PlayerException">Thrown when the player is unavailable</exception>
+    Task<int> ClearQueueAsync(IDiscordInteraction interaction, CancellationToken cancellationToken = default);
 
     /// <summary>Toggles between paused and playing states, serving as a convenience method for the most common playback control action</summary>
     /// <param name="interaction">The Discord interaction containing guild context to identify the correct player</param>

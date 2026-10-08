@@ -29,6 +29,10 @@ public class HttpClientWrapper(HttpClient httpClient, string serviceName, int ma
     private readonly int _maxRetries = maxRetries;
     private readonly TimeSpan _retryDelay = TimeSpan.FromSeconds(retryDelaySec);
 
+    /// <summary>POST is not retried: a request that reached the server and lost its response could be applied twice
+    /// (for example, creating a playlist twice). GET, PUT and DELETE are idempotent and remain retriable.</summary>
+    private static bool IsRetriable(HttpMethod method) => method != HttpMethod.Post;
+
     /// <summary>Sends a GET request to the specified URI with retry logic.
     /// Handles the complete request lifecycle including retries on transient errors
     /// and consistent error handling for different failure scenarios.</summary>
@@ -152,7 +156,7 @@ public class HttpClientWrapper(HttpClient httpClient, string serviceName, int ma
                 {
                     Logs.Warning($"[{_serviceName}] Request failed with status {response.StatusCode}: {responseBody}");
                     // Determine if we should retry based on status code
-                    if (ShouldRetry(response.StatusCode) && attemptCount <= _maxRetries)
+                    if (ShouldRetry(response.StatusCode) && attemptCount <= _maxRetries && IsRetriable(method))
                     {
                         TimeSpan delay = TimeSpan.FromMilliseconds(_retryDelay.TotalMilliseconds * Math.Pow(2, attemptCount - 1));
                         Logs.Debug($"[{_serviceName}] Retrying after {delay.TotalSeconds:N1} seconds...");
@@ -187,7 +191,7 @@ public class HttpClientWrapper(HttpClient httpClient, string serviceName, int ma
                 lastException = ex;
                 Logs.Warning($"[{_serviceName}] HTTP error: {ex.Message}");
                 // For connection-level errors, we should retry
-                if (attemptCount <= _maxRetries)
+                if (attemptCount <= _maxRetries && IsRetriable(method))
                 {
                     TimeSpan delay = TimeSpan.FromMilliseconds(_retryDelay.TotalMilliseconds * Math.Pow(2, attemptCount - 1));
                     Logs.Debug($"[{_serviceName}] Retrying after {delay.TotalSeconds:N1} seconds...");
@@ -201,7 +205,7 @@ public class HttpClientWrapper(HttpClient httpClient, string serviceName, int ma
                 lastException = ex;
                 Logs.Warning($"[{_serviceName}] Request timed out: {ex.Message}");
 
-                if (attemptCount <= _maxRetries)
+                if (attemptCount <= _maxRetries && IsRetriable(method))
                 {
                     TimeSpan delay = TimeSpan.FromMilliseconds(_retryDelay.TotalMilliseconds * Math.Pow(2, attemptCount - 1));
                     Logs.Debug($"[{_serviceName}] Retrying after {delay.TotalSeconds:N1} seconds...");
@@ -284,7 +288,7 @@ public class HttpClientWrapper(HttpClient httpClient, string serviceName, int ma
                 {
                     Logs.Warning($"[{_serviceName}] Request failed with status {response.StatusCode}: {responseBody}");
                     // Determine if we should retry based on status code
-                    if (ShouldRetry(response.StatusCode) && attemptCount <= _maxRetries)
+                    if (ShouldRetry(response.StatusCode) && attemptCount <= _maxRetries && IsRetriable(method))
                     {
                         TimeSpan delay = TimeSpan.FromMilliseconds(_retryDelay.TotalMilliseconds * Math.Pow(2, attemptCount - 1));
                         Logs.Debug($"[{_serviceName}] Retrying after {delay.TotalSeconds:N1} seconds...");
@@ -305,7 +309,7 @@ public class HttpClientWrapper(HttpClient httpClient, string serviceName, int ma
                 lastException = ex;
                 Logs.Warning($"[{_serviceName}] HTTP error: {ex.Message}");
                 // For connection-level errors, we should retry
-                if (attemptCount <= _maxRetries)
+                if (attemptCount <= _maxRetries && IsRetriable(method))
                 {
                     TimeSpan delay = TimeSpan.FromMilliseconds(_retryDelay.TotalMilliseconds * Math.Pow(2, attemptCount - 1));
                     Logs.Debug($"[{_serviceName}] Retrying after {delay.TotalSeconds:N1} seconds...");
@@ -318,7 +322,7 @@ public class HttpClientWrapper(HttpClient httpClient, string serviceName, int ma
                 // This is a timeout rather than a cancellation request
                 lastException = ex;
                 Logs.Warning($"[{_serviceName}] Request timed out: {ex.Message}");
-                if (attemptCount <= _maxRetries)
+                if (attemptCount <= _maxRetries && IsRetriable(method))
                 {
                     TimeSpan delay = TimeSpan.FromMilliseconds(_retryDelay.TotalMilliseconds * Math.Pow(2, attemptCount - 1));
                     Logs.Debug($"[{_serviceName}] Retrying after {delay.TotalSeconds:N1} seconds...");
@@ -399,7 +403,7 @@ public class HttpClientWrapper(HttpClient httpClient, string serviceName, int ma
                 {
                     Logs.Warning($"[{_serviceName}] Request failed with status {response.StatusCode}: {responseBody}");
                     // Determine if we should retry based on status code
-                    if (ShouldRetry(response.StatusCode) && attemptCount <= _maxRetries)
+                    if (ShouldRetry(response.StatusCode) && attemptCount <= _maxRetries && IsRetriable(method))
                     {
                         TimeSpan delay = TimeSpan.FromMilliseconds(_retryDelay.TotalMilliseconds * Math.Pow(2, attemptCount - 1));
                         Logs.Debug($"[{_serviceName}] Retrying after {delay.TotalSeconds:N1} seconds...");
@@ -435,7 +439,7 @@ public class HttpClientWrapper(HttpClient httpClient, string serviceName, int ma
                 lastException = ex;
                 Logs.Warning($"[{_serviceName}] HTTP error: {ex.Message}");
                 // For connection-level errors, we should retry
-                if (attemptCount <= _maxRetries)
+                if (attemptCount <= _maxRetries && IsRetriable(method))
                 {
                     TimeSpan delay = TimeSpan.FromMilliseconds(_retryDelay.TotalMilliseconds * Math.Pow(2, attemptCount - 1));
                     Logs.Debug($"[{_serviceName}] Retrying after {delay.TotalSeconds:N1} seconds...");

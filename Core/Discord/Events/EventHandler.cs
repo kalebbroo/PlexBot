@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using PlexBot.Utils;
 using PlexBot.Core.Discord.Embeds;
 using PlexBot.Core.Events;
@@ -12,125 +13,147 @@ namespace PlexBot.Core.Discord.Events;
 /// <param name="services">The service provider for dependency injection</param>
 public class DiscordEventHandler(DiscordSocketClient client, InteractionService interactions, IServiceProvider services)
 {
-    private bool _modulesRegistered;
+    /// <summary>Short random ID for this process. Written into interaction logs so two bot instances
+    /// sharing one token can be told apart in the logs.</summary>
+    public static readonly string InstanceId = Guid.NewGuid().ToString("N")[..8];
 
-    /// <summary>Initializes Discord event handlers for logging, ready events, and interactions</summary>
+    private int _setupStarted;
+    private int _eventsWired;
+    // Assemblies whose modules are already registered. Only failed loads are retried, so a retry never adds a
+    // module definition twice (Discord.Net keeps earlier definitions when more are added).
+    private readonly HashSet<Assembly> _loadedAssemblies = new();
+    private readonly HashSet<ulong> _registeredGuilds = new();
+    private bool _commandsRegistered;
+    private bool _subscribed;
+
+    /// <summary>Wires the Discord and interaction events. Runs once per process.</summary>
     /// <returns>A task representing the asynchronous operation</returns>
     public Task InitializeAsync()
     {
-        // Set up logging
+        if (Interlocked.Exchange(ref _eventsWired, 1) == 1)
+            return Task.CompletedTask;
+
         client.Log += LogAsync;
         interactions.Log += LogAsync;
-
-        // Set up ready event
         client.Ready += ReadyAsync;
-
-        // Set up interaction created event
         client.InteractionCreated += HandleInteractionAsync;
 
-        Logs.Init("Discord event handlers initialized");
+        // Commands run in async mode (off the gateway thread), so their failures never come back through
+        // HandleInteractionAsync. These events are the central fallback: they send the user one response
+        // when a handler threw before acknowledging, instead of Discord showing "application did not respond".
+        interactions.SlashCommandExecuted += OnCommandExecutedAsync;
+        interactions.ComponentCommandExecuted += OnCommandExecutedAsync;
+        interactions.ModalCommandExecuted += OnCommandExecutedAsync;
+        interactions.ContextCommandExecuted += OnCommandExecutedAsync;
 
+        Logs.Init($"Discord event handlers initialized (instance {InstanceId})");
         return Task.CompletedTask;
     }
 
-    /// <summary>Handles the client ready event by registering slash commands and setting the bot's status</summary>
+    /// <summary>Handles the client ready event. Ready fires again on every reconnect, so setup work runs only on the first one.</summary>
     /// <returns>A task representing the asynchronous operation</returns>
-    private async Task ReadyAsync()
+    private Task ReadyAsync()
+    {
+        if (Interlocked.Exchange(ref _setupStarted, 1) == 1)
+        {
+            Logs.Info($"[{InstanceId}] Gateway ready again (reconnect); setup already done");
+            return Task.CompletedTask;
+        }
+
+        // Off the gateway thread: command registration and status calls can take seconds, and while Ready is
+        // being awaited the gateway cannot deliver interactions, which is what makes them time out.
+        _ = Task.Run(SetupAfterReadyAsync);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Runs setup until it fully succeeds. A failed stage (module load or command registration) is retried
+    /// with capped backoff, rather than leaving the process without commands until a restart.</summary>
+    private async Task SetupAfterReadyAsync()
+    {
+        TimeSpan delay = TimeSpan.FromSeconds(10);
+        while (!await TrySetupAsync())
+        {
+            Logs.Warning($"[{InstanceId}] Setup incomplete; retrying in {delay.TotalSeconds:N0}s");
+            await Task.Delay(delay);
+            delay = TimeSpan.FromSeconds(Math.Min(delay.TotalSeconds * 2, 300));
+        }
+    }
+
+    /// <summary>One pass of setup. Returns false if any stage failed, so the caller retries. Stages that already
+    /// succeeded are not repeated, so a retry does not add modules twice.</summary>
+    private async Task<bool> TrySetupAsync()
     {
         try
         {
-            // Only register modules once — ReadyAsync fires on every reconnect
-            // but AddModulesAsync would create duplicate handlers
-            if (!_modulesRegistered)
+            Assembly entry = Assembly.GetEntryAssembly()!;
+            if (_loadedAssemblies.Add(entry))
             {
-                // Register modules from main assembly
-                await interactions.AddModulesAsync(Assembly.GetEntryAssembly(), services);
-
-                // Register modules from extension assemblies
-                ExtensionManager extensionManager = services.GetRequiredService<ExtensionManager>();
-                foreach (Extension ext in extensionManager.GetAllExtensions())
+                try
                 {
-                    if (ext.SourceAssembly != null && ext.SourceAssembly != Assembly.GetEntryAssembly())
-                    {
-                        await interactions.AddModulesAsync(ext.SourceAssembly, services);
-                        Logs.Info($"Registered commands from extension: {ext.Name}");
-                    }
+                    await interactions.AddModulesAsync(entry, services);
                 }
-
-                _modulesRegistered = true;
+                catch
+                {
+                    _loadedAssemblies.Remove(entry);
+                    throw;
+                }
             }
 
-            // Log discovered modules
-            var modules = interactions.Modules.ToList();
-            Logs.Info($"Discovered {modules.Count} interaction modules");
-            foreach (ModuleInfo module in modules)
+            ExtensionManager extensionManager = services.GetRequiredService<ExtensionManager>();
+            foreach (Extension ext in extensionManager.GetAllExtensions())
+            {
+                if (ext.SourceAssembly == null || ext.SourceAssembly == entry || !_loadedAssemblies.Add(ext.SourceAssembly))
+                    continue;
+                try
+                {
+                    await interactions.AddModulesAsync(ext.SourceAssembly, services);
+                    Logs.Info($"Registered commands from extension: {ext.Name}");
+                }
+                catch
+                {
+                    _loadedAssemblies.Remove(ext.SourceAssembly);
+                    throw;
+                }
+            }
+
+            foreach (ModuleInfo module in interactions.Modules)
             {
                 Logs.Info($"Module: {module.Name}, Commands: {module.SlashCommands.Count}");
                 foreach (SlashCommandInfo cmd in module.SlashCommands)
-                {
                     Logs.Info($"  Command: {cmd.Name}");
-                }
             }
 
-            // In development, use guild commands (faster updates)
-            if (BotConfig.GetString("bot.environment") == "Development")
-            {
-                // Register to specific test guild if needed
-                // ulong testGuildId = 123456789012345678;
-                // await interactions.RegisterCommandsToGuildAsync(testGuildId);
+            if (!_commandsRegistered)
+                _commandsRegistered = await RegisterCommandsWithRetryAsync();
+            if (!_commandsRegistered)
+                return false;
 
-                // Or register to all current guilds
-                foreach (SocketGuild guild in client.Guilds)
-                {
-                    try
-                    {
-                        await interactions.RegisterCommandsToGuildAsync(guild.Id);
-                        Logs.Info($"Registered commands to guild: {guild.Name} ({guild.Id})");
-                    }
-                    catch (Exception ex)
-                    {
-                        Logs.Error($"Failed to register commands for guild {guild.Name}: {ex.Message}");
-                    }
-                }
-            }
-            else
-            {
-                // In production, use global commands
-                await interactions.RegisterCommandsGloballyAsync();
-                Logs.Info("Registered commands globally");
-            }
-
-            // Set bot status
             await client.SetGameAsync("/help", type: ActivityType.Listening);
 
-            // Subscribe to track events for rich presence (show now-playing as bot status)
-            BotEventBus eventBus = services.GetRequiredService<BotEventBus>();
-            if (BotConfig.GetBool("bot.showNowPlaying", true))
+            if (!_subscribed)
             {
-                eventBus.Subscribe(BotEvents.TrackStarted, async e =>
+                _subscribed = true;
+                BotEventBus eventBus = services.GetRequiredService<BotEventBus>();
+                if (BotConfig.GetBool("bot.showNowPlaying", true))
                 {
-                    string title = e.Data.GetValueOrDefault("title") as string ?? "Unknown";
-                    string artist = e.Data.GetValueOrDefault("artist") as string ?? "Unknown";
-                    string status = artist != "Unknown" ? $"{artist} - {title}" : title;
-                    // Discord truncates activity text at 128 chars
-                    if (status.Length > 128) status = status[..125] + "...";
-                    await client.SetGameAsync(status, type: ActivityType.Listening);
-                });
-                eventBus.Subscribe(BotEvents.TrackEnded, async _ =>
-                {
-                    await client.SetGameAsync("/help", type: ActivityType.Listening);
-                });
-                eventBus.Subscribe(BotEvents.PlayerDestroyed, async _ =>
-                {
-                    await client.SetGameAsync("/help", type: ActivityType.Listening);
-                });
-                Logs.Init("Rich presence enabled — bot status will show now-playing track");
+                    eventBus.Subscribe(BotEvents.TrackStarted, async e =>
+                    {
+                        string title = e.Data.GetValueOrDefault("title") as string ?? "Unknown";
+                        string artist = e.Data.GetValueOrDefault("artist") as string ?? "Unknown";
+                        string status = artist != "Unknown" ? $"{artist} - {title}" : title;
+                        // Discord truncates activity text at 128 chars
+                        if (status.Length > 128) status = status[..125] + "...";
+                        await client.SetGameAsync(status, type: ActivityType.Listening);
+                    });
+                    eventBus.Subscribe(BotEvents.TrackEnded, async _ => await client.SetGameAsync("/help", type: ActivityType.Listening));
+                    eventBus.Subscribe(BotEvents.PlayerDestroyed, async _ => await client.SetGameAsync("/help", type: ActivityType.Listening));
+                    Logs.Init("Rich presence enabled — bot status will show now-playing track");
+                }
             }
 
-            Logs.Init($"Bot is ready. Connected to {client.Guilds.Count} guilds");
+            Logs.Init($"[{InstanceId}] Bot is ready. Connected to {client.Guilds.Count} guilds");
 
-            // Publish bot ready event for extensions
-            _ = eventBus.PublishAsync(new BotEvent
+            _ = services.GetRequiredService<BotEventBus>().PublishAsync(new BotEvent
             {
                 EventType = BotEvents.BotReady,
                 Data = new Dictionary<string, object>
@@ -138,12 +161,63 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
                     ["guildCount"] = client.Guilds.Count
                 }
             });
+            return true;
         }
         catch (Exception ex)
         {
-            Logs.Error($"Error in ReadyAsync: {ex.Message}");
+            Logs.Error($"Error in ready setup: {ex.Message}");
             Logs.Error($"Stack trace: {ex.StackTrace}");
+            return false;
         }
+    }
+
+    /// <summary>Registers slash commands, retrying each guild with backoff. Guilds are retried independently, so one
+    /// guild that keeps rejecting registration does not stop the others from getting commands.</summary>
+    private async Task<bool> RegisterCommandsWithRetryAsync()
+    {
+        bool allRegistered = true;
+        if (BotConfig.GetString("bot.environment") == "Development")
+        {
+            // Guild-scoped registration is immediate; global can take up to an hour to appear
+            foreach (SocketGuild guild in client.Guilds)
+            {
+                // Guilds that already registered are skipped on later setup retries, so one failing guild does not
+                // re-overwrite the commands of every other guild
+                if (_registeredGuilds.Contains(guild.Id))
+                    continue;
+                bool ok = await RetryAsync($"guild {guild.Name} ({guild.Id})", () => interactions.RegisterCommandsToGuildAsync(guild.Id));
+                if (ok) _registeredGuilds.Add(guild.Id);
+                allRegistered &= ok;
+            }
+        }
+        else
+        {
+            allRegistered = await RetryAsync("global", () => interactions.RegisterCommandsGloballyAsync());
+        }
+        return allRegistered;
+    }
+
+    /// <summary>Runs one registration with up to five attempts and exponential backoff. Gives up on this target only.</summary>
+    private static async Task<bool> RetryAsync(string target, Func<Task> register)
+    {
+        TimeSpan delay = TimeSpan.FromSeconds(5);
+        for (int attempt = 1; attempt <= 5; attempt++)
+        {
+            try
+            {
+                await register();
+                Logs.Info($"Registered commands ({target})");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Logs.Error($"Command registration failed for {target} (attempt {attempt}/5): {ex.Message}");
+                if (attempt == 5) return false;
+                await Task.Delay(delay);
+                delay = TimeSpan.FromSeconds(Math.Min(delay.TotalSeconds * 2, 120));
+            }
+        }
+        return false;
     }
 
     /// <summary>Routes incoming interactions to appropriate handlers and manages error responses</summary>
@@ -153,74 +227,76 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
     {
         try
         {
-            // Log how much of the 3-second interaction deadline has already elapsed
+            // Host-clock estimate only: CreatedAt comes from the snowflake, and the host clock may drift.
+            // Discord enforces the 3-second window on its side, so this is for orientation, not the deadline.
             TimeSpan elapsed = DateTimeOffset.UtcNow - interaction.CreatedAt;
-            Logs.Debug($"Interaction received: type={interaction.Type}, elapsed={elapsed.TotalMilliseconds:F0}ms since creation");
+            Logs.Debug($"[{InstanceId}] Interaction received: type={interaction.Type}, host-clock elapsed={elapsed.TotalMilliseconds:F0}ms");
 
-            // Create an execution context for the interaction
             SocketInteractionContext context = new(client, interaction);
-
-            // Execute the interaction handler
             IResult result = await interactions.ExecuteCommandAsync(context, services);
 
             if (!result.IsSuccess)
             {
-                Logs.Warning($"Interaction failed: {result.Error} - {result.ErrorReason}");
+                Logs.Warning($"[{InstanceId}] Interaction failed: {result.Error} - {result.ErrorReason}");
 
                 // Autocomplete interactions cannot receive component/embed responses.
-                // Superseded autocomplete interactions (user kept typing) fail with 40060
-                // which is normal — just log and move on to avoid blocking the gateway.
+                // Superseded autocomplete interactions (user kept typing) fail with 40060 — normal.
                 if (interaction is SocketAutocompleteInteraction)
                     return;
 
-                // Create a standardized error using our CV2 utility
                 var errorComponents = result.Error.HasValue
                     ? ComponentV2Builder.CommandError(result.Error.Value, result.ErrorReason)
                     : ComponentV2Builder.Error("Command Error", result.ErrorReason);
-
-                // Respond with the error
-                if (!interaction.HasResponded)
-                {
-                    await interaction.RespondAsync(components: errorComponents, ephemeral: true);
-                }
-                else
-                {
-                    await interaction.FollowupAsync(components: errorComponents, ephemeral: true);
-                }
+                await SendFallbackAsync(interaction, errorComponents);
             }
         }
         catch (Exception ex)
         {
-            // Autocomplete failures (superseded by newer keystrokes) are expected — don't
-            // block the gateway with doomed HTTP retries.
             if (interaction is SocketAutocompleteInteraction)
             {
                 Logs.Debug($"Autocomplete interaction failed (likely superseded): {ex.Message}");
                 return;
             }
 
-            Logs.Error($"Error handling interaction: {ex.Message}");
+            Logs.Error($"[{InstanceId}] Error handling interaction: {ex.Message}");
+            await SendFallbackAsync(interaction,
+                ComponentV2Builder.Error("Command Error", "An unexpected error occurred while processing your command. Please try again later."));
+        }
+    }
 
-            // Create a standardized error for exceptions
-            var exceptionComponents = ComponentV2Builder.Error("Command Error",
-                "An unexpected error occurred while processing your command. Please try again later.");
+    /// <summary>Reports a command whose handler threw (async run mode hides these from the caller). Logs the
+    /// failure with the instance ID and tells the user, once, unless the handler already responded.</summary>
+    private async Task OnCommandExecutedAsync(ICommandInfo command, IInteractionContext context, IResult result)
+    {
+        if (result.IsSuccess)
+            return;
 
-            // Try to respond with an error message if we haven't already
-            try
-            {
-                if (!interaction.HasResponded)
-                {
-                    await interaction.RespondAsync(components: exceptionComponents, ephemeral: true);
-                }
-                else
-                {
-                    await interaction.FollowupAsync(components: exceptionComponents, ephemeral: true);
-                }
-            }
-            catch (Exception responseEx)
-            {
-                Logs.Debug($"Failed to send error response (interaction likely expired): {responseEx.Message}");
-            }
+        string reason = result.ErrorReason ?? "unknown";
+        Logs.Error($"[{InstanceId}] Command '{command.Name}' failed: {result.Error} - {reason}");
+
+        if (context.Interaction is not SocketInteraction interaction)
+            return;
+
+        MessageComponent components = result.Error.HasValue
+            ? ComponentV2Builder.CommandError(result.Error.Value, reason)
+            : ComponentV2Builder.Error("Command Error", "Something went wrong running that command. Please try again.");
+        await SendFallbackAsync(interaction, components);
+    }
+
+    /// <summary>Sends an ephemeral error. Follows up if the interaction was acknowledged, otherwise responds.
+    /// A failure here is logged, never rethrown: the interaction may already have expired.</summary>
+    private static async Task SendFallbackAsync(SocketInteraction interaction, MessageComponent components)
+    {
+        try
+        {
+            if (interaction.HasResponded)
+                await interaction.FollowupAsync(components: components, ephemeral: true);
+            else
+                await interaction.RespondAsync(components: components, ephemeral: true);
+        }
+        catch (Exception responseEx)
+        {
+            Logs.Warning($"[{InstanceId}] Could not send error response (interaction likely expired or already answered): {responseEx.Message}");
         }
     }
 
@@ -229,7 +305,6 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
     /// <returns>A task representing the asynchronous operation</returns>
     private Task LogAsync(LogMessage message)
     {
-        // Map Discord log severity to our log levels
         switch (message.Severity)
         {
             case LogSeverity.Critical:
