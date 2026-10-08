@@ -79,14 +79,14 @@ Set `visualPlayer.progressBar.size` to `small` in `config.fds` for a narrower ba
 
 ## Track Loading Failures
 
-### "Added X of Y tracks" — Some Tracks Failed
+### "Track Skipped" — Plex Didn't Return the File
 
-When loading large playlists, Plex can drop connections under concurrent load.
+Plex can drop file requests under concurrent load. Lavalink logs these as `Could not read the file for detecting file type` or `Premature end of Content-Length delimited message body`.
 
 **Fixes:**
-1. Lower `plex.maxConcurrentResolves` in `config.fds` (default: `3`, try `2` or `1`)
-2. Failed tracks are retried automatically — check logs for "Retry succeeded" vs "Failed to resolve after retry"
-3. The player embed shows which specific tracks failed to load
+1. Failed loads are retried automatically. Check the logs for "Plex load recovered on attempt N" against "Plex load failed after N attempts". Each line names the Plex part.
+2. Lower `plex.stream.maxConcurrentLoads` in `config.fds` (default: `2`, try `1`).
+3. Lengthen `plex.stream.retryDelaysSeconds` (default: `2, 5, 15`) if Plex needs longer to recover.
 
 ### All Tracks Fail
 

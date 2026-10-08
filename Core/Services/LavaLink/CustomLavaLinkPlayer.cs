@@ -79,6 +79,8 @@ public sealed class CustomLavaLinkPlayer(IPlayerProperties<CustomLavaLinkPlayer,
         {
             if (failed.PlayRetries < 1)
             {
+                // The track hasn't really ended: it's about to be played again, so neither the base class (which
+                // would move to the next item) nor the TrackEnded event for extensions runs here
                 failed.PlayRetries++;
                 ScheduleReplay(failed);
                 return;
@@ -170,7 +172,12 @@ public sealed class CustomLavaLinkPlayer(IPlayerProperties<CustomLavaLinkPlayer,
             if (channel is null) return;
             IUserMessage message = await channel.SendMessageAsync(components: Discord.Embeds.ComponentV2Builder.Info(title, description),
                 flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
-            _ = Task.Delay(TimeSpan.FromSeconds(30)).ContinueWith(_ => message.DeleteAsync());
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(TimeSpan.FromSeconds(30)).ConfigureAwait(false);
+                try { await message.DeleteAsync().ConfigureAwait(false); }
+                catch (Exception ex) { Logs.Debug($"[guild {GuildId}] Could not delete channel notice: {ex.Message}"); }
+            });
         }
         catch (Exception ex)
         {

@@ -188,8 +188,12 @@ Uses [Frenetic Data Syntax](https://github.com/FreneticLLC/FreneticUtilities) (Y
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `plex.maxConcurrentResolves` | int | `3` | Max parallel track resolves when loading playlists/albums from Plex. Lower if tracks fail to load; higher loads faster but may overwhelm Plex |
-| `plex.maxConcurrentYouTubeResolves` | int | `5` | Max parallel track resolves when loading from YouTube. Separate limit allows higher concurrency for YouTube sources |
+| `plex.stream.maxConcurrentLoads` | int | `2` | Plex file loads running at once, shared by every server the bot is in. Lower if tracks fail to load |
+| `plex.stream.retryDelaysSeconds` | list | `2, 5, 15` | Wait before each retry of a failed Plex load. All Plex loads pause while waiting |
+| `plex.stream.resolveAhead` | int | `3` | Queued tracks loaded ahead of the one playing. The rest of a playlist waits as a placeholder |
+| `plex.resolveCacheSize` | int | `500` | Resolved tracks kept, keyed by Plex part |
+| `plex.resolveCacheMinutes` | int | `60` | How long a resolved track is reused |
+| `plex.maxConcurrentResolves` | int | `2` | Older name for `plex.stream.maxConcurrentLoads`, used only when that is not set |
 | `plex.radio.infinite` | bool | `false` | Enable infinite radio, which automatically refills the queue when it runs low |
 | `plex.radio.refillThreshold` | int | `5` | Queue size threshold that triggers a refill when infinite radio is enabled |
 | `plex.radio.batchSize` | int | `30` | Number of tracks to fetch per radio request (initial batch or refill) |
