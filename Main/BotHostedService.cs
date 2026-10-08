@@ -101,9 +101,18 @@ public class BotHostedService(DiscordSocketClient client, DiscordEventHandler ev
             catch (Exception ex)
             {
                 Logs.Error($"Discord login failed (attempt {attempt}): {ex.Message}. Retrying in {delay.TotalSeconds:N0}s");
-                await Task.Delay(delay, ct).ConfigureAwait(false);
-                delay = TimeSpan.FromSeconds(Math.Min(delay.TotalSeconds * 2, 60));
             }
+
+            // Delay outside the catch block, so cancellation during the wait ends the loop cleanly
+            try
+            {
+                await Task.Delay(delay, ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            delay = TimeSpan.FromSeconds(Math.Min(delay.TotalSeconds * 2, 60));
         }
     }
 
@@ -210,7 +219,18 @@ public class BotHostedService(DiscordSocketClient client, DiscordEventHandler ev
             _connectCts?.Cancel();
             // Let the connect loop finish first, so only one path touches the client
             if (_connectTask is not null)
-                await _connectTask.WaitAsync(TimeSpan.FromSeconds(30), CancellationToken.None).ConfigureAwait(false);
+            {
+                try
+                {
+                    await _connectTask.WaitAsync(TimeSpan.FromSeconds(30), CancellationToken.None).ConfigureAwait(false);
+                }
+                catch (Exception ex) when (ex is OperationCanceledException or TimeoutException)
+                {
+                    // Expected when shutdown interrupted the connect loop, or it did not finish in time.
+                    // Carry on with cleanup either way.
+                    Logs.Debug($"Connect loop did not finish cleanly before shutdown: {ex.GetType().Name}");
+                }
+            }
             await client.StopAsync();
             await client.LogoutAsync();
             await extensionManager.UnloadAllExtensionsAsync();

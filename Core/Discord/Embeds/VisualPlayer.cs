@@ -237,21 +237,21 @@ public class VisualPlayer(
         long now = System.Diagnostics.Stopwatch.GetTimestamp();
         bool playing = player.State == PlayerState.Playing;
         ProgressAnchor anchor = _progressAnchors.AddOrUpdate(guildId,
-            _ => new ProgressAnchor(reported.Value, now, player.CurrentItem, playing),
+            _ => new ProgressAnchor(reported.Value, now, player.CurrentItem, playing, reported.Value),
             (_, existing) =>
             {
-                // A new report, or a new track, re-anchors the clock to what Lavalink says
-                if (existing.Track != player.CurrentItem || existing.Position != reported.Value)
-                    return new ProgressAnchor(reported.Value, now, player.CurrentItem, playing);
+                // A new Lavalink report, or a new track, re-anchors the clock to what Lavalink says
+                if (existing.Track != player.CurrentItem || existing.Reported != reported.Value)
+                    return new ProgressAnchor(reported.Value, now, player.CurrentItem, playing, reported.Value);
 
-                // Pause or resume with an unchanged report: freeze the estimate so far, then restart the clock
-                // from it. Otherwise the paused time is added to the position on resume.
+                // Pause or resume with no new report: freeze the estimate so far and restart the clock from it.
+                // Compared against the raw report, not the estimate, so an extrapolated position is not reset.
                 if (existing.Playing != playing)
                 {
                     TimeSpan estimateNow = existing.Playing
                         ? existing.Position + System.Diagnostics.Stopwatch.GetElapsedTime(existing.Timestamp, now)
                         : existing.Position;
-                    return new ProgressAnchor(estimateNow, now, existing.Track, playing);
+                    return new ProgressAnchor(estimateNow, now, existing.Track, playing, existing.Reported);
                 }
                 return existing;
             });
@@ -283,5 +283,5 @@ public class VisualPlayer(
     }
 
     /// <summary>Last position Lavalink reported for a guild, and when this process first saw it (monotonic)</summary>
-    private sealed record ProgressAnchor(TimeSpan Position, long Timestamp, object? Track, bool Playing);
+    private sealed record ProgressAnchor(TimeSpan Position, long Timestamp, object? Track, bool Playing, TimeSpan Reported);
 }
