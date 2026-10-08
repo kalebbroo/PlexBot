@@ -1,83 +1,88 @@
-# Plex playlist pipeline refactor: findings and plan
+# Plex playback pipeline refactor
 
-Status: planning. No code changes on this branch yet.
+Status: implemented on `refactor/plex-playlist-pipeline`. This page records why tracks failed, what changed, and how it was checked.
 
-## What the failures actually are
+## Why tracks failed
 
-The earlier theory was that some media types, or some tracks, cannot be played by Lavalink. The discriminator test does not support that. The cause is Plex throttling parallel file requests.
+There were two causes. Codecs were not one of them: flac, mp3, m4a and opus all load when Plex returns the file.
 
-Test run against 20 failed Kpop parts from the 2026-10-08 log:
+### 1. Plex drops file requests when several run at once
 
-| Test | Result |
+Lavalink's loads of the 77 parts that failed on 2026-10-08, all made directly against Lavalink `/v4/loadtracks`:
+
+| Concurrency | Loaded |
 |---|---|
-| Each of 12 parts fetched one at a time, from the host | All 200, full size (6–8 MB) |
-| Same 12 fetched one at a time, from inside the Lavalink container | All 200, full size |
-| Same 20 fetched with 10 in parallel, from the host | 4 × `503` (105-byte HTML body), 3 × `200` with 0 bytes, 13 × 200 with data |
+| 1 (sequential), 20 parts | 20/20 |
+| 3 (the old default), 40 parts | 37/40 |
+| 10, 40 parts | 27/40 |
+| Failures retried one at a time after 2 s | 7/7 |
 
-A 503 body is an HTML page: `<html><head><title>Service Unavailable</title></head>...`. Lavalink hands it to its format probe as if it were audio, which produces `Could not read the file for detecting file type` and `Unknown file format`. A `200` with 0 bytes produces `Premature end of Content-Length delimited message body (received: 0)`. Both families come from the same cause.
+Plex sends response headers, then closes the connection with no body. In the Lavalink log this shows as `Could not read the file for detecting file type`, caused by `Premature end of Content-Length delimited message body (expected: N; received: 0)`. Occasionally Lavalink reports `Unknown file format` instead. The REST response only says `severity: fault, "Something went wrong while looking up the track."`, so the bot can't tell these cases apart. Every load error is treated as retriable. A load with no match is the only permanent failure.
 
-Implications:
+The m4a and FLAC probes also seek with ranged requests, so one load can be several Plex requests. Lavalink then fetches the file again from the start when it plays.
 
-- **Retries help only if they wait.** The 0 of 77 recoveries happened because retries ran about 2 seconds after the first pass, against the same concurrency. Backoff over several seconds would likely recover most of them. This has not been measured yet.
-- **Codecs are not the problem.** Tracks in mp3, flac, m4a and opus all loaded when fetched alone.
-- **The fix is to limit concurrency and validate responses.** Lavalink should only ever receive a response the bot has already checked.
+### 2. The old retry could never succeed
 
-## Current pipeline (for reference)
+Lavalink4NET caches failed loads for 30 minutes in its default `CacheMode.Dynamic`. The old retry pass ran 2 seconds after the first pass, and got the cached failure back without asking Lavalink again. That is why the 2026-10-08 run recovered 0 of 77.
 
-- `TrackResolverService.ResolveTracksParallelAsync` resolves every track in a batch up front, `plex.maxConcurrentResolves` (default 3) at a time, and then retries failures once after 2 seconds.
-- `ResolveTrackAsync` calls `audioService.Tracks.LoadTrackAsync(PlaybackUrl)`, which makes Lavalink fetch the file and probe it.
-- `_resolveCache` caches `LavalinkTrack` by URL. It does not cache the Plex API responses, and it doesn't reduce file fetches.
-- A track that fails when it reaches the front of the queue is skipped.
-- Lavalink also fetches the file again when it plays, so each track is fetched at least twice.
+## What changed
 
-## Plan
+### Phase 1: shared throttle and retries
+- **`PlexStreamGate`** (singleton, all guilds):
+  - caps concurrent Plex loads (`plex.stream.maxConcurrentLoads`, default 2)
+  - holds a shared cooldown: a failed load sets one, and every caller waits for it, so retries don't recreate the burst
+- **`TrackResolverService`**:
+  - Plex loads go through the gate with `CacheMode.Refresh`, and retry after 2, 5 and 15 s (`plex.stream.retryDelaysSeconds`)
+  - every failure is logged with the part ID, attempt number and Lavalink severity, and never the token
+- **Resolve cache**:
+  - keyed by Plex part key (`Track.PartKey`, from `Media[0].Part[0].key`), never a URL with a token
+  - entries expire after 60 minutes (`plex.resolveCacheMinutes`)
+  - eviction runs in batches rather than sorting the whole cache on every insert
+- **Play-time retry** in `CustomLavaLinkPlayer`:
+  - `NotifyTrackExceptionAsync` logs the cause
+  - a `LoadFailed` end on a Plex track is replayed once after the backoff
+  - if it fails again, the track is skipped with a short notice in the channel
+  - the replay is dropped if the queue was cleared, stopped or replaced meanwhile (the generation check from PR #45)
 
-### 1. Validate the Plex response before Lavalink sees it (bot side)
-Before calling `LoadTrackAsync`, the bot issues a ranged request (`Range: bytes=0-0`) to the file URL, using the same HTTP client as Plex. The bot then checks the status code and that the response is audio, meaning a non-HTML `Content-Type` and a non-zero length. Only validated URLs reach Lavalink.
+### Phase 2: just-in-time resolution
+- **Placeholders**: `AddTracksAsync` resolves only the first track, then adds the rest as `CustomTrackQueueItem` placeholders. A placeholder holds the Plex metadata, and its `TrackReference` holds only the URL.
+  - The batch releases its place in the request order straight away, so a later `/play` isn't held behind a 92-track playlist.
+- **`QueueResolveService`** runs one worker per guild:
+  - each pass resolves the unresolved items among the first `plex.stream.resolveAhead` (default 3)
+  - it re-reads the queue every pass, so shuffle, clear and replace never leave it holding stale positions
+  - it's woken when a track starts, when tracks are added, and on shuffle, and also polls every 10 s
+- **The next track before playback**:
+  - skip waits up to 10 s for the next item to resolve
+  - the end of a track waits up to 5 s
+  - an item that fails every retry is removed, with a notice in the channel
+  - if a placeholder still reaches the player unresolved, Lavalink loads the URL itself, and the play-time retry goes through the resolver
+- **Visual player**: updates are serialised per guild. A track start and the batch's queue refresh could otherwise both send a new player message.
+- **Play All Similar**: no longer sends a second "Tracks Added" follow-up.
 
-- 503 or 429 → retriable, back off.
-- 200 with 0 bytes or HTML → retriable, back off.
-- 404 → permanent for this track. Mark it failed and move on.
+## Live results (KalebKorp, Plex Bot Test voice channel)
 
-### 2. Backoff and retry, scoped to the failure
-- Retry network-family and throttle-family failures with exponential backoff, for example 2 s, 5 s, 15 s, then give up. Make these values configurable in `config.fds`.
-- Log the failure family, the HTTP status, and the part ID for each track, so the next investigation doesn't need a correlation exercise.
+| Check | Before | After |
+|---|---|---|
+| `/playlist Kpop` (93 tracks), Phase 1 only | about 70 of 92 failed | 92/92 resolved. 22 failed the first attempt; 17 recovered on the 2nd, 5 on the 3rd |
+| `/playlist Kpop`, Phase 2 | answered after about 2 min of resolving | answered at once: "Playing Pink Venom, and queued 92 more" |
+| Plex loads over 6 minutes of playlist, 4 skips, a shuffle, `/play`, Play All Similar | 92+ up front | 13 in total |
+| Plays where Lavalink had to load an unresolved URL itself | — | 0 of 6 |
+| `/play Under Pressure` while the playlist was queued | waited for the playlist | queued at once |
+| Skip ×3, shuffle then skip, view queue, kill | — | all worked. The queue view shows placeholder titles and durations |
 
-### 3. Lower and configure concurrency
-- Change the default of `plex.maxConcurrentResolves` from 3 to 1 or 2, and measure. The discriminator run shows 10 parallel fetches trigger throttling.
-- Add an explicit limit on in-flight file requests per Plex server, separate from the resolve worker count, so Lavalink's own fetches are counted too.
+## Tests
 
-### 4. Just-in-time resolution
-- Resolve only the current track plus a small window ahead, for example the next 2 to 3. The rest of the queue holds unresolved placeholders, and each placeholder is resolved as it comes into the window.
-- This removes the burst of 92 resolves at the start of a playlist. It also fixes the request-ordering wait from PR 45: a later `/play` no longer waits for a whole playlist to resolve.
-- Interacts with the existing ordering turnstile: the turnstile should order placeholder insertion, and resolution happens later.
+`Tests/PlexBot.Tests` (xUnit) covers:
+- the retry schedule and config parsing
+- failure classification
+- the gate's concurrency limit and shared cooldown
+- cache keys and log IDs never containing the token
 
-### 5. Retry at play time
-- If a track fails when it reaches the front of the queue, retry it through the same validated path before skipping. Notify the user only if all attempts fail.
+Run it with `dotnet test Tests/PlexBot.Tests`. The project is excluded from the bot build and the Docker context.
 
-### 6. Caching
-- Keep the existing API-level caches (music section ID, similar tracks). They are not the bottleneck.
-- Keep `_resolveCache` but key it by part ID and validity, and expire entries. Plex part URLs include a `X-Plex-Token`. Cache keys must not contain the token, and cached URLs must not be logged.
-- Don't cache file contents in the bot. Lavalink already streams.
+## Follow-ups (not in this PR)
 
-### 7. Fallback: Plex transcode URL (only if still needed)
-- If a track keeps failing after validation and backoff, try Plex's universal transcoder for an audio stream instead of the direct file. This should be verified before use. Check how python-plexapi builds `getStreamURL` rather than guessing parameters.
-
-## Open questions to settle before implementing
-
-1. Measure recovery with backoff: rerun the failed Kpop parts with 2, 5 and 15 second waits, and with concurrency 1 and 2. Decide the defaults from that data.
-2. Does Plex's remote access setting "Limit remote stream bitrate" change the 503 behaviour? Check Settings → Remote Access on the server. This is a configuration question for the user.
-3. Lavaplayer probe depth: does a larger probe window help the "unknown format" case? This matters only if a validated response still fails the probe. Research the lavaplayer probe and embedded-art handling before assuming it.
-4. Confirm the Plex universal transcoder parameters (`/music/:/transcode/universal/start.*`) against the server, using python-plexapi's source.
-
-## Out of scope for this PR
-
-- The `Extensions/PlexRequestsBridge` duplicate-option fix. It sits in a gitignored folder and needs a decision on tracking.
-- H12, cooldown after success.
-- Rotating the Plex token and deleting logs written before token redaction.
-
-## Test plan
-
-- Unit-level: the validation and backoff logic, with a fake HTTP handler returning 503, 200-empty, HTML, and valid audio.
-- Live: the Kpop playlist (92 tracks) and the Play-All-Similar set (25 tracks). Target: almost all tracks load. Record the failure counts per family before and after.
-- Live: pause, skip and queue operations during just-in-time loading, to confirm the ordering and cancellation behaviour from PR 45 still holds.
+- **Plex transcoder fallback.** python-plexapi builds `/audio/:/transcode/universal/start.m3u8` (HLS), not a progressive file. Nobody has checked whether lavaplayer can play it. Only worth trying if failures remain.
+- **"Next Up" after a shuffle.** The player image isn't refreshed after a shuffle. This predates the refactor.
+- **Infinite radio.** `plex.radio.infinite` and `refillThreshold` do nothing, because `GetRefillTracksAsync` is never called.
+- **Remaining items from PR #45.** H12 (cooldown after success), tracking the PlexRequests extension, rotating the Plex token, and cleaning the old logs.

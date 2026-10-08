@@ -48,9 +48,17 @@ visualPlayer:
 
 ```yaml
 plex:
-    maxConcurrentResolves: 3     # Max parallel resolves when loading playlists from Plex (lower = safer)
+    maxConcurrentResolves: 2     # Max parallel resolves when loading playlists from Plex (lower = safer)
     maxConcurrentYouTubeResolves: 5  # Max parallel resolves for YouTube sources
+    resolveCacheSize: 500        # Resolved tracks kept, keyed by Plex part
+    resolveCacheMinutes: 60      # How long a resolved track is reused
+    stream:
+        maxConcurrentLoads: 2        # Plex file loads at once, shared by every server the bot is in
+        retryDelaysSeconds: 2, 5, 15 # Wait before each retry of a failed load; all Plex loads pause meanwhile
+        resolveAhead: 3              # Queued tracks loaded ahead of the one playing
 ```
+
+Large playlists are queued straight away. Only the next few tracks (`resolveAhead`) are loaded through Lavalink, as they come up, so Plex sees requests only for tracks that are about to play. Plex drops file requests when too many run at once, which Lavalink reports as "Could not read the file for detecting file type" or "Premature end of Content-Length delimited message body". The bot retries those with the delays above. A track that still fails is removed from the queue with a short notice in the channel.
 
 ### Logging Settings
 
@@ -99,7 +107,7 @@ PlexBot includes a smooth-fill progress bar made of 30 custom Discord emoji. Wit
    After uploading, hover over each emoji in the Developer Portal and copy its numeric ID (or use the Discord API).
 
 5. **Paste IDs into `config.fds`**
-   Find the `player.progressBar.emoji` section and paste each ID next to its matching name:
+   Find the `visualPlayer.progressBar.emoji` section and paste each ID next to its matching name:
 
    ```yaml
    emoji:

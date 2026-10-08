@@ -748,8 +748,8 @@ public class MusicInteractionHandler(IPlayerService playerService,
                 return;
             }
 
+            // AddToQueueAsync reports the outcome in the deferred response, so no follow-up is sent here
             await playerService.AddToQueueAsync(Context.Interaction, tracks);
-            await FollowupAsync(components: ComponentV2Builder.Success("Tracks Added", $"Added {tracks.Count} tracks to the queue."), ephemeral: true);
             Logs.Info($"Sonic play all ({sonicType}) by {Context.User.Username}: {tracks.Count} tracks");
         }
         catch (Exception ex)
