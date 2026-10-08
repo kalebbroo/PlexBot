@@ -398,33 +398,19 @@ public static class ImageBuilder
         {
             return cachedIcon;
         }
-        // Define possible paths where the icon might be located
-        string[] possiblePaths =
-        [
-            Path.Combine("/app/Images/Icons", iconName),
-            Path.Combine(AppContext.BaseDirectory, "Images/Icons", iconName),
-            Path.Combine(Directory.GetCurrentDirectory(), "Images/Icons", iconName)
-        ];
-        foreach (string path in possiblePaths)
+        string? path = AssetPaths.FindFile("Images", "Icons", iconName);
+        if (path is not null)
         {
-            if (File.Exists(path))
+            try
             {
-                try
-                {
-                    Logs.Debug($"Loading icon from {path}");
-                    Image<Rgba32> icon = Image.Load<Rgba32>(path);
-                    _iconCache[iconName] = icon;
-                    return icon;
-                }
-                catch (Exception ex)
-                {
-                    Logs.Error($"Failed to load icon from {path}: {ex.Message}");
-                    // Continue to the next path
-                }
+                Logs.Debug($"Loading icon from {path}");
+                Image<Rgba32> icon = Image.Load<Rgba32>(path);
+                _iconCache[iconName] = icon;
+                return icon;
             }
-            else
+            catch (Exception ex)
             {
-                Logs.Debug($"Icon path not found: {path}");
+                Logs.Error($"Failed to load icon from {path}: {ex.Message}");
             }
         }
         // If we get here, we couldn't load the icon

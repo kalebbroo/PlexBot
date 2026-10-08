@@ -14,3 +14,4 @@ Install/Docker/docker-compose.yml
 Install/Docker/lavalink.application.yml
 Install/Docker/plugins/
 Tests/
+Tools/
