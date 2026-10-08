@@ -94,6 +94,8 @@ plex:
         maxConcurrentLoads: 2
         # Wait before each retry of a failed load, in seconds. While waiting, all Plex loads pause.
         retryDelaysSeconds: 2, 5, 15
+        # Queued tracks loaded ahead of the one playing. The rest of a playlist waits as a placeholder.
+        resolveAhead: 3
     # Max concurrent track resolves for YouTube sources (separate from Plex)
     maxConcurrentYouTubeResolves: 5
     # Radio / Sonic settings
