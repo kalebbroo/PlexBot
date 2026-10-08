@@ -19,6 +19,9 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
 
     private int _setupStarted;
     private int _eventsWired;
+    private bool _modulesLoaded;
+    private bool _commandsRegistered;
+    private bool _subscribed;
 
     /// <summary>Wires the Discord and interaction events. Runs once per process.</summary>
     /// <returns>A task representing the asynchronous operation</returns>
@@ -60,53 +63,79 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
         return Task.CompletedTask;
     }
 
+    /// <summary>Runs setup until it fully succeeds. A failed stage (module load or command registration) is retried
+    /// with capped backoff, rather than leaving the process without commands until a restart.</summary>
     private async Task SetupAfterReadyAsync()
+    {
+        TimeSpan delay = TimeSpan.FromSeconds(10);
+        while (!await TrySetupAsync())
+        {
+            Logs.Warning($"[{InstanceId}] Setup incomplete; retrying in {delay.TotalSeconds:N0}s");
+            await Task.Delay(delay);
+            delay = TimeSpan.FromSeconds(Math.Min(delay.TotalSeconds * 2, 300));
+        }
+    }
+
+    /// <summary>One pass of setup. Returns false if any stage failed, so the caller retries. Stages that already
+    /// succeeded are not repeated, so a retry does not add modules twice.</summary>
+    private async Task<bool> TrySetupAsync()
     {
         try
         {
-            await interactions.AddModulesAsync(Assembly.GetEntryAssembly(), services);
-
-            ExtensionManager extensionManager = services.GetRequiredService<ExtensionManager>();
-            foreach (Extension ext in extensionManager.GetAllExtensions())
+            if (!_modulesLoaded)
             {
-                if (ext.SourceAssembly != null && ext.SourceAssembly != Assembly.GetEntryAssembly())
+                await interactions.AddModulesAsync(Assembly.GetEntryAssembly(), services);
+
+                ExtensionManager extensionManager = services.GetRequiredService<ExtensionManager>();
+                foreach (Extension ext in extensionManager.GetAllExtensions())
                 {
-                    await interactions.AddModulesAsync(ext.SourceAssembly, services);
-                    Logs.Info($"Registered commands from extension: {ext.Name}");
+                    if (ext.SourceAssembly != null && ext.SourceAssembly != Assembly.GetEntryAssembly())
+                    {
+                        await interactions.AddModulesAsync(ext.SourceAssembly, services);
+                        Logs.Info($"Registered commands from extension: {ext.Name}");
+                    }
                 }
+
+                foreach (ModuleInfo module in interactions.Modules)
+                {
+                    Logs.Info($"Module: {module.Name}, Commands: {module.SlashCommands.Count}");
+                    foreach (SlashCommandInfo cmd in module.SlashCommands)
+                        Logs.Info($"  Command: {cmd.Name}");
+                }
+                _modulesLoaded = true;
             }
 
-            foreach (ModuleInfo module in interactions.Modules)
-            {
-                Logs.Info($"Module: {module.Name}, Commands: {module.SlashCommands.Count}");
-                foreach (SlashCommandInfo cmd in module.SlashCommands)
-                    Logs.Info($"  Command: {cmd.Name}");
-            }
-
-            await RegisterCommandsWithRetryAsync();
+            if (!_commandsRegistered)
+                _commandsRegistered = await RegisterCommandsWithRetryAsync();
+            if (!_commandsRegistered)
+                return false;
 
             await client.SetGameAsync("/help", type: ActivityType.Listening);
 
-            BotEventBus eventBus = services.GetRequiredService<BotEventBus>();
-            if (BotConfig.GetBool("bot.showNowPlaying", true))
+            if (!_subscribed)
             {
-                eventBus.Subscribe(BotEvents.TrackStarted, async e =>
+                _subscribed = true;
+                BotEventBus eventBus = services.GetRequiredService<BotEventBus>();
+                if (BotConfig.GetBool("bot.showNowPlaying", true))
                 {
-                    string title = e.Data.GetValueOrDefault("title") as string ?? "Unknown";
-                    string artist = e.Data.GetValueOrDefault("artist") as string ?? "Unknown";
-                    string status = artist != "Unknown" ? $"{artist} - {title}" : title;
-                    // Discord truncates activity text at 128 chars
-                    if (status.Length > 128) status = status[..125] + "...";
-                    await client.SetGameAsync(status, type: ActivityType.Listening);
-                });
-                eventBus.Subscribe(BotEvents.TrackEnded, async _ => await client.SetGameAsync("/help", type: ActivityType.Listening));
-                eventBus.Subscribe(BotEvents.PlayerDestroyed, async _ => await client.SetGameAsync("/help", type: ActivityType.Listening));
-                Logs.Init("Rich presence enabled — bot status will show now-playing track");
+                    eventBus.Subscribe(BotEvents.TrackStarted, async e =>
+                    {
+                        string title = e.Data.GetValueOrDefault("title") as string ?? "Unknown";
+                        string artist = e.Data.GetValueOrDefault("artist") as string ?? "Unknown";
+                        string status = artist != "Unknown" ? $"{artist} - {title}" : title;
+                        // Discord truncates activity text at 128 chars
+                        if (status.Length > 128) status = status[..125] + "...";
+                        await client.SetGameAsync(status, type: ActivityType.Listening);
+                    });
+                    eventBus.Subscribe(BotEvents.TrackEnded, async _ => await client.SetGameAsync("/help", type: ActivityType.Listening));
+                    eventBus.Subscribe(BotEvents.PlayerDestroyed, async _ => await client.SetGameAsync("/help", type: ActivityType.Listening));
+                    Logs.Init("Rich presence enabled — bot status will show now-playing track");
+                }
             }
 
             Logs.Init($"[{InstanceId}] Bot is ready. Connected to {client.Guilds.Count} guilds");
 
-            _ = eventBus.PublishAsync(new BotEvent
+            _ = services.GetRequiredService<BotEventBus>().PublishAsync(new BotEvent
             {
                 EventType = BotEvents.BotReady,
                 Data = new Dictionary<string, object>
@@ -114,32 +143,36 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
                     ["guildCount"] = client.Guilds.Count
                 }
             });
+            return true;
         }
         catch (Exception ex)
         {
             Logs.Error($"Error in ready setup: {ex.Message}");
             Logs.Error($"Stack trace: {ex.StackTrace}");
+            return false;
         }
     }
 
     /// <summary>Registers slash commands, retrying each guild with backoff. Guilds are retried independently, so one
     /// guild that keeps rejecting registration does not stop the others from getting commands.</summary>
-    private async Task RegisterCommandsWithRetryAsync()
+    private async Task<bool> RegisterCommandsWithRetryAsync()
     {
+        bool allRegistered = true;
         if (BotConfig.GetString("bot.environment") == "Development")
         {
             // Guild-scoped registration is immediate; global can take up to an hour to appear
             foreach (SocketGuild guild in client.Guilds)
-                await RetryAsync($"guild {guild.Name} ({guild.Id})", () => interactions.RegisterCommandsToGuildAsync(guild.Id));
+                allRegistered &= await RetryAsync($"guild {guild.Name} ({guild.Id})", () => interactions.RegisterCommandsToGuildAsync(guild.Id));
         }
         else
         {
-            await RetryAsync("global", () => interactions.RegisterCommandsGloballyAsync());
+            allRegistered = await RetryAsync("global", () => interactions.RegisterCommandsGloballyAsync());
         }
+        return allRegistered;
     }
 
     /// <summary>Runs one registration with up to five attempts and exponential backoff. Gives up on this target only.</summary>
-    private static async Task RetryAsync(string target, Func<Task> register)
+    private static async Task<bool> RetryAsync(string target, Func<Task> register)
     {
         TimeSpan delay = TimeSpan.FromSeconds(5);
         for (int attempt = 1; attempt <= 5; attempt++)
@@ -148,16 +181,17 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
             {
                 await register();
                 Logs.Info($"Registered commands ({target})");
-                return;
+                return true;
             }
             catch (Exception ex)
             {
                 Logs.Error($"Command registration failed for {target} (attempt {attempt}/5): {ex.Message}");
-                if (attempt == 5) return;
+                if (attempt == 5) return false;
                 await Task.Delay(delay);
                 delay = TimeSpan.FromSeconds(Math.Min(delay.TotalSeconds * 2, 120));
             }
         }
+        return false;
     }
 
     /// <summary>Routes incoming interactions to appropriate handlers and manages error responses</summary>
