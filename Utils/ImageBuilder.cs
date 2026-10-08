@@ -1,4 +1,4 @@
-﻿using System.Net.Http;
+using System.Net.Http;
 using PlexBot.Utils.Http;
 
 using Path = System.IO.Path;
@@ -13,6 +13,7 @@ namespace PlexBot.Utils;
 /// <summary>Provides utilities for generating rich media player images with album art, track information, and visual effects for Discord embeds</summary>
 public static class ImageBuilder
 {
+    private static readonly Rgba32 ProgressFill = new(65, 105, 225, 255);
     private static readonly HttpClientWrapper? _httpClient;
     private static readonly FontFamily? _fontFamily;
     private static readonly FontCollection _fontCollection = new();
@@ -448,7 +449,7 @@ public static class ImageBuilder
         float fillWidth = (width * volumePercent) / 100f;
         if (fillWidth > 0)
         {
-            DrawRoundedRectangle(ctx, barX, barY, (int)fillWidth, height, cornerRadius, new Rgba32(65, 105, 225, 255), true);
+            DrawRoundedRectangle(ctx, barX, barY, (int)fillWidth, height, cornerRadius, ProgressFill, true);
         }
         // Percentage text after the bar (vertically centered)
         int textX = barX + width + 8;
@@ -466,11 +467,11 @@ public static class ImageBuilder
         {
             case "track":
                 displayText = "Track";
-                indicatorColor = new Rgba32(65, 105, 225, 255);
+                indicatorColor = ProgressFill;
                 break;
             case "queue":
                 displayText = "Queue";
-                indicatorColor = new Rgba32(65, 105, 225, 255);
+                indicatorColor = ProgressFill;
                 break;
             case "none":
             default:
