@@ -138,6 +138,9 @@ public class BotHostedService(DiscordSocketClient client, DiscordEventHandler ev
 
     /// <summary>Sets up the static player channel once the gateway is ready. Waits for the gateway (not a fixed delay),
     /// then waits for the channel to appear in the cache, since guilds arrive after Ready.</summary>
+    /// <summary>Sets up the static player channel. Waits for the gateway without a deadline, then retries the setup
+    /// step with capped backoff until it succeeds or shutdown begins. A fixed wait used to end this for good when
+    /// Discord was slow to connect, so the channel was never set up for the rest of the process.</summary>
     private async Task InitializeStaticPlayerChannelAsync(CancellationToken ct)
     {
         VisualPlayerStateManager stateManager = serviceProvider.GetRequiredService<VisualPlayerStateManager>();
@@ -146,66 +149,101 @@ public class BotHostedService(DiscordSocketClient client, DiscordEventHandler ev
             Logs.Debug("Static player channel is not configured or invalid, skipping initialization");
             return;
         }
+
         try
         {
-            ulong staticChannelId = stateManager.StaticChannelId.Value;
-            Logs.Init($"Initializing static player channel ({staticChannelId})...");
-
-            await _gatewayReady.Task.WaitAsync(TimeSpan.FromSeconds(120), ct);
-
-            // Guild data can arrive after Ready; poll the cache for up to 60 seconds
-            ITextChannel? textChannel = null;
-            for (int i = 0; i < 60 && textChannel is null && !ct.IsCancellationRequested; i++)
-            {
-                textChannel = client.GetChannel(staticChannelId) as ITextChannel;
-                if (textChannel is null) await Task.Delay(1000, ct);
-            }
-            if (textChannel is null)
-            {
-                Logs.Warning($"Static player channel {staticChannelId} not found in the cache or is not a text channel");
-                return;
-            }
-
-            IGuildUser currentUser = await textChannel.Guild.GetCurrentUserAsync();
-            ChannelPermissions permissions = currentUser.GetPermissions(textChannel);
-            if (!permissions.SendMessages || !permissions.EmbedLinks || !permissions.AttachFiles)
-            {
-                Logs.Warning($"Bot lacks required permissions in static player channel {staticChannelId}");
-                return;
-            }
-
-            ulong guildId = textChannel.Guild.Id;
-            stateManager.SetChannel(guildId, textChannel);
-
-            Logs.Info("Cleaning up static player channel...");
-            var messages = await textChannel.GetMessagesAsync(50).FlattenAsync();
-            List<IMessage> botMessages = messages.Where(m => m.Author.Id == client.CurrentUser.Id).ToList();
-            foreach (IMessage message in botMessages)
-            {
-                try
-                {
-                    await message.DeleteAsync();
-                    Logs.Debug($"Deleted message: {message.Id}");
-                    await Task.Delay(100, ct);
-                }
-                catch (Exception ex)
-                {
-                    Logs.Warning($"Failed to delete message: {ex.Message}");
-                }
-            }
-
-            ButtonContext context = new();
-            ComponentBuilder components = buttonBuilder.BuildButtons(ButtonFlag.VisualPlayer, context);
-            MessageComponent cv2 = ComponentV2Builder.BuildIdlePlayer(components);
-            IUserMessage initPlayer = await textChannel.SendMessageAsync(components: cv2);
-            stateManager.SetMessage(guildId, initPlayer);
-            Logs.Init($"Static player channel initialized successfully (message {initPlayer.Id})");
+            await _gatewayReady.Task.WaitAsync(ct);
         }
-        catch (OperationCanceledException) { }
-        catch (Exception ex)
+        catch (OperationCanceledException)
         {
-            Logs.Error($"Failed to initialize static player channel: {ex.Message}");
+            return;
         }
+
+        TimeSpan delay = TimeSpan.FromSeconds(5);
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                if (await TrySetupStaticChannelAsync(stateManager, ct))
+                    return;
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                Logs.Error($"Failed to initialize static player channel: {ex.Message}");
+            }
+
+            Logs.Warning($"Static player channel not ready; retrying in {delay.TotalSeconds:N0}s");
+            try
+            {
+                await Task.Delay(delay, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            delay = TimeSpan.FromSeconds(Math.Min(delay.TotalSeconds * 2, 300));
+        }
+    }
+
+    /// <summary>One attempt at static channel setup. Returns false if the channel is not in the cache yet or the bot
+    /// lacks permissions there, so the caller can retry.</summary>
+    private async Task<bool> TrySetupStaticChannelAsync(VisualPlayerStateManager stateManager, CancellationToken ct)
+    {
+        ulong staticChannelId = stateManager.StaticChannelId!.Value;
+        Logs.Init($"Initializing static player channel ({staticChannelId})...");
+
+        // Guild data can arrive after Ready; poll the cache for up to 60 seconds per attempt
+        ITextChannel? textChannel = null;
+        for (int i = 0; i < 60 && textChannel is null && !ct.IsCancellationRequested; i++)
+        {
+            textChannel = client.GetChannel(staticChannelId) as ITextChannel;
+            if (textChannel is null) await Task.Delay(1000, ct);
+        }
+        if (textChannel is null)
+        {
+            Logs.Warning($"Static player channel {staticChannelId} not found in the cache or is not a text channel");
+            return false;
+        }
+
+        IGuildUser currentUser = await textChannel.Guild.GetCurrentUserAsync();
+        ChannelPermissions permissions = currentUser.GetPermissions(textChannel);
+        if (!permissions.SendMessages || !permissions.EmbedLinks || !permissions.AttachFiles)
+        {
+            Logs.Warning($"Bot lacks required permissions in static player channel {staticChannelId}");
+            return false;
+        }
+
+        ulong guildId = textChannel.Guild.Id;
+        stateManager.SetChannel(guildId, textChannel);
+
+        Logs.Info("Cleaning up static player channel...");
+        var messages = await textChannel.GetMessagesAsync(50).FlattenAsync();
+        List<IMessage> botMessages = messages.Where(m => m.Author.Id == client.CurrentUser.Id).ToList();
+        foreach (IMessage message in botMessages)
+        {
+            try
+            {
+                await message.DeleteAsync();
+                Logs.Debug($"Deleted message: {message.Id}");
+                await Task.Delay(100, ct);
+            }
+            catch (Exception ex)
+            {
+                Logs.Warning($"Failed to delete message: {ex.Message}");
+            }
+        }
+
+        ButtonContext context = new();
+        ComponentBuilder components = buttonBuilder.BuildButtons(ButtonFlag.VisualPlayer, context);
+        MessageComponent cv2 = ComponentV2Builder.BuildIdlePlayer(components);
+        IUserMessage initPlayer = await textChannel.SendMessageAsync(components: cv2);
+        stateManager.SetMessage(guildId, initPlayer);
+        Logs.Init($"Static player channel initialized successfully (message {initPlayer.Id})");
+        return true;
     }
 
     /// <summary>Gracefully shuts down the bot by disconnecting from Discord, unloading extensions, and releasing resources to prevent any data corruption</summary>

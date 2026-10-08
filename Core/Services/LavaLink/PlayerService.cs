@@ -18,6 +18,14 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
     // and both call PlayAsync, and a replace can interleave with an add.
     private static readonly ConcurrentDictionary<ulong, SemaphoreSlim> _guildQueueLocks = new();
 
+    // Bumped by every clear, stop, and replace. A batch that resolves after one of these must not append its
+    // remaining tracks, or the queue the user just cleared or replaced would come back.
+    private static readonly ConcurrentDictionary<ulong, long> _queueGenerations = new();
+
+    private static long CurrentGeneration(ulong guildId) => _queueGenerations.GetOrAdd(guildId, 0);
+
+    private static long BumpGeneration(ulong guildId) => _queueGenerations.AddOrUpdate(guildId, 1, (_, value) => value + 1);
+
     /// <inheritdoc />
     public async Task<QueuedLavalinkPlayer?> GetPlayerAsync(IDiscordInteraction interaction, bool connectToVoiceChannel = true,
         CancellationToken cancellationToken = default)
@@ -109,6 +117,7 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
         await gate.WaitAsync(cancellationToken);
         try
         {
+            BumpGeneration(player.GuildId);
             int removed = player.Queue.Count;
             await player.Queue.ClearAsync(cancellationToken);
             return removed;
@@ -168,11 +177,16 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
             };
 
             bool shouldPlay;
+            long generation;
             await gate.WaitAsync(cancellationToken);
             try
             {
                 if (replaceQueue)
+                {
+                    BumpGeneration(guildId);
                     await player.Queue.ClearAsync(cancellationToken);
+                }
+                generation = CurrentGeneration(guildId);
 
                 // Decide under the lock: a concurrent add may have just started playback
                 shouldPlay = player.State != PlayerState.Playing && player.State != PlayerState.Paused;
@@ -240,10 +254,16 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
                     progress: progress,
                     cancellationToken: cancellationToken);
 
-                // Append all resolved tracks in original order, as one locked batch
+                // Append all resolved tracks in original order, as one locked batch. If the queue was cleared,
+                // stopped, or replaced while these resolved, discard them rather than resurrect stale tracks.
                 await gate.WaitAsync(cancellationToken);
                 try
                 {
+                    if (CurrentGeneration(guildId) != generation)
+                    {
+                        Logs.Warning($"[guild {guildId}] Discarding {resolveResult.ResolvedTracks.Count} resolved tracks: the queue changed while they loaded");
+                        resolveResult = new TrackResolveResult(0, resolveResult.FailedTracks, []);
+                    }
                     foreach (var (_, track, resolved) in resolveResult.ResolvedTracks)
                     {
                         CustomTrackQueueItem item = new()
@@ -421,6 +441,7 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
             await gate.WaitAsync(cancellationToken);
             try
             {
+                BumpGeneration(player.GuildId);
                 await player.StopAsync(cancellationToken);
                 await player.Queue.ClearAsync(cancellationToken);
             }
