@@ -182,8 +182,9 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
         SemaphoreSlim gate = _guildQueueLocks.GetOrAdd(guildId, _ => new SemaphoreSlim(1, 1));
         OrderedTurns turns = _queueTurns.GetOrAdd(guildId, _ => new OrderedTurns());
         long ticket = turns.Take();
-        // Captured with the ticket: a clear, stop, or replace issued after this request has to win over it
-        long issuedGeneration = CurrentGeneration(guildId);
+        // A replace bumps the generation when it is issued, so earlier pending work becomes stale, while later
+        // requests carry the new generation and are not dropped by it. An add captures the current generation.
+        long issuedGeneration = replaceQueue ? BumpGeneration(guildId) : CurrentGeneration(guildId);
         bool turnHeld = false;
 
         try
@@ -245,10 +246,7 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
             try
             {
                 if (replaceQueue)
-                {
-                    BumpGeneration(guildId);
                     await player.Queue.ClearAsync(cancellationToken);
-                }
                 generation = CurrentGeneration(guildId);
 
                 // Decide under the lock: a concurrent add may have just started playback
