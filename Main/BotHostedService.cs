@@ -83,6 +83,13 @@ public class BotHostedService(DiscordSocketClient client, DiscordEventHandler ev
             {
                 Logs.Init($"Connecting to Discord (attempt {attempt})");
                 await client.LoginAsync(TokenType.Bot, _discordToken);
+                // Shutdown may have begun while login was in flight. Neither call takes the token,
+                // so check it here and log out rather than start a client that StopAsync is tearing down.
+                if (ct.IsCancellationRequested)
+                {
+                    await client.LogoutAsync();
+                    return;
+                }
                 await client.StartAsync();
                 Logs.Init("Bot service started");
                 return;
@@ -201,6 +208,9 @@ public class BotHostedService(DiscordSocketClient client, DiscordEventHandler ev
         {
             Logs.Info("Stopping bot service");
             _connectCts?.Cancel();
+            // Let the connect loop finish first, so only one path touches the client
+            if (_connectTask is not null)
+                await _connectTask.WaitAsync(TimeSpan.FromSeconds(30), CancellationToken.None).ConfigureAwait(false);
             await client.StopAsync();
             await client.LogoutAsync();
             await extensionManager.UnloadAllExtensionsAsync();
