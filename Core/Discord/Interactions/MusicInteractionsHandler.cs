@@ -451,7 +451,9 @@ public class MusicInteractionHandler(IPlayerService playerService,
                 return;
             }
 
-            await playerService.AddToQueueAsync(Context.Interaction, tracks);
+            // Superseded by a clear or replace: the service already told the user, so don't start radio
+            if (!await playerService.AddToQueueAsync(Context.Interaction, tracks))
+                return;
 
             if (Context.Guild is not null)
                 radioSessionManager.StartSession(Context.Guild.Id, ratingKey);
@@ -768,7 +770,8 @@ public class MusicInteractionHandler(IPlayerService playerService,
             return;
         }
 
-        await playerService.AddToQueueAsync(Context.Interaction, tracks);
+        if (!await playerService.AddToQueueAsync(Context.Interaction, tracks))
+            return;
 
         // Start radio session for potential infinite refill
         if (Context.Guild is not null)

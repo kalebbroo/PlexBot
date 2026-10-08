@@ -138,9 +138,9 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
     }
 
     /// <inheritdoc />
-    public async Task AddToQueueAsync(IDiscordInteraction interaction, IEnumerable<Track> tracks,
+    public Task<bool> AddToQueueAsync(IDiscordInteraction interaction, IEnumerable<Track> tracks,
         CancellationToken cancellationToken = default)
-        => await AddTracksAsync(interaction, tracks, replaceQueue: false, cancellationToken);
+        => AddTracksAsync(interaction, tracks, replaceQueue: false, cancellationToken);
 
     /// <inheritdoc />
     public Task<bool> ReplaceQueueAsync(IDiscordInteraction interaction, IEnumerable<Track> tracks,
@@ -228,9 +228,39 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
             await turns.WaitTurn(ticket);
             turnHeld = true;
 
-            // A clear, stop, or replace was issued after this request. Drop the batch before its first insertion,
-            // so it cannot repopulate a queue the user was told was cleared.
-            if (CurrentGeneration(guildId) != issuedGeneration)
+            // The generation is checked under the gate, so a clear, stop, or replace that takes the gate first is
+            // seen here. A superseded request is dropped before its first insertion, so it cannot repopulate a
+            // queue the user was told was cleared.
+            bool shouldPlay = false;
+            long generation = 0;
+            bool superseded = false;
+            await gate.WaitAsync(cancellationToken);
+            try
+            {
+                if (CurrentGeneration(guildId) != issuedGeneration)
+                {
+                    superseded = true;
+                }
+                else
+                {
+                    if (replaceQueue)
+                        await player.Queue.ClearAsync(cancellationToken);
+                    generation = CurrentGeneration(guildId);
+
+                    // Decide under the lock: a concurrent add may have just started playback
+                    shouldPlay = player.State != PlayerState.Playing && player.State != PlayerState.Paused;
+                    if (shouldPlay)
+                        await player.PlayAsync(firstItem, cancellationToken: cancellationToken);
+                    else
+                        await player.Queue.AddAsync(firstItem, cancellationToken);
+                }
+            }
+            finally
+            {
+                gate.Release();
+            }
+
+            if (superseded)
             {
                 Logs.Warning($"[guild {guildId}] Dropping a queue request: the queue was cleared or replaced after it was issued");
                 await interaction.ModifyOriginalResponseAsync(msg =>
@@ -240,27 +270,6 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
                     msg.Flags = MessageFlags.ComponentsV2;
                 });
                 return false;
-            }
-
-            bool shouldPlay;
-            long generation;
-            await gate.WaitAsync(cancellationToken);
-            try
-            {
-                if (replaceQueue)
-                    await player.Queue.ClearAsync(cancellationToken);
-                generation = CurrentGeneration(guildId);
-
-                // Decide under the lock: a concurrent add may have just started playback
-                shouldPlay = player.State != PlayerState.Playing && player.State != PlayerState.Paused;
-                if (shouldPlay)
-                    await player.PlayAsync(firstItem, cancellationToken: cancellationToken);
-                else
-                    await player.Queue.AddAsync(firstItem, cancellationToken);
-            }
-            finally
-            {
-                gate.Release();
             }
 
             // === STEP 2: Resolve remaining tracks in parallel ===
@@ -325,10 +334,11 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
                     if (CurrentGeneration(guildId) != generation)
                     {
                         Logs.Warning($"[guild {guildId}] Discarding {resolveResult.ResolvedTracks.Count} resolved tracks: the queue changed while they loaded");
-                        resolveResult = new TrackResolveResult(0, resolveResult.FailedTracks, []);
+                        superseded = true;
                     }
                     foreach (var (_, track, resolved) in resolveResult.ResolvedTracks)
                     {
+                        if (superseded) break;
                         CustomTrackQueueItem item = new()
                         {
                             SourceTrack = track,
@@ -341,6 +351,19 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
                 finally
                 {
                     gate.Release();
+                }
+
+                if (superseded)
+                {
+                    // The first track was already applied; the rest were dropped. Say so, and report it as not applied
+                    // so the caller does not treat the request as a success.
+                    await interaction.ModifyOriginalResponseAsync(msg =>
+                    {
+                        msg.Components = ComponentV2Builder.Info("Request Cancelled", "The queue was cleared or replaced while the rest of these tracks were loading, so they were not added.");
+                        msg.Embed = null;
+                        msg.Flags = MessageFlags.ComponentsV2;
+                    });
+                    return false;
                 }
 
                 int totalSuccess = resolveResult.SuccessCount + 1; // +1 for the first track
