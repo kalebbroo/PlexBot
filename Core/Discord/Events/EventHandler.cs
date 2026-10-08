@@ -22,6 +22,7 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
     // Assemblies whose modules are already registered. Only failed loads are retried, so a retry never adds a
     // module definition twice (Discord.Net keeps earlier definitions when more are added).
     private readonly HashSet<Assembly> _loadedAssemblies = new();
+    private readonly HashSet<ulong> _registeredGuilds = new();
     private bool _commandsRegistered;
     private bool _subscribed;
 
@@ -179,7 +180,15 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
         {
             // Guild-scoped registration is immediate; global can take up to an hour to appear
             foreach (SocketGuild guild in client.Guilds)
-                allRegistered &= await RetryAsync($"guild {guild.Name} ({guild.Id})", () => interactions.RegisterCommandsToGuildAsync(guild.Id));
+            {
+                // Guilds that already registered are skipped on later setup retries, so one failing guild does not
+                // re-overwrite the commands of every other guild
+                if (_registeredGuilds.Contains(guild.Id))
+                    continue;
+                bool ok = await RetryAsync($"guild {guild.Name} ({guild.Id})", () => interactions.RegisterCommandsToGuildAsync(guild.Id));
+                if (ok) _registeredGuilds.Add(guild.Id);
+                allRegistered &= ok;
+            }
         }
         else
         {

@@ -138,12 +138,12 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
     }
 
     /// <inheritdoc />
-    public Task AddToQueueAsync(IDiscordInteraction interaction, IEnumerable<Track> tracks,
+    public async Task AddToQueueAsync(IDiscordInteraction interaction, IEnumerable<Track> tracks,
         CancellationToken cancellationToken = default)
-        => AddTracksAsync(interaction, tracks, replaceQueue: false, cancellationToken);
+        => await AddTracksAsync(interaction, tracks, replaceQueue: false, cancellationToken);
 
     /// <inheritdoc />
-    public Task ReplaceQueueAsync(IDiscordInteraction interaction, IEnumerable<Track> tracks,
+    public Task<bool> ReplaceQueueAsync(IDiscordInteraction interaction, IEnumerable<Track> tracks,
         CancellationToken cancellationToken = default)
         => AddTracksAsync(interaction, tracks, replaceQueue: true, cancellationToken);
 
@@ -171,7 +171,9 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
     /// <summary>Resolves the first track, then starts or queues it under the guild lock. The rest are resolved
     /// outside the lock and appended in order. The existing queue is cleared only after the first track has
     /// resolved, so a failed resolve leaves the queue intact.</summary>
-    private async Task AddTracksAsync(IDiscordInteraction interaction, IEnumerable<Track> tracks, bool replaceQueue,
+    /// <returns>True if the tracks were applied to the queue; false if they were not (the first track failed to
+    /// load, or a clear, stop, or replace superseded this request).</returns>
+    private async Task<bool> AddTracksAsync(IDiscordInteraction interaction, IEnumerable<Track> tracks, bool replaceQueue,
         CancellationToken cancellationToken)
     {
         (QueuedLavalinkPlayer? player, string? failure) = await TryGetPlayerAsync(interaction, true, cancellationToken);
@@ -197,7 +199,7 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
             int totalCount = trackList.Count;
             Logs.Debug($"[guild {guildId}] Adding {totalCount} tracks to queue (replace={replaceQueue})");
 
-            if (totalCount == 0) return;
+            if (totalCount == 0) return true;
 
             // === STEP 1: Resolve and play the first track immediately ===
             Track firstTrack = trackList[0];
@@ -212,7 +214,7 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
                     msg.Embed = null;
                     msg.Flags = MessageFlags.ComponentsV2;
                 });
-                return;
+                return false;
             }
 
             CustomTrackQueueItem firstItem = new()
@@ -237,7 +239,7 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
                     msg.Embed = null;
                     msg.Flags = MessageFlags.ComponentsV2;
                 });
-                return;
+                return false;
             }
 
             bool shouldPlay;
@@ -384,6 +386,7 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
                     msg.Flags = MessageFlags.ComponentsV2;
                 });
             }
+            return true;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
