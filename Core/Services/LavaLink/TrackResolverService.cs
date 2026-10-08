@@ -7,6 +7,8 @@ namespace PlexBot.Core.Services.LavaLink;
 /// <summary>Resolves Track objects into Lavalink-playable LavalinkTrack references with support for parallel batch resolution</summary>
 public class TrackResolverService(IAudioService audioService) : ITrackResolverService
 {
+    private static readonly TimeSpan LoadTimeout = TimeSpan.FromSeconds(20);
+
     // Cache resolved tracks by PlaybackUrl to avoid redundant Lavalink calls (replays, repeat mode)
     // Values are (LavalinkTrack, Ticks) for LRU eviction
     private readonly ConcurrentDictionary<string, (LavalinkTrack Track, long Ticks)> _resolveCache = new();
@@ -26,19 +28,13 @@ public class TrackResolverService(IAudioService audioService) : ITrackResolverSe
 
         TrackLoadOptions loadOptions = new() { SearchMode = TrackSearchMode.None };
 
-        LavalinkTrack? lavalinkTrack = await audioService.Tracks.LoadTrackAsync(
-            track.PlaybackUrl,
-            loadOptions,
-            cancellationToken: cancellationToken);
+        LavalinkTrack? lavalinkTrack = await LoadWithTimeoutAsync(track.PlaybackUrl, loadOptions, cancellationToken);
 
         // YouTube fallback: try search mode if direct URL fails
         if (lavalinkTrack == null && track.SourceSystem.Equals("youtube", StringComparison.OrdinalIgnoreCase))
         {
             TrackLoadOptions searchOptions = new() { SearchMode = TrackSearchMode.YouTube };
-            lavalinkTrack = await audioService.Tracks.LoadTrackAsync(
-                track.PlaybackUrl,
-                searchOptions,
-                cancellationToken: cancellationToken);
+            lavalinkTrack = await LoadWithTimeoutAsync(track.PlaybackUrl, searchOptions, cancellationToken);
         }
 
         // Cache the result with LRU timestamp
@@ -149,6 +145,23 @@ public class TrackResolverService(IAudioService audioService) : ITrackResolverSe
             .ToList();
 
         return new TrackResolveResult(successCount, permanentlyFailed, ordered);
+    }
+
+    /// <summary>Loads a track from Lavalink with a deadline. Without one, a stalled Lavalink node leaves the
+    /// deferred interaction waiting until Discord's token expires, with no message to the user.</summary>
+    private async Task<LavalinkTrack?> LoadWithTimeoutAsync(string url, TrackLoadOptions options, CancellationToken cancellationToken)
+    {
+        using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(LoadTimeout);
+        try
+        {
+            return await audioService.Tracks.LoadTrackAsync(url, options, cancellationToken: deadline.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            Logs.Warning($"Lavalink track load timed out after {LoadTimeout.TotalSeconds:N0}s: {url}");
+            return null;
+        }
     }
 
     /// <summary>Evicts the oldest cache entry (by timestamp) when the cache is full</summary>

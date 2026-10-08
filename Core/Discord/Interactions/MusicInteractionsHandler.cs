@@ -193,8 +193,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
                     });
                     break;
                 case "clear":
-                    int cleared = player.Queue.Count;
-                    await player.Queue.ClearAsync();
+                    int cleared = await playerService.ClearQueueAsync(interaction);
                     await interaction.ModifyOriginalResponseAsync(msg =>
                     {
                         msg.Components = ComponentV2Builder.Success("Queue Cleared", $"Removed {cleared} tracks from the queue.");
@@ -255,7 +254,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
 
             ButtonContext context = new() { Player = player, Interaction = Context.Interaction };
             ComponentBuilder components = buttonBuilder.BuildButtons(ButtonFlag.VisualPlayer, context);
-            await visualPlayer.AddOrUpdateVisualPlayerAsync(components, recreateImage: true);
+            await visualPlayer.AddOrUpdateVisualPlayerAsync(player.GuildId, components, recreateImage: true);
         }
         catch (Exception ex)
         {
@@ -314,7 +313,8 @@ public class MusicInteractionHandler(IPlayerService playerService,
             if (Context.Guild is not null)
                 radioSessionManager.StopSession(Context.Guild.Id);
 
-            visualPlayer.StopProgressTimer();
+            if (Context.Guild is not null)
+                visualPlayer.StopProgressTimer(Context.Guild.Id);
             await playerService.StopAsync(Context.Interaction, true);
             Logs.Info($"Player killed by {Context.User.Username}");
         }
@@ -398,10 +398,10 @@ public class MusicInteractionHandler(IPlayerService playerService,
                 return;
             }
 
-            if (await playerService.GetPlayerAsync(Context.Interaction, false) is CustomLavaLinkPlayer player)
-                await player.Queue.ClearAsync();
-
-            await playerService.AddToQueueAsync(Context.Interaction, tracks);
+            // Replace clears the queue only after the first track resolves, under the guild queue lock.
+            // If it was superseded, the service has already told the user; don't report success or start radio.
+            if (!await playerService.ReplaceQueueAsync(Context.Interaction, tracks))
+                return;
 
             if (Context.Guild is not null)
                 radioSessionManager.StartSession(Context.Guild.Id, ratingKey);
@@ -451,7 +451,9 @@ public class MusicInteractionHandler(IPlayerService playerService,
                 return;
             }
 
-            await playerService.AddToQueueAsync(Context.Interaction, tracks);
+            // Superseded by a clear or replace: the service already told the user, so don't start radio
+            if (!await playerService.AddToQueueAsync(Context.Interaction, tracks))
+                return;
 
             if (Context.Guild is not null)
                 radioSessionManager.StartSession(Context.Guild.Id, ratingKey);
@@ -768,7 +770,8 @@ public class MusicInteractionHandler(IPlayerService playerService,
             return;
         }
 
-        await playerService.AddToQueueAsync(Context.Interaction, tracks);
+        if (!await playerService.AddToQueueAsync(Context.Interaction, tracks))
+            return;
 
         // Start radio session for potential infinite refill
         if (Context.Guild is not null)

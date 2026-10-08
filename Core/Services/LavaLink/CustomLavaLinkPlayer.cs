@@ -1,4 +1,4 @@
-﻿using PlexBot.Utils;
+using PlexBot.Utils;
 using Discord.WebSocket;
 using PlexBot.Core.Discord.Embeds;
 using PlexBot.Core.Events;
@@ -28,7 +28,7 @@ public sealed class CustomLavaLinkPlayer(IPlayerProperties<CustomLavaLinkPlayer,
             }
             ButtonContext context = new() { Player = this };
             ComponentBuilder components = buttonBuilder.BuildButtons(ButtonFlag.VisualPlayer, context);
-            await visualPlayer.AddOrUpdateVisualPlayerAsync(components, recreateImage: true).ConfigureAwait(false);
+            await visualPlayer.AddOrUpdateVisualPlayerAsync(GuildId, components, recreateImage: true).ConfigureAwait(false);
 
             // Prefetch next track's artwork in background (fire and forget)
             ITrackPrefetchService prefetch = serviceProvider.GetRequiredService<ITrackPrefetchService>();

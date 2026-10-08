@@ -41,7 +41,6 @@ services:
       # Map PlexBot env vars to what the Lavalink container expects
       - SERVER_PORT=${LAVALINK_SERVER_PORT:-2333}
       - SERVER_ADDRESS=0.0.0.0
-      - LAVALINK_SERVER_PASSWORD=${LAVALINK_SERVER_PASSWORD:-youshallnotpass}
       # JVM tuning — uncomment _JAVA_OPTIONS in .env to enable ZGC (reduces audio stuttering)
       - _JAVA_OPTIONS=${_JAVA_OPTIONS:-}
       # Disable Spring Cloud Config — Lavalink uses a local file, not a config server

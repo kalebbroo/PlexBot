@@ -23,7 +23,12 @@ public class BotHostedService(DiscordSocketClient client, DiscordEventHandler ev
     private readonly string _discordToken = EnvConfig.Get("DISCORD_TOKEN")
             ?? throw new InvalidOperationException("DISCORD_TOKEN environment variable is not set");
 
-    /// <summary>Starts the bot service by initializing event handlers, loading extensions, and establishing connection to Discord and Lavalink</summary>
+    private readonly TaskCompletionSource _gatewayReady = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private CancellationTokenSource? _connectCts;
+    private Task? _connectTask;
+
+    /// <summary>Starts the bot service by initializing event handlers, loading extensions, and connecting to Discord and Lavalink.
+    /// Discord login runs in the background and retries with backoff, so a temporary outage does not end the process.</summary>
     /// <param name="cancellationToken">Token to monitor for cancellation requests to safely abort startup operations</param>
     /// <returns>A task representing the asynchronous startup operation</returns>
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -31,28 +36,34 @@ public class BotHostedService(DiscordSocketClient client, DiscordEventHandler ev
         try
         {
             Logs.Init("Starting bot service");
-            // Initialize event handlers
+            client.Ready += () =>
+            {
+                _gatewayReady.TrySetResult();
+                return Task.CompletedTask;
+            };
+
             await eventHandler.InitializeAsync();
-            // Initialize Lavalink services
+
             IAudioService lavalinkNode = serviceProvider.GetRequiredService<IAudioService>();
-            await lavalinkNode.StartAsync(cancellationToken);
+            await RetryAsync("Lavalink", () => lavalinkNode.StartAsync(cancellationToken).AsTask(), cancellationToken);
             Logs.Init("Lavalink services initialized");
-            // Initialize extensions (Phase 2 of two-phase startup — services already registered)
+
             int extensionsLoaded = await extensionManager.InitializeAllAsync(serviceProvider);
             Logs.Info($"Initialized {extensionsLoaded} extensions");
-            // Register all music providers (built-in + any from extensions) with the registry
+
             MusicProviderRegistry providerRegistry = serviceProvider.GetRequiredService<MusicProviderRegistry>();
             foreach (IMusicProvider provider in serviceProvider.GetServices<IMusicProvider>())
             {
                 providerRegistry.RegisterProvider(provider);
             }
             Logs.Init($"Registered {providerRegistry.GetAvailableProviders().Count} music providers");
-            // Connect to Discord and start the bot
-            Logs.Init("Connecting to Discord");
-            await client.LoginAsync(TokenType.Bot, _discordToken);
-            await client.StartAsync();
-            Logs.Init("Bot service started");
-            await InitializeStaticPlayerChannelAsync();
+
+            _connectCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            _connectTask = Task.Run(() => ConnectToDiscordAsync(_connectCts.Token));
+            _ = _connectTask.ContinueWith(t => Logs.Error($"Discord connect loop ended: {t.Exception?.GetBaseException().Message}"),
+                TaskContinuationOptions.OnlyOnFaulted);
+
+            _ = Task.Run(() => InitializeStaticPlayerChannelAsync(_connectCts.Token));
         }
         catch (Exception ex)
         {
@@ -61,65 +72,178 @@ public class BotHostedService(DiscordSocketClient client, DiscordEventHandler ev
         }
     }
 
-    /// <summary>Initializes the static player channel if enabled in configuration</summary>
-    /// <returns>A task representing the initialization operation</returns>
-    private async Task InitializeStaticPlayerChannelAsync()
+    /// <summary>Logs in and starts the Discord gateway. Retries with exponential backoff (capped at one minute)
+    /// until it succeeds or the service stops.</summary>
+    private async Task ConnectToDiscordAsync(CancellationToken ct)
+    {
+        TimeSpan delay = TimeSpan.FromSeconds(5);
+        for (int attempt = 1; !ct.IsCancellationRequested; attempt++)
+        {
+            try
+            {
+                Logs.Init($"Connecting to Discord (attempt {attempt})");
+                await client.LoginAsync(TokenType.Bot, _discordToken);
+                // Shutdown may have begun while login was in flight. Neither call takes the token,
+                // so check it here and log out rather than start a client that StopAsync is tearing down.
+                if (ct.IsCancellationRequested)
+                {
+                    await client.LogoutAsync();
+                    return;
+                }
+                await client.StartAsync();
+                Logs.Init("Bot service started");
+                return;
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                Logs.Error($"Discord login failed (attempt {attempt}): {ex.Message}. Retrying in {delay.TotalSeconds:N0}s");
+            }
+
+            // Delay outside the catch block, so cancellation during the wait ends the loop cleanly
+            try
+            {
+                await Task.Delay(delay, ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            delay = TimeSpan.FromSeconds(Math.Min(delay.TotalSeconds * 2, 60));
+        }
+    }
+
+    /// <summary>Runs an async operation, retrying with backoff on failure. Used for Lavalink startup.</summary>
+    private static async Task RetryAsync(string name, Func<Task> operation, CancellationToken ct)
+    {
+        TimeSpan delay = TimeSpan.FromSeconds(3);
+        for (int attempt = 1; ; attempt++)
+        {
+            try
+            {
+                await operation();
+                return;
+            }
+            catch (Exception ex) when (attempt < 10 && !ct.IsCancellationRequested)
+            {
+                Logs.Warning($"{name} startup failed (attempt {attempt}): {ex.Message}. Retrying in {delay.TotalSeconds:N0}s");
+                await Task.Delay(delay, ct);
+                delay = TimeSpan.FromSeconds(Math.Min(delay.TotalSeconds * 2, 30));
+            }
+        }
+    }
+
+    /// <summary>Sets up the static player channel once the gateway is ready. Waits for the gateway (not a fixed delay),
+    /// then waits for the channel to appear in the cache, since guilds arrive after Ready.</summary>
+    /// <summary>Sets up the static player channel. Waits for the gateway without a deadline, then retries the setup
+    /// step with capped backoff until it succeeds or shutdown begins. A fixed wait used to end this for good when
+    /// Discord was slow to connect, so the channel was never set up for the rest of the process.</summary>
+    private async Task InitializeStaticPlayerChannelAsync(CancellationToken ct)
     {
         VisualPlayerStateManager stateManager = serviceProvider.GetRequiredService<VisualPlayerStateManager>();
-        // Early return if static channel is not configured
         if (!stateManager.UseStaticChannel || !stateManager.StaticChannelId.HasValue)
         {
             Logs.Debug("Static player channel is not configured or invalid, skipping initialization");
             return;
         }
+
         try
         {
-            ulong staticChannelId = stateManager.StaticChannelId.Value;
-            Logs.Init($"Initializing static player channel ({staticChannelId})...");
-            // Wait a moment for the client to be fully ready
-            await Task.Delay(2000);
-            // Get the channel from the client
-            if (client.GetChannel(staticChannelId) is not ITextChannel textChannel)
-            {
-                Logs.Warning($"Static player channel with ID {staticChannelId} not found or is not a text channel");
-                return;
-            }
-            IGuildUser currentUser = await textChannel.Guild.GetCurrentUserAsync();
-            ChannelPermissions permissions = currentUser.GetPermissions(textChannel);
-            if (!permissions.SendMessages || !permissions.EmbedLinks || !permissions.AttachFiles)
-            {
-                Logs.Warning($"Bot lacks required permissions in static player channel {staticChannelId}");
-                return;
-            }
-            stateManager.CurrentPlayerChannel = textChannel; // Set the current player channel
-            Logs.Info("Cleaning up static player channel...");
-            var messages = await textChannel.GetMessagesAsync(50).FlattenAsync();
-            List<IMessage> botMessages = messages.Where(m => m.Author.Id == client.CurrentUser.Id).ToList();
-            foreach (IMessage message in botMessages)
-            {
-                try
-                {
-                    await message.DeleteAsync();
-                    Logs.Debug($"\n\nDeleted message: {message.Id}\n\n");
-                    await Task.Delay(100);
-                }
-                catch (Exception ex)
-                {
-                    Logs.Warning($"Failed to delete message: {ex.Message}");
-                }
-            }
-            ButtonContext context = new();
-            ComponentBuilder components = buttonBuilder.BuildButtons(ButtonFlag.VisualPlayer, context);
-            MessageComponent cv2 = ComponentV2Builder.BuildIdlePlayer(components);
-            IUserMessage initPlayer = await textChannel.SendMessageAsync(components: cv2);
-            stateManager.CurrentPlayerMessage = initPlayer;
-            Logs.Debug($"\n\nStatic player channel initialized with message ID {initPlayer.Id}\n\n");
-            Logs.Init($"Static player channel initialized successfully");
+            await _gatewayReady.Task.WaitAsync(ct);
         }
-        catch (Exception ex)
+        catch (OperationCanceledException)
         {
-            Logs.Error($"Failed to initialize static player channel: {ex.Message}");
+            return;
         }
+
+        TimeSpan delay = TimeSpan.FromSeconds(5);
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                if (await TrySetupStaticChannelAsync(stateManager, ct))
+                    return;
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                Logs.Error($"Failed to initialize static player channel: {ex.Message}");
+            }
+
+            Logs.Warning($"Static player channel not ready; retrying in {delay.TotalSeconds:N0}s");
+            try
+            {
+                await Task.Delay(delay, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            delay = TimeSpan.FromSeconds(Math.Min(delay.TotalSeconds * 2, 300));
+        }
+    }
+
+    /// <summary>One attempt at static channel setup. Returns false if the channel is not in the cache yet or the bot
+    /// lacks permissions there, so the caller can retry.</summary>
+    private async Task<bool> TrySetupStaticChannelAsync(VisualPlayerStateManager stateManager, CancellationToken ct)
+    {
+        ulong staticChannelId = stateManager.StaticChannelId!.Value;
+        Logs.Init($"Initializing static player channel ({staticChannelId})...");
+
+        // Guild data can arrive after Ready; poll the cache for up to 60 seconds per attempt
+        ITextChannel? textChannel = null;
+        for (int i = 0; i < 60 && textChannel is null && !ct.IsCancellationRequested; i++)
+        {
+            textChannel = client.GetChannel(staticChannelId) as ITextChannel;
+            if (textChannel is null) await Task.Delay(1000, ct);
+        }
+        if (textChannel is null)
+        {
+            Logs.Warning($"Static player channel {staticChannelId} not found in the cache or is not a text channel");
+            return false;
+        }
+
+        IGuildUser currentUser = await textChannel.Guild.GetCurrentUserAsync();
+        ChannelPermissions permissions = currentUser.GetPermissions(textChannel);
+        if (!permissions.SendMessages || !permissions.EmbedLinks || !permissions.AttachFiles)
+        {
+            Logs.Warning($"Bot lacks required permissions in static player channel {staticChannelId}");
+            return false;
+        }
+
+        ulong guildId = textChannel.Guild.Id;
+        stateManager.SetChannel(guildId, textChannel);
+
+        Logs.Info("Cleaning up static player channel...");
+        var messages = await textChannel.GetMessagesAsync(50).FlattenAsync();
+        List<IMessage> botMessages = messages.Where(m => m.Author.Id == client.CurrentUser.Id).ToList();
+        foreach (IMessage message in botMessages)
+        {
+            try
+            {
+                await message.DeleteAsync();
+                Logs.Debug($"Deleted message: {message.Id}");
+                await Task.Delay(100, ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                Logs.Warning($"Failed to delete message: {ex.Message}");
+            }
+        }
+
+        ButtonContext context = new();
+        ComponentBuilder components = buttonBuilder.BuildButtons(ButtonFlag.VisualPlayer, context);
+        MessageComponent cv2 = ComponentV2Builder.BuildIdlePlayer(components);
+        IUserMessage initPlayer = await textChannel.SendMessageAsync(components: cv2);
+        stateManager.SetMessage(guildId, initPlayer);
+        Logs.Init($"Static player channel initialized successfully (message {initPlayer.Id})");
+        return true;
     }
 
     /// <summary>Gracefully shuts down the bot by disconnecting from Discord, unloading extensions, and releasing resources to prevent any data corruption</summary>
@@ -130,10 +254,23 @@ public class BotHostedService(DiscordSocketClient client, DiscordEventHandler ev
         try
         {
             Logs.Info("Stopping bot service");
-            // Disconnect from Discord
+            _connectCts?.Cancel();
+            // Let the connect loop finish first, so only one path touches the client
+            if (_connectTask is not null)
+            {
+                try
+                {
+                    await _connectTask.WaitAsync(TimeSpan.FromSeconds(30), CancellationToken.None).ConfigureAwait(false);
+                }
+                catch (Exception ex) when (ex is OperationCanceledException or TimeoutException)
+                {
+                    // Expected when shutdown interrupted the connect loop, or it did not finish in time.
+                    // Carry on with cleanup either way.
+                    Logs.Debug($"Connect loop did not finish cleanly before shutdown: {ex.GetType().Name}");
+                }
+            }
             await client.StopAsync();
             await client.LogoutAsync();
-            // Unload extensions
             await extensionManager.UnloadAllExtensionsAsync();
             Logs.Info("Bot service stopped");
         }

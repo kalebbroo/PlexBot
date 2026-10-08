@@ -557,9 +557,9 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
     [SlashCommand("ping", "Test if interactions are working")]
     public async Task PingCommand()
     {
-        Logs.Info($"Ping: about to DeferAsync");
+        Logs.Debug("Ping: about to DeferAsync");
         await DeferAsync(ephemeral: true);
-        Logs.Info($"Ping: DeferAsync succeeded");
+        Logs.Debug("Ping: DeferAsync succeeded");
         await FollowupAsync(components: ComponentV2Builder.Info("Pong", "Interaction pipeline is healthy."), ephemeral: true);
     }
 

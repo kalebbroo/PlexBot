@@ -273,8 +273,16 @@ namespace PlexBot.Utils
         /// <param name="messageForeground">Foreground color for the message</param>
         /// <param name="message">The message to log</param>
         /// <param name="level">The severity level of this message</param>
+        private static readonly System.Text.RegularExpressions.Regex PlexTokenPattern =
+            new(@"(X-Plex-Token=)[^&\s""'<>]+", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+        /// <summary>Removes Plex access tokens from a message. Plex playback URLs carry the token as a query
+        /// parameter, and those URLs were being written to the console and log files in full.</summary>
+        public static string RedactSecrets(string message) => PlexTokenPattern.Replace(message, "$1***");
+
         private static void LogWithColor(ConsoleColor prefixBackground, ConsoleColor prefixForeground, string prefix, ConsoleColor messageBackground, ConsoleColor messageForeground, string message, LogLevel level)
         {
+            message = RedactSecrets(message);
             // Track the message in the appropriate tracker
             Trackers[(int)level].Track(message);
             // Skip console output if below minimum level
