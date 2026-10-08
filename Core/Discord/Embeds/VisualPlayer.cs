@@ -235,17 +235,28 @@ public class VisualPlayer(
         if (reported is null) return null;
 
         long now = System.Diagnostics.Stopwatch.GetTimestamp();
+        bool playing = player.State == PlayerState.Playing;
         ProgressAnchor anchor = _progressAnchors.AddOrUpdate(guildId,
-            _ => new ProgressAnchor(reported.Value, now, player.CurrentItem),
+            _ => new ProgressAnchor(reported.Value, now, player.CurrentItem, playing),
             (_, existing) =>
             {
                 // A new report, or a new track, re-anchors the clock to what Lavalink says
                 if (existing.Track != player.CurrentItem || existing.Position != reported.Value)
-                    return new ProgressAnchor(reported.Value, now, player.CurrentItem);
+                    return new ProgressAnchor(reported.Value, now, player.CurrentItem, playing);
+
+                // Pause or resume with an unchanged report: freeze the estimate so far, then restart the clock
+                // from it. Otherwise the paused time is added to the position on resume.
+                if (existing.Playing != playing)
+                {
+                    TimeSpan estimateNow = existing.Playing
+                        ? existing.Position + System.Diagnostics.Stopwatch.GetElapsedTime(existing.Timestamp, now)
+                        : existing.Position;
+                    return new ProgressAnchor(estimateNow, now, existing.Track, playing);
+                }
                 return existing;
             });
 
-        if (player.State != PlayerState.Playing)
+        if (!playing)
             return anchor.Position;
 
         TimeSpan elapsed = System.Diagnostics.Stopwatch.GetElapsedTime(anchor.Timestamp, now);
@@ -272,5 +283,5 @@ public class VisualPlayer(
     }
 
     /// <summary>Last position Lavalink reported for a guild, and when this process first saw it (monotonic)</summary>
-    private sealed record ProgressAnchor(TimeSpan Position, long Timestamp, object? Track);
+    private sealed record ProgressAnchor(TimeSpan Position, long Timestamp, object? Track, bool Playing);
 }
