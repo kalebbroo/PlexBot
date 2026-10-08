@@ -28,7 +28,8 @@ public interface IPlayerService
     /// <param name="cancellationToken">Optional token to cancel the operation if it takes too long</param>
     /// <returns>A task that completes when all tracks have been processed and added to the queue</returns>
     /// <exception cref="PlayerException">Thrown when the tracks cannot be added to the queue due to format or connection issues</exception>
-    Task AddToQueueAsync(IDiscordInteraction interaction, IEnumerable<Track> tracks, CancellationToken cancellationToken = default);
+    /// <returns>True if the tracks were applied to the queue; false if the request was superseded by a clear, stop, or replace</returns>
+    Task<bool> AddToQueueAsync(IDiscordInteraction interaction, IEnumerable<Track> tracks, CancellationToken cancellationToken = default);
 
     /// <summary>Replaces the guild's queue with the given tracks. The existing queue is cleared only after the
     /// first track resolves, so a failed resolve leaves the queue untouched.</summary>

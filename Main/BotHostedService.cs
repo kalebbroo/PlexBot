@@ -231,7 +231,7 @@ public class BotHostedService(DiscordSocketClient client, DiscordEventHandler ev
                 Logs.Debug($"Deleted message: {message.Id}");
                 await Task.Delay(100, ct);
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 Logs.Warning($"Failed to delete message: {ex.Message}");
             }
