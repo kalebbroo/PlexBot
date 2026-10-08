@@ -54,14 +54,36 @@ public sealed class CustomLavaLinkPlayer(IPlayerProperties<CustomLavaLinkPlayer,
     }
 
     /// <inheritdoc />
+    protected override async ValueTask NotifyTrackExceptionAsync(ITrackQueueItem track, TrackException exception, CancellationToken cancellationToken = default)
+    {
+        await base.NotifyTrackExceptionAsync(track, exception, cancellationToken).ConfigureAwait(false);
+        string where = track is CustomTrackQueueItem item ? $"{item.Title} ({TrackResolverService.PartId(item.SourceTrack)})" : track.Track?.Title ?? "Unknown Track";
+        Logs.Warning($"[guild {GuildId}] Playback failed: {where}: {exception.Severity}: {exception.Message} ({exception.Cause})");
+    }
+
+    /// <inheritdoc />
     protected override async ValueTask NotifyTrackEndedAsync(ITrackQueueItem queueItem, TrackEndReason endReason, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         ArgumentNullException.ThrowIfNull(queueItem);
 
-        await base.NotifyTrackEndedAsync(queueItem, endReason, cancellationToken).ConfigureAwait(false);
-
         string trackTitle = (queueItem as CustomTrackQueueItem)?.Title ?? queueItem.Track?.Title ?? "Unknown Track";
+
+        // A Plex stream that fails to open at play time is usually the same dropped response seen at load time.
+        // Retry it once after the backoff, rather than skipping straight to the next track.
+        if (endReason == TrackEndReason.LoadFailed && queueItem is CustomTrackQueueItem failed
+            && failed.SourceTrack.SourceSystem.Equals("plex", StringComparison.OrdinalIgnoreCase))
+        {
+            if (failed.PlayRetries < 1)
+            {
+                failed.PlayRetries++;
+                ScheduleReplay(failed);
+                return;
+            }
+            _ = NotifyChannelAsync("Track Skipped", $"Skipped **{trackTitle}**: Plex didn't return the file.");
+        }
+
+        await base.NotifyTrackEndedAsync(queueItem, endReason, cancellationToken).ConfigureAwait(false);
         Logs.Debug($"Track ended: {trackTitle}, Reason: {endReason}");
 
         // Publish track ended event for extensions
@@ -82,6 +104,54 @@ public sealed class CustomLavaLinkPlayer(IPlayerProperties<CustomLavaLinkPlayer,
         catch (Exception ex)
         {
             Logs.Error($"Error publishing track ended event: {ex.Message}");
+        }
+    }
+
+    /// <summary>Plays a failed item again after the Plex backoff. Runs off the event path so other player events
+    /// aren't held up. Dropped if the queue was cleared, stopped, or replaced meanwhile.</summary>
+    private void ScheduleReplay(CustomTrackQueueItem item)
+    {
+        PlexStreamGate gate = serviceProvider.GetRequiredService<PlexStreamGate>();
+        TimeSpan delay = serviceProvider.GetRequiredService<PlexLoadRetryPolicy>().DelayBefore(1);
+        long generation = PlayerService.CurrentGeneration(GuildId);
+        gate.Cooldown(delay);
+        Logs.Warning($"[guild {GuildId}] Retrying playback in {delay.TotalSeconds:N0}s: {item.Title} ({TrackResolverService.PartId(item.SourceTrack)})");
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(delay).ConfigureAwait(false);
+                if (State == PlayerState.Destroyed || PlayerService.CurrentGeneration(GuildId) != generation)
+                {
+                    Logs.Debug($"[guild {GuildId}] Playback retry dropped: the queue changed");
+                    return;
+                }
+                if (State == PlayerState.NotPlaying)
+                    await PlayAsync(item, enqueue: false).ConfigureAwait(false);
+                else
+                    await Queue.InsertAsync(0, item).ConfigureAwait(false); // something else started meanwhile
+            }
+            catch (Exception ex)
+            {
+                Logs.Error($"[guild {GuildId}] Playback retry failed: {ex.Message}");
+            }
+        });
+    }
+
+    private async Task NotifyChannelAsync(string title, string description)
+    {
+        try
+        {
+            ITextChannel? channel = serviceProvider.GetRequiredService<VisualPlayerStateManager>().GetChannel(GuildId);
+            if (channel is null) return;
+            IUserMessage message = await channel.SendMessageAsync(components: Discord.Embeds.ComponentV2Builder.Info(title, description),
+                flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
+            _ = Task.Delay(TimeSpan.FromSeconds(30)).ContinueWith(_ => message.DeleteAsync());
+        }
+        catch (Exception ex)
+        {
+            Logs.Debug($"[guild {GuildId}] Could not post channel notice: {ex.Message}");
         }
     }
 

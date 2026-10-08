@@ -24,6 +24,10 @@ public class Track
     /// <summary>Direct streaming URL that will be passed to the audio player for playback, includes authentication tokens if needed</summary>
     public string PlaybackUrl { get; set; } = string.Empty;
 
+    /// <summary>Plex part key (e.g. /library/parts/123/456/file.flac), without the token. Empty for non-Plex tracks.
+    /// Used as the resolve cache key and in logs, so neither carries the token.</summary>
+    public string PartKey { get; set; } = string.Empty;
+
     /// <summary>URL to the artist's page/info, used for navigation to see more content from the same artist</summary>
     public string ArtistUrl { get; set; } = string.Empty;
 

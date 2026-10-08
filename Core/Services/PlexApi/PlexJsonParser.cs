@@ -31,6 +31,7 @@ public static class PlexJsonParser
             ReleaseDate = item["originallyAvailableAt"]?.ToString() ?? "N/A",
             ArtworkUrl = plexApiService.GetArtworkUrl(item["thumb"]?.ToString()),
             PlaybackUrl = playableUrl,
+            PartKey = partKey.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? "" : partKey,
             ArtistUrl = item["grandparentKey"]?.ToString() ?? "",
             DurationMs = duration,
             DurationDisplay = FormatHelper.FormatDuration(duration),
