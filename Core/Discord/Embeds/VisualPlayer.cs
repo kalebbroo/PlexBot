@@ -20,8 +20,26 @@ public class VisualPlayer(
     private readonly ConcurrentDictionary<ulong, CancellationTokenSource> _progressTimers = new();
     private readonly ConcurrentDictionary<ulong, ProgressAnchor> _progressAnchors = new();
 
+    // One update at a time per guild. Without this, a track start and a queue refresh that land together both see
+    // no message yet and each send a new one, leaving two players in the channel.
+    private readonly ConcurrentDictionary<ulong, SemaphoreSlim> _updateLocks = new();
+
     /// <summary>Updates or creates the visual player for a guild with current track information and buttons using Components V2</summary>
     public async Task AddOrUpdateVisualPlayerAsync(ulong guildId, ComponentBuilder components, bool recreateImage = false)
+    {
+        SemaphoreSlim updateLock = _updateLocks.GetOrAdd(guildId, _ => new SemaphoreSlim(1, 1));
+        await updateLock.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            await AddOrUpdateCoreAsync(guildId, components, recreateImage).ConfigureAwait(false);
+        }
+        finally
+        {
+            updateLock.Release();
+        }
+    }
+
+    private async Task AddOrUpdateCoreAsync(ulong guildId, ComponentBuilder components, bool recreateImage)
     {
         try
         {
