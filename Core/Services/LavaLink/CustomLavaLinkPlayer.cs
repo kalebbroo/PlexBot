@@ -266,6 +266,7 @@ public sealed class CustomLavaLinkPlayer(IPlayerProperties<CustomLavaLinkPlayer,
             serviceProvider.GetRequiredService<QueueResolveService>().Stop(GuildId);
             await StopAsync(cancellationToken).ConfigureAwait(false);
             await DisconnectAsync(cancellationToken).ConfigureAwait(false);
+            serviceProvider.GetRequiredService<BotEventBus>().PublishPlayerDestroyed(GuildId);
         }
         catch (Exception ex)
         {

@@ -622,8 +622,12 @@ public class MusicInteractionHandler(IPlayerService playerService,
     {
         try
         {
-            if (await playerService.GetPlayerAsync(Context.Interaction, false) is not CustomLavaLinkPlayer player
-                || player.CurrentItem is not CustomTrackQueueItem currentItem
+            if (await playerService.GetPlayerAsync(Context.Interaction, false) is not CustomLavaLinkPlayer player)
+            {
+                await RespondAsync(components: ComponentV2Builder.Error("No Player", "No active player found. Start playback with /play first."), ephemeral: true);
+                return;
+            }
+            if (player.CurrentItem is not CustomTrackQueueItem currentItem
                 || !currentItem.SourceTrack.SourceSystem.Equals("plex", StringComparison.OrdinalIgnoreCase))
             {
                 await RespondAsync(components: ComponentV2Builder.Error("Not Available", "Play a Plex track first to use Sonic Adventure."), ephemeral: true);
