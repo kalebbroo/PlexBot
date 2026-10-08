@@ -81,18 +81,18 @@ All playback is controlled through buttons on the player message — not slash c
 
 ## Playlist Loading & Concurrency
 
-When loading large playlists, PlexBot resolves tracks in parallel through Lavalink. The concurrency is configurable in `config.fds`:
+Large playlists are queued at once. PlexBot loads only the first track and the next few in the queue (`resolveAhead`) through Lavalink, and loads the rest as they come up. Plex drops file requests when too many run at once, so loads are limited and failed loads are retried with a pause:
 
 ```yaml
 plex:
-    maxConcurrentResolves: 3
+    stream:
+        maxConcurrentLoads: 2        # Plex file loads at once, shared by every server
+        retryDelaysSeconds: 2, 5, 15 # Wait before each retry; all Plex loads pause meanwhile
+        resolveAhead: 3              # Queued tracks loaded ahead of the one playing
 ```
 
-- **Lower values** (1-2): Safer for Plex servers with limited resources, but slower
-- **Higher values** (4-5): Faster loading, but may overwhelm Plex — you'll see "Failed to load" messages if Plex drops connections
-- **Default (3)**: Good balance for most setups
-
-Failed tracks are automatically retried once after a delay. Any permanently failed tracks are listed in the status embed.
+- **Lower `maxConcurrentLoads`** (1) if tracks still fail on a busy or slow Plex server.
+- A track that fails every retry is removed from the queue, with a short notice in the channel.
 
 ## Troubleshooting
 
@@ -104,7 +104,7 @@ Failed tracks are automatically retried once after a delay. Any permanently fail
 
 ### Tracks Fail to Load from Playlists
 
-- Lower `plex.maxConcurrentResolves` in `config.fds` — Plex drops connections under heavy concurrent load
+- Lower `plex.stream.maxConcurrentLoads` in `config.fds` — Plex drops connections under heavy concurrent load
 - Check `logs/` for detailed error messages
 - Ensure Plex is serving files directly (Direct Play) — transcoding adds load
 
