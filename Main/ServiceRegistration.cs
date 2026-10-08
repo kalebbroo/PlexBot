@@ -1,3 +1,4 @@
+using PlexBot.Core.Discord.Design;
 using PlexBot.Core.Discord.Embeds;
 using PlexBot.Core.Discord.Events;
 using PlexBot.Core.Extensions;
@@ -82,6 +83,7 @@ namespace PlexBot.Main
                 }));
             services.AddSingleton<DiscordEventHandler>();
             services.AddSingleton<VisualPlayer>();
+            services.AddSingleton<EmojiRegistry>();
             services.AddSingleton<DiscordButtonBuilder>();
         }
 
