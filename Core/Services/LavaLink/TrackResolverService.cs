@@ -6,7 +6,8 @@ using PlexBot.Utils;
 
 namespace PlexBot.Core.Services.LavaLink;
 
-/// <summary>Resolves Track objects into Lavalink-playable LavalinkTrack references with support for parallel batch resolution</summary>
+/// <summary>Resolves Track objects into Lavalink-playable LavalinkTrack references. Plex loads go through the shared
+/// gate and retry with backoff.</summary>
 public partial class TrackResolverService(IAudioService audioService, PlexStreamGate plexGate, PlexLoadRetryPolicy retryPolicy) : ITrackResolverService
 {
     private static readonly TimeSpan LoadTimeout = TimeSpan.FromSeconds(20);
@@ -41,74 +42,6 @@ public partial class TrackResolverService(IAudioService audioService, PlexStream
         }
 
         return lavalinkTrack;
-    }
-
-    /// <inheritdoc />
-    public void Invalidate(Track track)
-    {
-        string cacheKey = CacheKey(track);
-        if (cacheKey.Length > 0)
-            _resolveCache.TryRemove(cacheKey, out _);
-    }
-
-    /// <inheritdoc />
-    public async Task<TrackResolveResult> ResolveTracksParallelAsync(
-        IReadOnlyList<Track> tracks,
-        int maxConcurrency = 5,
-        IProgress<int>? progress = null,
-        CancellationToken cancellationToken = default)
-    {
-        int successCount = 0;
-        ConcurrentDictionary<int, (Track Track, LavalinkTrack Resolved)> resolvedMap = new();
-        ConcurrentDictionary<int, string> failedMap = new();
-
-        // Plex loads are also limited process-wide by the gate, so this only bounds how many tasks queue for it.
-        // Each load retries with backoff on its own, so there is no separate retry pass.
-        using SemaphoreSlim semaphore = new(Math.Max(1, maxConcurrency));
-
-        Task[] tasks = tracks.Select(async (Track track, int index) =>
-        {
-            await semaphore.WaitAsync(cancellationToken);
-            try
-            {
-                LavalinkTrack? resolved = await ResolveTrackAsync(track, cancellationToken);
-                if (resolved != null)
-                {
-                    int count = Interlocked.Increment(ref successCount);
-                    resolvedMap[index] = (track, resolved);
-                    progress?.Report(count);
-                }
-                else
-                {
-                    failedMap[index] = track.Title ?? "Unknown Track";
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                Logs.Error($"Error resolving track: {track.Title} ({PartId(track)}): {ex.Message}");
-                failedMap[index] = track.Title ?? "Unknown Track";
-            }
-            finally
-            {
-                semaphore.Release();
-            }
-        }).ToArray();
-
-        await Task.WhenAll(tasks);
-
-        List<string> failed = failedMap.OrderBy(kvp => kvp.Key).Select(kvp => kvp.Value).ToList();
-        Logs.Info($"Resolved {successCount} of {tracks.Count} tracks, {failed.Count} failed");
-
-        List<(int Index, Track Track, LavalinkTrack Resolved)> ordered = resolvedMap
-            .OrderBy(kvp => kvp.Key)
-            .Select(kvp => (kvp.Key, kvp.Value.Track, kvp.Value.Resolved))
-            .ToList();
-
-        return new TrackResolveResult(successCount, failed, ordered);
     }
 
     /// <summary>Loads a Plex file URL through the shared gate, backing off and retrying when Plex drops the response</summary>

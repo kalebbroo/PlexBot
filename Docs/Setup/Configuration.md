@@ -48,8 +48,7 @@ visualPlayer:
 
 ```yaml
 plex:
-    maxConcurrentResolves: 2     # Max parallel resolves when loading playlists from Plex (lower = safer)
-    maxConcurrentYouTubeResolves: 5  # Max parallel resolves for YouTube sources
+    maxConcurrentResolves: 2     # Older name for stream.maxConcurrentLoads, used only when that is not set
     resolveCacheSize: 500        # Resolved tracks kept, keyed by Plex part
     resolveCacheMinutes: 60      # How long a resolved track is reused
     stream:
