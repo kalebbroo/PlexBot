@@ -398,8 +398,10 @@ public class MusicInteractionHandler(IPlayerService playerService,
                 return;
             }
 
-            // Replace clears the queue only after the first track resolves, under the guild queue lock
-            await playerService.ReplaceQueueAsync(Context.Interaction, tracks);
+            // Replace clears the queue only after the first track resolves, under the guild queue lock.
+            // If it was superseded, the service has already told the user; don't report success or start radio.
+            if (!await playerService.ReplaceQueueAsync(Context.Interaction, tracks))
+                return;
 
             if (Context.Guild is not null)
                 radioSessionManager.StartSession(Context.Guild.Id, ratingKey);

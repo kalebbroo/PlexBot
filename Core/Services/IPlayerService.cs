@@ -37,7 +37,8 @@ public interface IPlayerService
     /// <param name="cancellationToken">Optional token to cancel the operation if it takes too long</param>
     /// <returns>A task that completes when the replacement has been applied</returns>
     /// <exception cref="PlayerException">Thrown when the player is unavailable or the tracks cannot be queued</exception>
-    Task ReplaceQueueAsync(IDiscordInteraction interaction, IEnumerable<Track> tracks, CancellationToken cancellationToken = default);
+    /// <returns>True if the replacement was applied; false if it was cancelled before it could be applied</returns>
+    Task<bool> ReplaceQueueAsync(IDiscordInteraction interaction, IEnumerable<Track> tracks, CancellationToken cancellationToken = default);
 
     /// <summary>Removes every queued track for the guild, under the same lock that guards queue adds</summary>
     /// <param name="interaction">The Discord interaction providing context for the guild's player</param>
