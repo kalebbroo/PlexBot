@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using PlexBot.Core.Discord.Embeds;
+using PlexBot.Core.Events;
 using PlexBot.Core.Exceptions;
 using PlexBot.Core.Models.Media;
 using PlexBot.Core.Models.Players;
@@ -485,6 +486,7 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
             if (disconnect)
             {
                 await player.DisconnectAsync(cancellationToken);
+                serviceProvider.GetRequiredService<BotEventBus>().PublishPlayerDestroyed(player.GuildId);
                 Logs.Debug($"Player stopped and disconnected by {interaction.User.Username}");
             }
             else

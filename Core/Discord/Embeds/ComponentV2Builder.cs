@@ -194,6 +194,17 @@ public static class ComponentV2Builder
             ).Build();
     }
 
+    /// <summary>Replaces a player message after its player disconnects. It has no controls, so an old player can't be used.</summary>
+    public static MessageComponent BuildStoppedPlayer()
+    {
+        return new ComponentBuilderV2()
+            .WithContainer(new ContainerBuilder()
+                .WithAccentColor(InfoColor)
+                .WithTextDisplay("## ⏹️ Playback stopped")
+                .WithTextDisplay("Use `/play` or `/playlist` to start music again.")
+            ).Build();
+    }
+
     /// <summary>Builds the idle player display for static channel initialization</summary>
     public static MessageComponent BuildIdlePlayer(ComponentBuilder buttons)
     {
