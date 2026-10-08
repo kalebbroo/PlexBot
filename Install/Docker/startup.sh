@@ -68,8 +68,8 @@ need_rebuild() {
 if need_rebuild; then
     echo "Rebuilding project from source..."
     cd "$SOURCE_DIR"
-    dotnet restore
-    dotnet publish -c Release -o "$APP_DIR"
+    dotnet restore PlexBot.csproj
+    dotnet publish PlexBot.csproj -c Release -o "$APP_DIR"
     touch "$BUILD_MARKER"
     echo "Rebuild complete."
 fi
