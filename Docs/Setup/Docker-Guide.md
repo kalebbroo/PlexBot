@@ -62,8 +62,8 @@ The build uses a multi-stage .NET 9 SDK image:
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /source
 COPY . .
-RUN dotnet restore
-RUN dotnet publish -c Release -o /app
+RUN dotnet restore PlexBot.csproj
+RUN dotnet publish PlexBot.csproj -c Release -o /app
 ```
 
 **Runtime stage**: Uses the SDK image (not just runtime) to support live source rebuilds. Installs font packages for ImageSharp text rendering:

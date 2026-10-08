@@ -1,179 +1,157 @@
 using System.Collections.Concurrent;
+using LavalinkCacheMode = Lavalink4NET.Rest.Entities.CacheMode;
 using PlexBot.Core.Models.Media;
 using PlexBot.Utils;
 
 namespace PlexBot.Core.Services.LavaLink;
 
-/// <summary>Resolves Track objects into Lavalink-playable LavalinkTrack references with support for parallel batch resolution</summary>
-public class TrackResolverService(IAudioService audioService) : ITrackResolverService
+/// <summary>Resolves Track objects into Lavalink-playable LavalinkTrack references. Plex loads go through the shared
+/// gate and retry with backoff.</summary>
+public class TrackResolverService(IAudioService audioService, PlexStreamGate plexGate, PlexLoadRetryPolicy retryPolicy,
+    PlexStreamOptions options) : ITrackResolverService
 {
-    private static readonly TimeSpan LoadTimeout = TimeSpan.FromSeconds(20);
+    /// <summary>Deadline for one Lavalink load. Without one, a stalled Lavalink node leaves the deferred interaction
+    /// waiting until Discord's token expires, with no message to the user.</summary>
+    public static readonly TimeSpan LoadTimeout = TimeSpan.FromSeconds(20);
 
-    // Cache resolved tracks by PlaybackUrl to avoid redundant Lavalink calls (replays, repeat mode)
-    // Values are (LavalinkTrack, Ticks) for LRU eviction
-    private readonly ConcurrentDictionary<string, (LavalinkTrack Track, long Ticks)> _resolveCache = new();
-    private readonly int _maxResolveCacheEntries = BotConfig.GetInt("plex.resolveCacheSize", 500);
-
-    /// <inheritdoc />
-    public async Task<LavalinkTrack?> ResolveTrackAsync(Track track, CancellationToken cancellationToken = default)
-    {
-        // Check cache first
-        if (!string.IsNullOrEmpty(track.PlaybackUrl) && _resolveCache.TryGetValue(track.PlaybackUrl, out var cached))
-        {
-            // Update timestamp for LRU behavior
-            _resolveCache[track.PlaybackUrl] = (cached.Track, DateTime.UtcNow.Ticks);
-            Logs.Debug($"Resolve cache hit: {track.Title}");
-            return cached.Track;
-        }
-
-        TrackLoadOptions loadOptions = new() { SearchMode = TrackSearchMode.None };
-
-        LavalinkTrack? lavalinkTrack = await LoadWithTimeoutAsync(track.PlaybackUrl, loadOptions, cancellationToken);
-
-        // YouTube fallback: try search mode if direct URL fails
-        if (lavalinkTrack == null && track.SourceSystem.Equals("youtube", StringComparison.OrdinalIgnoreCase))
-        {
-            TrackLoadOptions searchOptions = new() { SearchMode = TrackSearchMode.YouTube };
-            lavalinkTrack = await LoadWithTimeoutAsync(track.PlaybackUrl, searchOptions, cancellationToken);
-        }
-
-        // Cache the result with LRU timestamp
-        if (lavalinkTrack != null && !string.IsNullOrEmpty(track.PlaybackUrl))
-        {
-            EvictOldestIfFull();
-            _resolveCache[track.PlaybackUrl] = (lavalinkTrack, DateTime.UtcNow.Ticks);
-        }
-
-        return lavalinkTrack;
-    }
+    /// <summary>Resolved tracks, keyed by <see cref="CacheKey"/>, with the time each was cached</summary>
+    public ConcurrentDictionary<string, (LavalinkTrack Track, DateTime CachedAt)> ResolveCache { get; } = new();
 
     /// <inheritdoc />
-    public async Task<TrackResolveResult> ResolveTracksParallelAsync(
-        IReadOnlyList<Track> tracks,
-        int maxConcurrency = 5,
-        IProgress<int>? progress = null,
-        CancellationToken cancellationToken = default)
+    public async Task<TrackResolution> ResolveTrackAsync(Track track, CancellationToken cancellationToken = default)
     {
-        int successCount = 0;
-        ConcurrentDictionary<int, Track> failedIndexMap = new();
-        ConcurrentDictionary<int, (Track Track, LavalinkTrack Resolved)> resolvedMap = new();
-
-        using SemaphoreSlim semaphore = new(maxConcurrency);
-
-        // First pass — resolve all tracks in parallel, collecting results by index
-        Task[] tasks = tracks.Select(async (Track track, int index) =>
+        string cacheKey = CacheKey(track);
+        if (cacheKey.Length > 0 && ResolveCache.TryGetValue(cacheKey, out (LavalinkTrack Track, DateTime CachedAt) cached))
         {
-            await semaphore.WaitAsync(cancellationToken);
-            try
+            if (DateTime.UtcNow - cached.CachedAt < options.ResolveCacheLifetime)
             {
-                LavalinkTrack? resolved = await ResolveTrackAsync(track, cancellationToken);
-                if (resolved != null)
-                {
-                    int count = Interlocked.Increment(ref successCount);
-                    resolvedMap[index] = (track, resolved);
-                    progress?.Report(count);
-                }
-                else
-                {
-                    Logs.Warning($"Failed to resolve track (will retry): {track.Title}");
-                    failedIndexMap[index] = track;
-                }
+                Logs.Debug($"Resolve cache hit: {track.Title}");
+                return new TrackResolution(cached.Track, LoadOutcome.Loaded);
             }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                Logs.Warning($"Error resolving track (will retry): {track.Title} — {ex.Message}");
-                failedIndexMap[index] = track;
-            }
-            finally
-            {
-                semaphore.Release();
-            }
-        }).ToArray();
+            ResolveCache.TryRemove(cacheKey, out _);
+        }
 
-        await Task.WhenAll(tasks);
+        TrackResolution resolution = track.IsPlex
+            ? await LoadPlexWithRetryAsync(track, cancellationToken).ConfigureAwait(false)
+            : await LoadOtherAsync(track, cancellationToken).ConfigureAwait(false);
 
-        // Retry pass — try failed tracks once more, sequentially with a small delay
-        List<string> permanentlyFailed = [];
-
-        if (!failedIndexMap.IsEmpty)
+        if (resolution.Track is not null && cacheKey.Length > 0)
         {
-            Logs.Info($"Retrying {failedIndexMap.Count} failed tracks...");
-            await Task.Delay(2000, cancellationToken);
+            EvictIfFull();
+            ResolveCache[cacheKey] = (resolution.Track, DateTime.UtcNow);
+        }
+        return resolution;
+    }
 
-            foreach (var (index, track) in failedIndexMap.OrderBy(kvp => kvp.Key))
+    /// <summary>Loads a Plex file URL through the shared gate, backing off and retrying when Plex drops the response</summary>
+    public async Task<TrackResolution> LoadPlexWithRetryAsync(Track track, CancellationToken cancellationToken)
+    {
+        // Refresh, not the default Dynamic mode: Lavalink4NET caches failed loads for 30 minutes, so a retry in
+        // Dynamic mode returns the cached failure without asking Lavalink again.
+        TrackLoadOptions loadOptions = new() { SearchMode = TrackSearchMode.None, CacheMode = LavalinkCacheMode.Refresh };
+        string described = PlexUrlHelper.Describe(track);
+
+        for (int attempt = 0; attempt < retryPolicy.MaxAttempts; attempt++)
+        {
+            // Throttling is server-wide, so every caller waits, not just this track
+            if (attempt > 0)
+                plexGate.Cooldown(retryPolicy.DelayBefore(attempt));
+
+            (TrackLoadResult? result, bool timedOut) = await plexGate.RunAsync(
+                ct => LoadResultWithTimeoutAsync(track.PlaybackUrl, loadOptions, ct), cancellationToken).ConfigureAwait(false);
+
+            LavalinkTrack? loaded = result?.Track;
+            bool isError = result?.Exception is not null;
+            LoadOutcome outcome = PlexLoadRetryPolicy.Classify(loaded is not null, isError, timedOut);
+
+            switch (outcome)
             {
-                try
-                {
-                    LavalinkTrack? resolved = await ResolveTrackAsync(track, cancellationToken);
-                    if (resolved != null)
-                    {
-                        int count = Interlocked.Increment(ref successCount);
-                        resolvedMap[index] = (track, resolved);
-                        progress?.Report(count);
-                        Logs.Info($"Retry succeeded: {track.Title}");
-                    }
-                    else
-                    {
-                        string name = track.Title ?? "Unknown Track";
-                        Logs.Error($"Failed to resolve track after retry: {name} — URL: {track.PlaybackUrl}");
-                        permanentlyFailed.Add(name);
-                    }
-                }
-                catch (OperationCanceledException)
-                {
-                    throw;
-                }
-                catch (Exception ex)
-                {
-                    string name = track.Title ?? "Unknown Track";
-                    Logs.Error($"Error resolving track after retry: {name} — {ex.Message}");
-                    permanentlyFailed.Add(name);
-                }
+                case LoadOutcome.Loaded:
+                    if (attempt > 0)
+                        Logs.Info($"Plex load recovered on attempt {attempt + 1}: {described}");
+                    return new TrackResolution(loaded, LoadOutcome.Loaded);
 
-                await Task.Delay(500, cancellationToken);
+                case LoadOutcome.NotFound:
+                    Logs.Warning($"Plex load found nothing, not retrying: {described}");
+                    return new TrackResolution(null, LoadOutcome.NotFound);
+
+                default:
+                    string reason = timedOut
+                        ? $"timed out after {LoadTimeout.TotalSeconds:N0}s"
+                        : $"{result?.Exception?.Severity}: {result?.Exception?.Message}";
+                    bool last = attempt + 1 >= retryPolicy.MaxAttempts;
+                    string next = last ? "giving up" : $"retrying in {retryPolicy.DelayBefore(attempt + 1).TotalSeconds:N0}s";
+                    Logs.Warning($"Plex load failed (attempt {attempt + 1}/{retryPolicy.MaxAttempts}, {reason}), {next}: {described}");
+                    break;
             }
         }
 
-        // Build ordered list preserving original playlist order
-        List<(int Index, Track Track, LavalinkTrack Resolved)> ordered = resolvedMap
-            .OrderBy(kvp => kvp.Key)
-            .Select(kvp => (kvp.Key, kvp.Value.Track, kvp.Value.Resolved))
-            .ToList();
-
-        return new TrackResolveResult(successCount, permanentlyFailed, ordered);
+        Logs.Error($"Plex load failed after {retryPolicy.MaxAttempts} attempts: {described}");
+        return new TrackResolution(null, LoadOutcome.Retriable);
     }
 
-    /// <summary>Loads a track from Lavalink with a deadline. Without one, a stalled Lavalink node leaves the
-    /// deferred interaction waiting until Discord's token expires, with no message to the user.</summary>
-    private async Task<LavalinkTrack?> LoadWithTimeoutAsync(string url, TrackLoadOptions options, CancellationToken cancellationToken)
+    /// <summary>Loads a non-Plex URL (YouTube and other providers): one load, then a YouTube search fallback</summary>
+    public async Task<TrackResolution> LoadOtherAsync(Track track, CancellationToken cancellationToken)
+    {
+        (TrackLoadResult? result, bool timedOut) = await LoadResultWithTimeoutAsync(track.PlaybackUrl,
+            new TrackLoadOptions { SearchMode = TrackSearchMode.None }, cancellationToken).ConfigureAwait(false);
+
+        if (result?.Track is null && track.SourceSystem.Equals("youtube", StringComparison.OrdinalIgnoreCase))
+        {
+            (result, timedOut) = await LoadResultWithTimeoutAsync(track.PlaybackUrl,
+                new TrackLoadOptions { SearchMode = TrackSearchMode.YouTube }, cancellationToken).ConfigureAwait(false);
+        }
+
+        LoadOutcome outcome = PlexLoadRetryPolicy.Classify(result?.Track is not null, result?.Exception is not null, timedOut);
+        return new TrackResolution(result?.Track, outcome);
+    }
+
+    /// <summary>Loads from Lavalink with <see cref="LoadTimeout"/>. A timeout is reported, not thrown; cancellation by
+    /// the caller is thrown.</summary>
+    public async Task<(TrackLoadResult? Result, bool TimedOut)> LoadResultWithTimeoutAsync(string url, TrackLoadOptions loadOptions,
+        CancellationToken cancellationToken)
     {
         using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(LoadTimeout);
         try
         {
-            return await audioService.Tracks.LoadTrackAsync(url, options, cancellationToken: deadline.Token);
+            TrackLoadResult result = await audioService.Tracks.LoadTracksAsync(url, loadOptions, cancellationToken: deadline.Token).ConfigureAwait(false);
+            return (result, false);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            Logs.Warning($"Lavalink track load timed out after {LoadTimeout.TotalSeconds:N0}s: {url}");
-            return null;
+            return (null, true);
         }
     }
 
-    /// <summary>Evicts the oldest cache entry (by timestamp) when the cache is full</summary>
-    private void EvictOldestIfFull()
+    /// <summary>Cache key without the Plex token: the part key when known, else the URL with its token removed for
+    /// Plex, else the full URL for other sources</summary>
+    public static string CacheKey(Track track)
     {
-        while (_resolveCache.Count >= _maxResolveCacheEntries)
+        if (!string.IsNullOrEmpty(track.PartKey)) return "plex:" + track.PartKey;
+        if (string.IsNullOrEmpty(track.PlaybackUrl)) return string.Empty;
+        return track.IsPlex ? "plex:" + PlexUrlHelper.StripToken(track.PlaybackUrl) : track.PlaybackUrl;
+    }
+
+    /// <summary>Drops expired entries, then the oldest tenth of the cache, when it is full</summary>
+    public void EvictIfFull()
+    {
+        if (ResolveCache.Count < options.ResolveCacheSize) return;
+
+        DateTime cutoff = DateTime.UtcNow - options.ResolveCacheLifetime;
+        foreach (KeyValuePair<string, (LavalinkTrack Track, DateTime CachedAt)> entry in ResolveCache)
         {
-            var oldest = _resolveCache.OrderBy(kvp => kvp.Value.Ticks).FirstOrDefault();
-            if (oldest.Key != null)
-                _resolveCache.TryRemove(oldest.Key, out _);
-            else
-                break;
+            if (entry.Value.CachedAt < cutoff)
+                ResolveCache.TryRemove(entry.Key, out _);
+        }
+
+        int excess = ResolveCache.Count - options.ResolveCacheSize + 1;
+        if (excess <= 0) return;
+        // One sort per sweep, removing at least a tenth of the cache, rather than one sort per insert
+        foreach (KeyValuePair<string, (LavalinkTrack Track, DateTime CachedAt)> entry in ResolveCache
+            .OrderBy(e => e.Value.CachedAt).Take(Math.Max(excess, options.ResolveCacheSize / 10)).ToList())
+        {
+            ResolveCache.TryRemove(entry.Key, out _);
         }
     }
 }

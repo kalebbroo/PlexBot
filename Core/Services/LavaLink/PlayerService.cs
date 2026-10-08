@@ -11,7 +11,7 @@ namespace PlexBot.Core.Services.LavaLink;
 /// <summary>Comprehensive service that manages audio playback in Discord voice channels, handling player lifecycle, track queueing, and providing rich metadata integration with Plex</summary>
 /// <remarks>Constructs the player service with necessary dependencies and loads configuration from environment variables to ensure consistent playback settings</remarks>
 /// <param name="audioService">The Lavalink audio service that provides the underlying audio streaming capabilities</param>
-public class PlayerService(VisualPlayerStateManager stateManager, IAudioService audioService, VisualPlayer visualPlayer, IServiceProvider serviceProvider, DiscordButtonBuilder buttonBuilder, ITrackResolverService trackResolver)
+public class PlayerService(VisualPlayerStateManager stateManager, IAudioService audioService, VisualPlayer visualPlayer, IServiceProvider serviceProvider, DiscordButtonBuilder buttonBuilder, ITrackResolverService trackResolver, QueueResolveService queueResolver)
     : IPlayerService
 {
     // Serializes queue mutations per guild. Without this, two concurrent adds can both see "not playing"
@@ -22,7 +22,7 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
     // remaining tracks, or the queue the user just cleared or replaced would come back.
     private static readonly ConcurrentDictionary<ulong, long> _queueGenerations = new();
 
-    private static long CurrentGeneration(ulong guildId) => _queueGenerations.GetOrAdd(guildId, 0);
+    public static long CurrentGeneration(ulong guildId) => _queueGenerations.GetOrAdd(guildId, 0);
 
     // Queue additions are applied in the order they were requested. Batches resolve in parallel, but each one
     // waits for its turn before it touches the queue, so a later request cannot land in the middle of an earlier
@@ -203,14 +203,14 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
 
             // === STEP 1: Resolve and play the first track immediately ===
             Track firstTrack = trackList[0];
-            LavalinkTrack? firstResolved = await trackResolver.ResolveTrackAsync(firstTrack, cancellationToken);
+            TrackResolution firstResolution = await trackResolver.ResolveTrackAsync(firstTrack, cancellationToken);
 
-            if (firstResolved == null)
+            if (firstResolution.Track is not LavalinkTrack firstResolved)
             {
-                Logs.Error($"[guild {guildId}] Failed to load track: {firstTrack.Title}");
+                Logs.Error($"[guild {guildId}] Failed to load track ({firstResolution.Outcome}): {PlexUrlHelper.Describe(firstTrack)}");
                 await interaction.ModifyOriginalResponseAsync(msg =>
                 {
-                    msg.Components = ComponentV2Builder.Error("Load Failed", $"Failed to load: {firstTrack.Title}");
+                    msg.Components = ComponentV2Builder.Error("Load Failed", $"Couldn't play **{firstTrack.Title}**: {firstResolution.FailureReason}");
                     msg.Embed = null;
                     msg.Flags = MessageFlags.ComponentsV2;
                 });
@@ -272,81 +272,25 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
                 return false;
             }
 
-            // === STEP 2: Resolve remaining tracks in parallel ===
+            // === STEP 2: Queue the rest as placeholders, resolved just in time ===
+            // Only the first few items in the queue are loaded through Lavalink (QueueResolveService), so a large
+            // playlist costs no more Plex requests than the tracks actually played, and the next request is not
+            // held behind it.
             if (totalCount > 1)
             {
-                List<Track> remaining = trackList.Skip(1).ToList();
+                List<ITrackQueueItem> placeholders = trackList.Skip(1)
+                    .Select(t => (ITrackQueueItem)CustomTrackQueueItem.Placeholder(t, interaction.User.Username))
+                    .ToList();
 
-                if (totalCount > 10)
-                {
-                    await interaction.ModifyOriginalResponseAsync(msg =>
-                    {
-                        msg.Components = ComponentV2Builder.Info("Loading Tracks",
-                            $"Playing first track. Resolving {remaining.Count} more in background...");
-                        msg.Embed = null;
-                        msg.Flags = MessageFlags.ComponentsV2;
-                    });
-                }
-
-                IProgress<int>? progress = null;
-                if (totalCount > 20)
-                {
-                    DateTime lastProgressUpdate = DateTime.MinValue;
-                    int totalRemaining = remaining.Count;
-                    progress = new Progress<int>(resolvedCount =>
-                    {
-                        // Throttle to at most once every 3 seconds
-                        if ((DateTime.UtcNow - lastProgressUpdate).TotalSeconds < 3) return;
-                        lastProgressUpdate = DateTime.UtcNow;
-                        _ = Task.Run(async () =>
-                        {
-                            try
-                            {
-                                await interaction.ModifyOriginalResponseAsync(msg =>
-                                {
-                                    msg.Components = ComponentV2Builder.Info("Loading Tracks",
-                                        $"Resolved {resolvedCount}/{totalRemaining} tracks...");
-                                    msg.Embed = null;
-                                    msg.Flags = MessageFlags.ComponentsV2;
-                                });
-                            }
-                            catch { /* Ignore update failures */ }
-                        });
-                    });
-                }
-
-                string sourceSystem = remaining.FirstOrDefault()?.SourceSystem ?? "plex";
-                int maxConcurrency = sourceSystem.Equals("youtube", StringComparison.OrdinalIgnoreCase)
-                    ? BotConfig.GetInt("plex.maxConcurrentYouTubeResolves", 5)
-                    : BotConfig.GetInt("plex.maxConcurrentResolves", 3);
-
-                TrackResolveResult resolveResult = await trackResolver.ResolveTracksParallelAsync(
-                    remaining,
-                    maxConcurrency: maxConcurrency,
-                    progress: progress,
-                    cancellationToken: cancellationToken);
-
-                // Append all resolved tracks in original order, as one locked batch. If the queue was cleared,
-                // stopped, or replaced while these resolved, discard them rather than resurrect stale tracks.
+                // If the queue was cleared, stopped, or replaced since the first track went in, drop the rest
+                // rather than resurrect stale tracks.
                 await gate.WaitAsync(cancellationToken);
                 try
                 {
                     if (CurrentGeneration(guildId) != generation)
-                    {
-                        Logs.Warning($"[guild {guildId}] Discarding {resolveResult.ResolvedTracks.Count} resolved tracks: the queue changed while they loaded");
                         superseded = true;
-                    }
-                    foreach (var (_, track, resolved) in resolveResult.ResolvedTracks)
-                    {
-                        if (superseded) break;
-                        CustomTrackQueueItem item = new()
-                        {
-                            SourceTrack = track,
-                            RequestedBy = interaction.User.Username,
-                            Reference = new TrackReference(resolved)
-                        };
-                        await player.Queue.AddAsync(item, cancellationToken);
-                    }
+                    else
+                        await player.Queue.AddRangeAsync(placeholders, cancellationToken);
                 }
                 finally
                 {
@@ -357,18 +301,20 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
                 {
                     // The first track was already applied; the rest were dropped. Say so, and report it as not applied
                     // so the caller does not treat the request as a success.
+                    Logs.Warning($"[guild {guildId}] Discarding {placeholders.Count} tracks: the queue changed after the first was added");
                     await interaction.ModifyOriginalResponseAsync(msg =>
                     {
-                        msg.Components = ComponentV2Builder.Info("Request Cancelled", "The queue was cleared or replaced while the rest of these tracks were loading, so they were not added.");
+                        msg.Components = ComponentV2Builder.Info("Request Cancelled", "The queue was cleared or replaced before the rest of these tracks were added.");
                         msg.Embed = null;
                         msg.Flags = MessageFlags.ComponentsV2;
                     });
                     return false;
                 }
 
-                int totalSuccess = resolveResult.SuccessCount + 1; // +1 for the first track
+                queueResolver.Wake(guildId);
+                Logs.Info($"[guild {guildId}] Queued {totalCount} tracks ({placeholders.Count} to resolve as they come up)");
 
-                // Rebuild the player image now that the queue is fully populated (for Next Up display)
+                // Rebuild the player image now that the queue is populated (for Next Up display)
                 if (player is CustomLavaLinkPlayer customPlayerRefresh)
                 {
                     ButtonContext ctx = new() { Player = customPlayerRefresh, Interaction = interaction };
@@ -376,26 +322,15 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
                     await visualPlayer.AddOrUpdateVisualPlayerAsync(guildId, refreshComponents, recreateImage: true);
                 }
 
-                if (resolveResult.FailedTracks.Count > 0)
+                string summary = shouldPlay
+                    ? $"Playing {firstTrack.Title} by {firstTrack.Artist}, and queued {placeholders.Count} more"
+                    : $"Added {totalCount} tracks to the queue";
+                await interaction.ModifyOriginalResponseAsync(msg =>
                 {
-                    string failedList = string.Join("\n", resolveResult.FailedTracks.Select(t => $"• {t}"));
-                    string message = $"Added {totalSuccess} of {totalCount} tracks to the queue\n\n**Failed to load:**\n{failedList}";
-                    await interaction.ModifyOriginalResponseAsync(msg =>
-                    {
-                        msg.Components = ComponentV2Builder.Info("Tracks Added", message);
-                        msg.Embed = null;
-                        msg.Flags = MessageFlags.ComponentsV2;
-                    });
-                }
-                else
-                {
-                    await interaction.ModifyOriginalResponseAsync(msg =>
-                    {
-                        msg.Components = ComponentV2Builder.Success("Tracks Added", $"Added {totalSuccess} tracks to the queue");
-                        msg.Embed = null;
-                        msg.Flags = MessageFlags.ComponentsV2;
-                    });
-                }
+                    msg.Components = ComponentV2Builder.Success("Tracks Added", summary);
+                    msg.Embed = null;
+                    msg.Flags = MessageFlags.ComponentsV2;
+                });
             }
             else
             {
@@ -483,7 +418,8 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
             {
                 throw new PlayerException("No track is currently playing", "Skip");
             }
-            // Skip the current track — the player UI updates automatically via NotifyTrackStartedAsync
+            // Skip the current track. CustomLavaLinkPlayer resolves the next item first if it is still a placeholder;
+            // the player UI updates automatically via NotifyTrackStartedAsync.
             await player.SkipAsync(1, cancellationToken);
             Logs.Debug($"Track skipped by {interaction.User.Username}");
         }
@@ -537,6 +473,7 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
             try
             {
                 BumpGeneration(player.GuildId);
+                queueResolver.Stop(player.GuildId);
                 await player.StopAsync(cancellationToken);
                 await player.Queue.ClearAsync(cancellationToken);
             }
