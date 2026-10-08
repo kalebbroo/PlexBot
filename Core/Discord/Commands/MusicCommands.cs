@@ -553,16 +553,6 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         }
     }
 
-    /// <summary>Quick health check to verify the Discord interaction pipeline is responding</summary>
-    [SlashCommand("ping", "Test if interactions are working")]
-    public async Task PingCommand()
-    {
-        Logs.Debug("Ping: about to DeferAsync");
-        await DeferAsync(ephemeral: true);
-        Logs.Debug("Ping: DeferAsync succeeded");
-        await FollowupAsync(components: ComponentV2Builder.Info("Pong", "Interaction pipeline is healthy."), ephemeral: true);
-    }
-
     [SlashCommand("help", "Shows information about the bot and available commands")]
     public async Task HelpCommand()
     {

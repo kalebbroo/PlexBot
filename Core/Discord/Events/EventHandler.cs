@@ -149,6 +149,10 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
                     eventBus.Subscribe(BotEvents.PlayerDestroyed, async _ => await client.SetGameAsync("/help", type: ActivityType.Listening));
                     Logs.Init("Rich presence enabled — bot status will show now-playing track");
                 }
+
+                // Not gated by showNowPlaying: the visual player must lose its controls whenever the player disconnects
+                eventBus.Subscribe(BotEvents.PlayerDestroyed, async e =>
+                    await services.GetRequiredService<VisualPlayer>().HandlePlayerDestroyedAsync((ulong)e.Data["guildId"]));
             }
 
             Logs.Init($"[{InstanceId}] Bot is ready. Connected to {client.Guilds.Count} guilds");
