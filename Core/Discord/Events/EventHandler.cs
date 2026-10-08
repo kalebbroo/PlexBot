@@ -122,35 +122,37 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
         }
     }
 
-    /// <summary>Registers slash commands, retrying with backoff. A failed registration previously left the bot
-    /// running with no commands until a restart.</summary>
+    /// <summary>Registers slash commands, retrying each guild with backoff. Guilds are retried independently, so one
+    /// guild that keeps rejecting registration does not stop the others from getting commands.</summary>
     private async Task RegisterCommandsWithRetryAsync()
     {
-        bool development = BotConfig.GetString("bot.environment") == "Development";
+        if (BotConfig.GetString("bot.environment") == "Development")
+        {
+            // Guild-scoped registration is immediate; global can take up to an hour to appear
+            foreach (SocketGuild guild in client.Guilds)
+                await RetryAsync($"guild {guild.Name} ({guild.Id})", () => interactions.RegisterCommandsToGuildAsync(guild.Id));
+        }
+        else
+        {
+            await RetryAsync("global", () => interactions.RegisterCommandsGloballyAsync());
+        }
+    }
+
+    /// <summary>Runs one registration with up to five attempts and exponential backoff. Gives up on this target only.</summary>
+    private static async Task RetryAsync(string target, Func<Task> register)
+    {
         TimeSpan delay = TimeSpan.FromSeconds(5);
         for (int attempt = 1; attempt <= 5; attempt++)
         {
             try
             {
-                if (development)
-                {
-                    // Guild-scoped registration is immediate; global can take up to an hour to appear
-                    foreach (SocketGuild guild in client.Guilds)
-                    {
-                        await interactions.RegisterCommandsToGuildAsync(guild.Id);
-                        Logs.Info($"Registered commands to guild: {guild.Name} ({guild.Id})");
-                    }
-                }
-                else
-                {
-                    await interactions.RegisterCommandsGloballyAsync();
-                    Logs.Info("Registered commands globally");
-                }
+                await register();
+                Logs.Info($"Registered commands ({target})");
                 return;
             }
             catch (Exception ex)
             {
-                Logs.Error($"Command registration failed (attempt {attempt}/5): {ex.Message}");
+                Logs.Error($"Command registration failed for {target} (attempt {attempt}/5): {ex.Message}");
                 if (attempt == 5) return;
                 await Task.Delay(delay);
                 delay = TimeSpan.FromSeconds(Math.Min(delay.TotalSeconds * 2, 120));
