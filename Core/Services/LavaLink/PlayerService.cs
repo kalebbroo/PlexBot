@@ -182,6 +182,8 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
         SemaphoreSlim gate = _guildQueueLocks.GetOrAdd(guildId, _ => new SemaphoreSlim(1, 1));
         OrderedTurns turns = _queueTurns.GetOrAdd(guildId, _ => new OrderedTurns());
         long ticket = turns.Take();
+        // Captured with the ticket: a clear, stop, or replace issued after this request has to win over it
+        long issuedGeneration = CurrentGeneration(guildId);
         bool turnHeld = false;
 
         try
@@ -222,6 +224,20 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
             // Wait for this batch's place in the request order before touching the queue
             await turns.WaitTurn(ticket);
             turnHeld = true;
+
+            // A clear, stop, or replace was issued after this request. Drop the batch before its first insertion,
+            // so it cannot repopulate a queue the user was told was cleared.
+            if (CurrentGeneration(guildId) != issuedGeneration)
+            {
+                Logs.Warning($"[guild {guildId}] Dropping a queue request: the queue was cleared or replaced after it was issued");
+                await interaction.ModifyOriginalResponseAsync(msg =>
+                {
+                    msg.Components = ComponentV2Builder.Info("Request Cancelled", "The queue was cleared or replaced before this request could be added.");
+                    msg.Embed = null;
+                    msg.Flags = MessageFlags.ComponentsV2;
+                });
+                return;
+            }
 
             bool shouldPlay;
             long generation;
