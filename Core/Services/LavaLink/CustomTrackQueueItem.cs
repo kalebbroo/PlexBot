@@ -12,11 +12,8 @@ public class CustomTrackQueueItem : ITrackQueueItem
     /// <summary>True once a Lavalink track is attached</summary>
     public bool IsResolved => Reference.IsPresent;
 
-    /// <summary>True if resolving failed after every retry</summary>
+    /// <summary>True if resolving failed for good; the item is removed from the queue</summary>
     public bool ResolveFailed { get; set; }
-
-    /// <summary>The resolve in progress or finished, shared so an item is only resolved once</summary>
-    internal Task<bool>? ResolveTask { get; set; }
 
     /// <summary>Provides access to the underlying Lavalink track object through the interface implementation</summary>
     LavalinkTrack? ITrackQueueItem.Track => Reference.Track;
@@ -27,7 +24,8 @@ public class CustomTrackQueueItem : ITrackQueueItem
     /// <summary>The Discord user who requested this track</summary>
     public string? RequestedBy { get; init; }
 
-    /// <summary>How many times playback was retried after Lavalink failed to open the stream</summary>
+    /// <summary>How many times playback was retried after Lavalink failed to open the stream. Reset when the item
+    /// finishes playing, so a repeated track gets its retry again.</summary>
     public int PlayRetries { get; set; }
 
     // Convenience accessors for backward compatibility with UI code (ImageBuilder, VisualPlayer, DiscordEmbedBuilder)
@@ -41,8 +39,8 @@ public class CustomTrackQueueItem : ITrackQueueItem
     public string? Duration => SourceTrack.DurationDisplay;
     public string? Studio => SourceTrack.Studio;
 
-    /// <summary>Creates a queue item that isn't resolved yet. If it reaches the player unresolved, Lavalink loads
-    /// the playback URL itself.</summary>
+    /// <summary>Creates a queue item that isn't resolved yet. <see cref="QueueResolveService"/> resolves it before the
+    /// player reaches it, so Lavalink never loads the playback URL directly.</summary>
     public static CustomTrackQueueItem Placeholder(Track track, string? requestedBy) => new()
     {
         SourceTrack = track,
