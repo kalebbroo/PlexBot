@@ -30,6 +30,9 @@ public sealed class CustomLavaLinkPlayer(IPlayerProperties<CustomLavaLinkPlayer,
             ComponentBuilder components = buttonBuilder.BuildButtons(ButtonFlag.VisualPlayer, context);
             await visualPlayer.AddOrUpdateVisualPlayerAsync(GuildId, components, recreateImage: true).ConfigureAwait(false);
 
+            // The queue moved on, so the resolve-ahead window did too
+            serviceProvider.GetRequiredService<QueueResolveService>().Wake(GuildId);
+
             // Prefetch next track's artwork in background (fire and forget)
             ITrackPrefetchService prefetch = serviceProvider.GetRequiredService<ITrackPrefetchService>();
             _ = prefetch.PrefetchNextAsync(this, cancellationToken);
@@ -83,6 +86,11 @@ public sealed class CustomLavaLinkPlayer(IPlayerProperties<CustomLavaLinkPlayer,
             _ = NotifyChannelAsync("Track Skipped", $"Skipped **{trackTitle}**: Plex didn't return the file.");
         }
 
+        // The base class moves to the next item. If that is a placeholder still loading, give it a few seconds so the
+        // player gets a checked track; after that, Lavalink loads the URL itself (with the play-time retry above).
+        if (endReason.MayStartNext() && AutoPlay)
+            await serviceProvider.GetRequiredService<QueueResolveService>().EnsureHeadResolvedBrieflyAsync(this).ConfigureAwait(false);
+
         await base.NotifyTrackEndedAsync(queueItem, endReason, cancellationToken).ConfigureAwait(false);
         Logs.Debug($"Track ended: {trackTitle}, Reason: {endReason}");
 
@@ -127,6 +135,20 @@ public sealed class CustomLavaLinkPlayer(IPlayerProperties<CustomLavaLinkPlayer,
                     Logs.Debug($"[guild {GuildId}] Playback retry dropped: the queue changed");
                     return;
                 }
+                // A placeholder that Lavalink failed to load directly goes through the resolver's retries instead
+                if (!item.IsResolved)
+                {
+                    LavalinkTrack? resolved = await serviceProvider.GetRequiredService<ITrackResolverService>()
+                        .ResolveTrackAsync(item.SourceTrack).ConfigureAwait(false);
+                    if (resolved is null)
+                    {
+                        _ = NotifyChannelAsync("Track Skipped", $"Skipped **{item.Title}**: Plex didn't return the file.");
+                        if (State == PlayerState.NotPlaying && PlayerService.CurrentGeneration(GuildId) == generation)
+                            await SkipAsync().ConfigureAwait(false);
+                        return;
+                    }
+                    item.Reference = new TrackReference(resolved);
+                }
                 if (State == PlayerState.NotPlaying)
                     await PlayAsync(item, enqueue: false).ConfigureAwait(false);
                 else
@@ -139,7 +161,8 @@ public sealed class CustomLavaLinkPlayer(IPlayerProperties<CustomLavaLinkPlayer,
         });
     }
 
-    private async Task NotifyChannelAsync(string title, string description)
+    /// <summary>Posts a short notice in the player's channel, deleted after 30 seconds</summary>
+    internal async Task NotifyChannelAsync(string title, string description)
     {
         try
         {
