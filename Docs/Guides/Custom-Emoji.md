@@ -3,8 +3,8 @@
 PlexBot ships with 22 emoji drawn for the player and its panels. They are uploaded to your bot's application
 automatically the first time it starts. You don't upload anything by hand.
 
-> **Status:** the emoji are created and synced now, but the player buttons still show plain symbols. They switch
-> to these emoji with the Visual Player redesign. Until then, the sync is safe to run and nothing looks different.
+The player buttons use these emoji, with a text label beside each one. If an emoji is missing, the button shows its
+plain unicode symbol instead.
 
 ## What you get
 
