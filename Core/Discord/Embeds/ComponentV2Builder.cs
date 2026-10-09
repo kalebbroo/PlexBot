@@ -1,4 +1,5 @@
 ﻿using PlexBot.Core.Discord.Design;
+using PlexBot.Core.Discord.Help;
 using PlexBot.Core.Discord.Messages;
 using PlexBot.Utils;
 
@@ -187,23 +188,43 @@ public static class ComponentV2Builder
         return new ComponentBuilderV2().WithContainer(container).Build();
     }
 
-    /// <summary>Builds the help command display</summary>
+    /// <summary>The help hub: an introduction and a menu of topics. Each topic opens its own card.</summary>
     public static MessageComponent BuildHelp()
     {
-        return new ComponentBuilderV2()
-            .WithContainer(new ContainerBuilder()
-                .WithAccentColor(DesignTokens.Info)
-                .WithTextDisplay("## \U0001F4FB PlexBot Music Player")
-                .WithTextDisplay("Play music from your Plex library directly in Discord voice channels.")
-                .WithSeparator(SeparatorSpacingSize.Small, isDivider: true)
-                .WithTextDisplay(
-                    "**`/search [query] [source]`**\nSearch for music in your Plex library or other sources.\n\n" +
-                    "**`/playlist [playlist] [shuffle]`**\nPlay a Plex playlist, optionally shuffled.\n\n" +
-                    "**`/play [query]`**\nQuickly play music that matches your search.")
-                .WithSeparator(SeparatorSpacingSize.Small, isDivider: true)
-                .WithTextDisplay(
-                    "-# **Player Controls:** Use the buttons on the player to Pause, Skip, view Queue, set Repeat, adjust Volume, or Kill playback.")
-            ).Build();
+        ComponentBuilder topics = new();
+        SelectMenuBuilder topicMenu = new SelectMenuBuilder()
+            .WithCustomId("help:select")
+            .WithPlaceholder("Choose a topic")
+            .WithMaxValues(1);
+        foreach (HelpTopic topic in HelpTopics.All)
+            topicMenu.AddOption(topic.Label, topic.Key, topic.Summary, emote: new Emoji(topic.Emoji));
+        topics.WithSelectMenu(topicMenu);
+
+        var container = new ContainerBuilder()
+            .WithAccentColor(DesignTokens.Music)
+            .WithTextDisplay("## \U0001F4FB PlexBot Music Player")
+            .WithTextDisplay("Play music from your Plex library in voice channels. Pick a topic to see how it works.")
+            .WithSeparator(SeparatorSpacingSize.Small, isDivider: true);
+        AddActionRows(container, topics);
+        return new ComponentBuilderV2().WithContainer(container).Build();
+    }
+
+    /// <summary>One help topic: its title, its screenshot when there is one, the text, and a way back to the hub</summary>
+    public static MessageComponent BuildHelpTopic(HelpTopic topic, bool hasImage)
+    {
+        ComponentBuilder back = new();
+        back.WithButton("Back to topics", "help:hub", ButtonStyle.Secondary);
+
+        var container = new ContainerBuilder()
+            .WithAccentColor(DesignTokens.Info)
+            .WithTextDisplay($"## {topic.Emoji} {topic.Title}");
+        if (hasImage && topic.ImageFile is not null)
+            container.WithMediaGallery(new MediaGalleryBuilder().AddItem($"attachment://{topic.ImageFile}"));
+        container
+            .WithTextDisplay(topic.Body)
+            .WithSeparator(SeparatorSpacingSize.Small, isDivider: true);
+        AddActionRows(container, back);
+        return new ComponentBuilderV2().WithContainer(container).Build();
     }
 
     /// <summary>Replaces a player message after its player disconnects. It has no controls, so an old player can't be used.</summary>
