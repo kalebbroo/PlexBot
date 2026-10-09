@@ -8,6 +8,7 @@
 ## Guides
 - [Commands Guide](Guides/Commands.md) — Slash commands and player button controls
 - [Player UI Guide](Guides/Player-UI-Guide.md) — Modern vs classic player, progress bar, and static channel
+- [Custom Emoji](Guides/Custom-Emoji.md) — The 22 application emoji, how they sync, and the unicode fallback
 - [Discord Interface](Guides/Discord-Interface.md) — Components V2 layout, buttons, and search results
 - [Plex Integration](Guides/Plex-Integration.md) — Plex setup, library search, and playlist loading
 - [Troubleshooting](Guides/Troubleshooting.md) — Common issues and fixes
