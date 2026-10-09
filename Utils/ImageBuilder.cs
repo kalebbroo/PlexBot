@@ -13,6 +13,9 @@ namespace PlexBot.Utils;
 /// <summary>Provides utilities for generating rich media player images with album art, track information, and visual effects for Discord embeds</summary>
 public static class ImageBuilder
 {
+    /// <summary>Royal blue used for the volume bar fill and the repeat indicator</summary>
+    public static readonly Rgba32 AccentBlue = new(65, 105, 225, 255);
+
     private static readonly HttpClientWrapper? _httpClient;
     private static readonly FontFamily? _fontFamily;
     private static readonly FontCollection _fontCollection = new();
@@ -448,7 +451,7 @@ public static class ImageBuilder
         float fillWidth = (width * volumePercent) / 100f;
         if (fillWidth > 0)
         {
-            DrawRoundedRectangle(ctx, barX, barY, (int)fillWidth, height, cornerRadius, new Rgba32(65, 105, 225, 255), true);
+            DrawRoundedRectangle(ctx, barX, barY, (int)fillWidth, height, cornerRadius, AccentBlue, true);
         }
         // Percentage text after the bar (vertically centered)
         int textX = barX + width + 8;
@@ -466,11 +469,11 @@ public static class ImageBuilder
         {
             case "track":
                 displayText = "Track";
-                indicatorColor = new Rgba32(65, 105, 225, 255);
+                indicatorColor = AccentBlue;
                 break;
             case "queue":
                 displayText = "Queue";
-                indicatorColor = new Rgba32(65, 105, 225, 255);
+                indicatorColor = AccentBlue;
                 break;
             case "none":
             default:

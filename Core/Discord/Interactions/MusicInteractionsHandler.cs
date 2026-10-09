@@ -10,6 +10,7 @@ using PlexBot.Core.Services.LavaLink;
 using PlexBot.Core.Services.Music;
 using PlexBot.Core.Discord.Modals;
 using PlexBot.Core.Models;
+using PlexBot.Core.Discord.Messages;
 
 namespace PlexBot.Core.Discord.Interactions;
 
@@ -95,7 +96,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
         await DeferAsync();
         if (IsOnCooldown(Context.User.Id, "pause_resume"))
         {
-            await FollowupAsync(components: ComponentV2Builder.Error("Cooldown", "Please wait a moment before clicking again."), ephemeral: true);
+            await FollowupAsync(components: ComponentV2Builder.Error(Notices.Cooldown), ephemeral: true);
             return;
         }
         try
@@ -117,7 +118,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
         await DeferAsync();
         if (IsOnCooldown(Context.User.Id, "skip"))
         {
-            await FollowupAsync(components: ComponentV2Builder.Error("Cooldown", "Please wait a moment before clicking again."), ephemeral: true);
+            await FollowupAsync(components: ComponentV2Builder.Error(Notices.Cooldown), ephemeral: true);
             return;
         }
         try
@@ -148,7 +149,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
         if (IsOnCooldown(Context.User.Id, $"queue_options:{action}"))
         {
             if (isInitialOpen)
-                await FollowupAsync(components: ComponentV2Builder.Error("Cooldown", "Please wait a moment before clicking again."), ephemeral: true);
+                await FollowupAsync(components: ComponentV2Builder.Error(Notices.Cooldown), ephemeral: true);
             return;
         }
         SocketInteraction interaction = Context.Interaction;
@@ -156,7 +157,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
         {
             if (await playerService.GetPlayerAsync(interaction, false) is not CustomLavaLinkPlayer player)
             {
-                MessageComponent errorMsg = ComponentV2Builder.Error("No Player", "No active player found.");
+                MessageComponent errorMsg = ComponentV2Builder.Error(Notices.NoPlayer);
                 if (isInitialOpen)
                     await FollowupAsync(components: errorMsg, ephemeral: true);
                 else
@@ -235,14 +236,14 @@ public class MusicInteractionHandler(IPlayerService playerService,
         await DeferAsync();
         if (IsOnCooldown(Context.User.Id, "volume"))
         {
-            await FollowupAsync(components: ComponentV2Builder.Error("Cooldown", "Please wait a moment before clicking again."), ephemeral: true);
+            await FollowupAsync(components: ComponentV2Builder.Error(Notices.Cooldown), ephemeral: true);
             return;
         }
         try
         {
             if (await playerService.GetPlayerAsync(Context.Interaction, false) is not CustomLavaLinkPlayer player)
             {
-                await FollowupAsync(components: ComponentV2Builder.Error("No Player", "No active player found."), ephemeral: true);
+                await FollowupAsync(components: ComponentV2Builder.Error(Notices.NoPlayer), ephemeral: true);
                 return;
             }
             float currentVolume = player.Volume;
@@ -273,14 +274,14 @@ public class MusicInteractionHandler(IPlayerService playerService,
         await DeferAsync();
         if (IsOnCooldown(Context.User.Id, "repeat"))
         {
-            await FollowupAsync(components: ComponentV2Builder.Error("Cooldown", "Please wait a moment before clicking again."), ephemeral: true);
+            await FollowupAsync(components: ComponentV2Builder.Error(Notices.Cooldown), ephemeral: true);
             return;
         }
         try
         {
             if (await playerService.GetPlayerAsync(Context.Interaction, false) is not CustomLavaLinkPlayer player)
             {
-                await FollowupAsync(components: ComponentV2Builder.Error("No Player", "No active player found."), ephemeral: true);
+                await FollowupAsync(components: ComponentV2Builder.Error(Notices.NoPlayer), ephemeral: true);
                 return;
             }
             TrackRepeatMode nextMode = player.RepeatMode switch
@@ -307,7 +308,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
         await DeferAsync();
         if (IsOnCooldown(Context.User.Id, "kill"))
         {
-            await FollowupAsync(components: ComponentV2Builder.Error("Cooldown", "Please wait a moment before clicking again."), ephemeral: true);
+            await FollowupAsync(components: ComponentV2Builder.Error(Notices.Cooldown), ephemeral: true);
             return;
         }
         try
@@ -335,19 +336,19 @@ public class MusicInteractionHandler(IPlayerService playerService,
         await DeferAsync(ephemeral: true);
         if (IsOnCooldown(Context.User.Id, "radio:start"))
         {
-            await FollowupAsync(components: ComponentV2Builder.Error("Cooldown", "Please wait a moment before clicking again."), ephemeral: true);
+            await FollowupAsync(components: ComponentV2Builder.Error(Notices.Cooldown), ephemeral: true);
             return;
         }
         try
         {
             if (await playerService.GetPlayerAsync(Context.Interaction, false) is not CustomLavaLinkPlayer player)
             {
-                await FollowupAsync(components: ComponentV2Builder.Error("No Player", "No active player found."), ephemeral: true);
+                await FollowupAsync(components: ComponentV2Builder.Error(Notices.NoPlayer), ephemeral: true);
                 return;
             }
             if (player.CurrentItem is not CustomTrackQueueItem currentItem)
             {
-                await FollowupAsync(components: ComponentV2Builder.Error("No Track", "No track is currently playing."), ephemeral: true);
+                await FollowupAsync(components: ComponentV2Builder.Error(Notices.NoTrack), ephemeral: true);
                 return;
             }
             if (!currentItem.SourceTrack.SourceSystem.Equals("plex", StringComparison.OrdinalIgnoreCase))
@@ -393,7 +394,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
             {
                 await Context.Interaction.ModifyOriginalResponseAsync(msg =>
                 {
-                    msg.Components = ComponentV2Builder.Warning("No Tracks", "No radio tracks were returned. This track may not have sonic analysis data.");
+                    msg.Components = ComponentV2Builder.Warning(Notices.NoRadioTracks);
                     msg.Embed = null;
                     msg.Flags = MessageFlags.ComponentsV2;
                 });
@@ -446,7 +447,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
             {
                 await Context.Interaction.ModifyOriginalResponseAsync(msg =>
                 {
-                    msg.Components = ComponentV2Builder.Warning("No Tracks", "No radio tracks were returned. This track may not have sonic analysis data.");
+                    msg.Components = ComponentV2Builder.Warning(Notices.NoRadioTracks);
                     msg.Embed = null;
                     msg.Flags = MessageFlags.ComponentsV2;
                 });
@@ -556,7 +557,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
         await DeferAsync(ephemeral: true);
         if (IsOnCooldown(Context.User.Id, "sonic:similar"))
         {
-            await FollowupAsync(components: ComponentV2Builder.Error("Cooldown", "Please wait a moment before clicking again."), ephemeral: true);
+            await FollowupAsync(components: ComponentV2Builder.Error(Notices.Cooldown), ephemeral: true);
             return;
         }
         try
@@ -564,7 +565,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
             if (await playerService.GetPlayerAsync(Context.Interaction, false) is not CustomLavaLinkPlayer player
                 || player.CurrentItem is not CustomTrackQueueItem currentItem)
             {
-                await FollowupAsync(components: ComponentV2Builder.Error("No Track", "No track is currently playing."), ephemeral: true);
+                await FollowupAsync(components: ComponentV2Builder.Error(Notices.NoTrack), ephemeral: true);
                 return;
             }
             if (!currentItem.SourceTrack.SourceSystem.Equals("plex", StringComparison.OrdinalIgnoreCase))
