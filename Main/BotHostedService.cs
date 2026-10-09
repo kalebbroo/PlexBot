@@ -1,4 +1,4 @@
-using PlexBot.Core.Discord.Embeds;
+﻿using PlexBot.Core.Discord.Embeds;
 using PlexBot.Core.Discord.Events;
 using PlexBot.Core.Extensions;
 using PlexBot.Core.Models.Players;
@@ -239,8 +239,11 @@ public class BotHostedService(DiscordSocketClient client, DiscordEventHandler ev
 
         ButtonContext context = new();
         ComponentBuilder components = buttonBuilder.BuildButtons(ButtonFlag.VisualPlayer, context);
-        MessageComponent cv2 = ComponentV2Builder.BuildIdlePlayer(components);
-        IUserMessage initPlayer = await textChannel.SendMessageAsync(components: cv2);
+        FileAttachment? banner = VisualPlayer.IdleBanner();
+        MessageComponent cv2 = ComponentV2Builder.BuildIdlePlayer(components, banner is not null);
+        IUserMessage initPlayer = banner is null
+            ? await textChannel.SendMessageAsync(components: cv2)
+            : await textChannel.SendFileAsync(banner.Value, components: cv2);
         stateManager.SetMessage(guildId, initPlayer);
         Logs.Init($"Static player channel initialized successfully (message {initPlayer.Id})");
         return true;
