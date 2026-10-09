@@ -33,6 +33,7 @@ Template files are provided: `RenameMe.env.txt` must be manually copied to `.env
 visualPlayer:
     useModernPlayer: true        # true = album art image player, false = classic text embed
     inactivityTimeout: 2.0       # Minutes before auto-disconnect from voice
+    buttonCooldownSeconds: 2.0   # Seconds between presses of the same button by one person (0 = off)
     staticChannel:
         enabled: false           # Lock the player to one specific channel
         channelId: 0             # Discord channel ID (right-click channel > Copy Channel ID)

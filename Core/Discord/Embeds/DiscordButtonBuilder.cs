@@ -133,6 +133,8 @@ namespace PlexBot.Core.Discord.Embeds
         {
             // Rows are filled by priority, five buttons to a row:
             // row 1 playback, row 2 volume and extras, row 3 stop.
+            RegisterButton("previous", ButtonFlag.VisualPlayer, 5, _ =>
+                Button("Back", "pb_previous", "\u23EE\uFE0F", "previous:back", ButtonStyle.Secondary));
             RegisterButton("pause_resume", ButtonFlag.VisualPlayer, 10, context =>
             {
                 (string label, string emoji, string fallback, string action) = PauseLook(context.Player?.State == PlayerState.Paused);

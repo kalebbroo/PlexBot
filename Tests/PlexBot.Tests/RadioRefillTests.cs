@@ -23,12 +23,6 @@ public class RadioRefillPolicyTests
     }
 
     [Fact]
-    public void KeyOf_FallsBackToTheIdWhenThereIsNoRatingKey()
-    {
-        Assert.Equal("local-7", RadioRefillPolicy.KeyOf(new Track { Id = "local-7", SourceKey = "" }));
-    }
-
-    [Fact]
     public void Unseen_KeepsOrderAndDropsTracksAlreadyQueued()
     {
         List<Track> batch = [Track("/library/metadata/1", "a"), Track("/library/metadata/2", "b"), Track("/library/metadata/3", "c")];

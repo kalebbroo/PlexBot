@@ -23,9 +23,31 @@ public sealed class CustomLavaLinkPlayer(IPlayerProperties<CustomLavaLinkPlayer,
     public long PlaybackEpoch => Interlocked.Read(ref _playbackEpoch);
 
     /// <inheritdoc />
+    private readonly PlaybackHistory<CustomTrackQueueItem> _history = new(HistoryLimit);
+    private readonly object _historyLock = new();
+
+    /// <summary>How many earlier tracks the Back button can return to</summary>
+    public const int HistoryLimit = 20;
+
+    /// <summary>Takes the most recent earlier track for the Back button, or null when there is none</summary>
+    public CustomTrackQueueItem? TakePreviousTrack()
+    {
+        lock (_historyLock) { return _history.TakePrevious(); }
+    }
+
+    /// <summary>The track that is playing as the player last saw it</summary>
+    public CustomTrackQueueItem? PlayingTrack
+    {
+        get { lock (_historyLock) { return _history.Current; } }
+    }
+
     protected override async ValueTask NotifyTrackStartedAsync(ITrackQueueItem track, CancellationToken cancellationToken = default)
     {
         Interlocked.Increment(ref _playbackEpoch);
+        if (track is CustomTrackQueueItem started)
+        {
+            lock (_historyLock) { _history.OnStarted(started); }
+        }
         try
         {
             VisualPlayer visualPlayer = serviceProvider.GetRequiredService<VisualPlayer>();

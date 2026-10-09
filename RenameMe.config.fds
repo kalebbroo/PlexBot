@@ -18,6 +18,8 @@ visualPlayer:
 
     # Minutes of inactivity before the bot auto-disconnects from voice
     inactivityTimeout: 2.0
+    # Seconds a person must wait between presses of the same player button (0 turns it off)
+    buttonCooldownSeconds: 2.0
 
     # Static player channel - locks the player to one channel regardless of where commands are used
     staticChannel:

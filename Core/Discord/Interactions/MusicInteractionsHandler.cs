@@ -27,7 +27,8 @@ public class MusicInteractionHandler(IPlayerService playerService,
 
     // Cooldown tracking to prevent spamming
     private static readonly ConcurrentDictionary<(ulong UserId, string CommandId), DateTime> _lastInteracted = new();
-    private static readonly TimeSpan _cooldownPeriod = TimeSpan.FromSeconds(2);
+    // Per user and per action. visualPlayer.buttonCooldownSeconds sets it; 0 turns it off.
+    private static readonly TimeSpan _cooldownPeriod = TimeSpan.FromSeconds(Math.Max(0, BotConfig.GetDouble("visualPlayer.buttonCooldownSeconds", 2.0)));
 
     /// <summary>Routes select menu choices to the correct handler by decoding the provider ID and content type
     /// from the custom ID pattern search:{providerId}:{type}</summary>
@@ -131,6 +132,30 @@ public class MusicInteractionHandler(IPlayerService playerService,
         {
             Logs.Error($"Error handling skip: {ex.Message}");
             await FollowupAsync(components: ComponentV2Builder.Error("Skip Error", "An error occurred while skipping the track. Please try again later."), ephemeral: true);
+        }
+    }
+
+    /// <summary>Back button: goes to the track played before the current one</summary>
+    [ComponentInteraction("previous:back")]
+    public async Task HandlePreviousAsync()
+    {
+        await DeferAsync();
+        if (IsOnCooldown(Context.User.Id, "previous"))
+        {
+            await FollowupAsync(components: ComponentV2Builder.Error(Notices.Cooldown), ephemeral: true);
+            return;
+        }
+        try
+        {
+            if (!await playerService.PreviousTrackAsync(Context.Interaction))
+                await FollowupAsync(components: ComponentV2Builder.Info("Nothing to go back to", "No earlier track in this session."), ephemeral: true);
+            else
+                Logs.Info($"Went back to the previous track, by {Context.User.Username}");
+        }
+        catch (Exception ex)
+        {
+            Logs.Error($"Error handling back: {ex.Message}");
+            await FollowupAsync(components: ComponentV2Builder.Error("Playback Error", "Couldn't go back to the previous track. Please try again."), ephemeral: true);
         }
     }
 
@@ -964,6 +989,9 @@ public class MusicInteractionHandler(IPlayerService playerService,
     /// auto-pruning stale entries when the dictionary exceeds 100 items to prevent unbounded growth</summary>
     public static bool IsOnCooldown(ulong userId, string commandId)
     {
+        if (_cooldownPeriod <= TimeSpan.Zero)
+            return false;
+
         (ulong, string) key = (userId, commandId);
         DateTime now = DateTime.UtcNow;
 
