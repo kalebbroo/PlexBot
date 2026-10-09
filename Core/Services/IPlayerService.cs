@@ -29,7 +29,12 @@ public interface IPlayerService
     /// <returns>A task that completes when all tracks have been processed and added to the queue</returns>
     /// <exception cref="PlayerException">Thrown when the tracks cannot be added to the queue due to format or connection issues</exception>
     /// <returns>True if the tracks were applied to the queue; false if the request was superseded by a clear, stop, or replace</returns>
-    Task<bool> AddToQueueAsync(IDiscordInteraction interaction, IEnumerable<Track> tracks, CancellationToken cancellationToken = default);
+    /// <param name="playNext">True to put the tracks at the front of the queue, after the track that is playing</param>
+    Task<bool> AddToQueueAsync(IDiscordInteraction interaction, IEnumerable<Track> tracks, bool playNext = false, CancellationToken cancellationToken = default);
+
+    /// <summary>Goes back to the track played before the current one. The current track is queued to play next.</summary>
+    /// <returns>True when there was an earlier track to go back to</returns>
+    Task<bool> PreviousTrackAsync(IDiscordInteraction interaction, CancellationToken cancellationToken = default);
 
     /// <summary>Replaces the guild's queue with the given tracks. The existing queue is cleared only after the
     /// first track resolves, so a failed resolve leaves the queue untouched.</summary>

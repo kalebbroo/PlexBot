@@ -389,7 +389,8 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
     [SlashCommand("playlist", "Play a playlist")]
     public async Task PlaylistCommand([Summary("playlist", "The playlist to play")]
     [Autocomplete(typeof(PlaylistAutocompleteHandler))]
-    string playlist, [Summary("shuffle", "Shuffle the playlist")] bool shuffle = true)
+    string playlist, [Summary("shuffle", "Shuffle the playlist")] bool shuffle = true,
+    [Summary("next", "Play after the current track instead of at the end")] bool next = false)
     {
         await RespondAsync(components: ComponentV2Builder.Info("Loading", "Loading playlist..."), ephemeral: true);
         IUserMessage ackMessage = await GetOriginalResponseAsync();
@@ -432,7 +433,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
                 Random rng = new();
                 tracks = [.. tracks.OrderBy(x => rng.Next())];
             }
-            await playerService.AddToQueueAsync(Context.Interaction, tracks);
+            await playerService.AddToQueueAsync(Context.Interaction, tracks, next);
         }
         catch (Exception ex)
         {
@@ -446,7 +447,9 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
     [SlashCommand("play", "Play a track by URL or search term")]
     public async Task PlayCommand(
         [Summary("query", "The track to play (URL or search term)")]
-        string query)
+        string query,
+        [Summary("next", "Play after the current track instead of at the end")]
+        bool next = false)
     {
         await DeferAsync(ephemeral: true);
         try
@@ -460,7 +463,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
             if (Uri.TryCreate(query, UriKind.Absolute, out Uri? parsedUri) &&
                 (parsedUri.Scheme == "http" || parsedUri.Scheme == "https"))
             {
-                await HandleUrlPlaybackAsync(query, parsedUri);
+                await HandleUrlPlaybackAsync(query, parsedUri, next);
                 return;
             }
             SearchResults results = await plexMusicService.SearchLibraryAsync(query);
@@ -472,7 +475,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
             if (results.Tracks.Count != 0)
             {
                 Track track = results.Tracks.First();
-                await playerService.AddToQueueAsync(Context.Interaction, [track]);
+                await playerService.AddToQueueAsync(Context.Interaction, [track], next);
                 return;
             }
             if (results.Albums.Count != 0)
@@ -481,7 +484,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
                 List<Track> tracks = await plexMusicService.GetTracksAsync(album.SourceKey);
                 if (tracks.Count != 0)
                 {
-                    await playerService.AddToQueueAsync(Context.Interaction, tracks);
+                    await playerService.AddToQueueAsync(Context.Interaction, tracks, next);
                     return;
                 }
             }
@@ -491,7 +494,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
                 List<Track> allTracks = await plexMusicService.GetAllArtistTracksAsync(artist.SourceKey);
                 if (allTracks.Count != 0)
                 {
-                    await playerService.AddToQueueAsync(Context.Interaction, allTracks);
+                    await playerService.AddToQueueAsync(Context.Interaction, allTracks, next);
                     return;
                 }
             }
@@ -506,7 +509,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
 
     /// <summary>Tries each registered provider's CanHandleUrl first (e.g. YouTube provider claims youtube.com),
     /// then falls back to generic Lavalink loading for unclaimed URLs</summary>
-    public async Task HandleUrlPlaybackAsync(string url, Uri parsedUri)
+    public async Task HandleUrlPlaybackAsync(string url, Uri parsedUri, bool next)
     {
         try
         {
@@ -518,7 +521,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
                     List<Track> tracks = await provider.ResolveUrlAsync(url);
                     if (tracks.Count > 0)
                     {
-                        await playerService.AddToQueueAsync(Context.Interaction, tracks);
+                        await playerService.AddToQueueAsync(Context.Interaction, tracks, next);
                         return;
                     }
                 }
@@ -545,7 +548,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
             track.DurationMs = (long)lavalinkTrack.Duration.TotalMilliseconds;
             track.DurationDisplay = FormatHelper.FormatDuration(lavalinkTrack.Duration);
 
-            await playerService.AddToQueueAsync(Context.Interaction, [track]);
+            await playerService.AddToQueueAsync(Context.Interaction, [track], next);
         }
         catch (Exception ex)
         {

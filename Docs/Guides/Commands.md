@@ -42,6 +42,7 @@ Load and play a Plex playlist.
 |-----------|----------|-------------|
 | `playlist` | Yes | Playlist name (autocompletes from your Plex playlists) |
 | `shuffle` | No | Shuffle the playlist before playing (default: `true`) |
+| `next` | No | Play the playlist after the current track instead of at the end (default: `false`) |
 
 **Example:** `/playlist playlist:Summer Hits shuffle:true`
 
@@ -52,6 +53,7 @@ Quick play — searches your Plex library and plays the first match.
 | Parameter | Required | Description |
 |-----------|----------|-------------|
 | `query` | Yes | Track, album, or artist name to search for |
+| `next` | No | Play after the current track instead of at the end (default: `false`) |
 
 **Example:** `/play query:Bohemian Rhapsody`
 
@@ -70,6 +72,7 @@ Buttons are labelled and use the bot's emoji set. The status line under the prog
 | Button | Action |
 |--------|--------|
 | Pause / Resume | Toggle playback (the button reads Resume while paused) |
+| Back | Go to the track played before this one. The current track is queued to play next. |
 | Skip | Skip to next track in queue |
 | Repeat | Cycle repeat mode: Off → Repeat All → Repeat 1 → Off |
 | Shuffle | Shuffle the queue |

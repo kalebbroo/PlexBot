@@ -37,6 +37,11 @@ Dictionary<string, Action<IImageProcessingContext>> glyphs = new()
         c.Fill(white, Poly(P(22, 30), P(22, 98), P(72, 64)));
         c.Fill(white, RoundRect(84, 30, 18, 68, 5));
     },
+    ["previous"] = c =>
+    {
+        c.Fill(white, Poly(P(106, 30), P(106, 98), P(56, 64)));
+        c.Fill(white, RoundRect(26, 30, 18, 68, 5));
+    },
     ["stop"] = c => c.Fill(white, RoundRect(30, 30, 68, 68, 10)),
     ["repeat"] = c => Repeat(c, false),
     ["repeat_track"] = c => Repeat(c, true),
