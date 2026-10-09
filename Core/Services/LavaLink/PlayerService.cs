@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using PlexBot.Core.Discord.Embeds;
 using PlexBot.Core.Discord.Messages;
 using PlexBot.Core.Events;
@@ -6,6 +6,7 @@ using PlexBot.Core.Exceptions;
 using PlexBot.Core.Models.Media;
 using PlexBot.Core.Models.Players;
 using PlexBot.Core.Services;
+using PlexBot.Core.Services.Music;
 using PlexBot.Utils;
 
 namespace PlexBot.Core.Services.LavaLink;
@@ -462,6 +463,40 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
     }
 
     /// <inheritdoc />
+    public async Task<int> AppendRadioTracksAsync(ulong guildId, IReadOnlyList<Track> tracks, long generation,
+        CancellationToken cancellationToken = default)
+    {
+        if (tracks.Count == 0)
+            return 0;
+        if (await audioService.Players.GetPlayerAsync(guildId, cancellationToken: cancellationToken) is not QueuedLavalinkPlayer player)
+            return 0;
+
+        List<ITrackQueueItem> placeholders = tracks
+            .Select(t => (ITrackQueueItem)CustomTrackQueueItem.Placeholder(t, "Radio"))
+            .ToList();
+
+        // Same gate as every other queue change: a clear, stop or replace that took the gate first bumps the generation
+        SemaphoreSlim gate = _guildQueueLocks.GetOrAdd(guildId, _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            if (CurrentGeneration(guildId) != generation)
+            {
+                Logs.Debug($"[guild {guildId}] Dropping radio refill: the queue changed during the fetch");
+                return 0;
+            }
+            await player.Queue.AddRangeAsync(placeholders, cancellationToken);
+        }
+        finally
+        {
+            gate.Release();
+        }
+
+        queueResolver.Wake(guildId);
+        return placeholders.Count;
+    }
+
+    /// <inheritdoc />
     public async Task StopAsync(IDiscordInteraction interaction, bool disconnect = false,
         CancellationToken cancellationToken = default)
     {
@@ -476,6 +511,7 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
             {
                 BumpGeneration(player.GuildId);
                 queueResolver.Stop(player.GuildId);
+                serviceProvider.GetRequiredService<RadioSessionManager>().StopSession(player.GuildId);
                 await player.StopAsync(cancellationToken);
                 await player.Queue.ClearAsync(cancellationToken);
             }

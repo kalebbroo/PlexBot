@@ -415,7 +415,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
                 return;
 
             if (Context.Guild is not null)
-                radioSessionManager.StartSession(Context.Guild.Id, ratingKey);
+                radioSessionManager.StartSession(Context.Guild.Id, ratingKey, tracks);
 
             await Context.Interaction.ModifyOriginalResponseAsync(msg =>
             {
@@ -467,7 +467,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
                 return;
 
             if (Context.Guild is not null)
-                radioSessionManager.StartSession(Context.Guild.Id, ratingKey);
+                radioSessionManager.StartSession(Context.Guild.Id, ratingKey, tracks);
 
             await Context.Interaction.ModifyOriginalResponseAsync(msg =>
             {
@@ -843,7 +843,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
 
         // Start radio session for potential infinite refill
         if (Context.Guild is not null)
-            radioSessionManager.StartSession(Context.Guild.Id, stationKey);
+            radioSessionManager.StartSession(Context.Guild.Id, stationKey, tracks);
 
         await FollowupAsync(components: ComponentV2Builder.Success("Station Playing", $"Added {tracks.Count} tracks from the radio station."), ephemeral: true);
         Logs.Info($"Radio station selected by {Context.User.Username}: {stationKey}, {tracks.Count} tracks");
