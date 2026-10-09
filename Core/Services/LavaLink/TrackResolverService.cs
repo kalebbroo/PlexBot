@@ -44,6 +44,10 @@ public class TrackResolverService(IAudioService audioService, PlexStreamGate ple
     }
 
     /// <summary>Loads a Plex file URL through the shared gate, backing off and retrying when Plex drops the response</summary>
+    // TODO(plex-transcode): if a Plex file keeps failing after the retries, fall back to a transcode session. Lavalink's
+    // HTTP source accepts HLS playlists (checked with a public .m3u8 on 2026-10-09), so the fallback would ask Plex for
+    // /audio/:/transcode/universal/start.m3u8 and load that URL. Not built yet: needs a live test with a real track
+    // that fails, and handling of the Plex token and session cleanup.
     public async Task<TrackResolution> LoadPlexWithRetryAsync(Track track, CancellationToken cancellationToken)
     {
         // Refresh, not the default Dynamic mode: Lavalink4NET caches failed loads for 30 minutes, so a retry in

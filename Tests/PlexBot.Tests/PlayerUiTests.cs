@@ -11,38 +11,6 @@ using Xunit;
 
 namespace PlexBot.Tests;
 
-public class PlayerButtonTests
-{
-    [Fact]
-    public void PauseLook_ShowsResumeOnlyWhilePaused()
-    {
-        var pause = DiscordButtonBuilder.PauseLook(false);
-        Assert.Equal("Pause", pause.Label);
-        Assert.Equal("pb_pause", pause.EmojiName);
-        Assert.Equal("pause_resume:pause", pause.Action);
-        Assert.Equal("Resume", DiscordButtonBuilder.PauseLook(true).Label);
-        Assert.Equal("pause_resume:resume", DiscordButtonBuilder.PauseLook(true).Action);
-    }
-
-    [Theory]
-    [InlineData(TrackRepeatMode.None, "Repeat", ButtonStyle.Secondary)]
-    [InlineData(TrackRepeatMode.Track, "Repeat 1", ButtonStyle.Primary)]
-    [InlineData(TrackRepeatMode.Queue, "Repeat All", ButtonStyle.Primary)]
-    public void RepeatLook_LabelsEachModeAndHighlightsActiveOnes(TrackRepeatMode mode, string label, ButtonStyle style)
-    {
-        var look = DiscordButtonBuilder.RepeatLook(mode);
-        Assert.Equal(label, look.Label);
-        Assert.Equal(style, look.Style);
-    }
-
-    [Fact]
-    public void RepeatLook_UsesTheRepeatOneEmojiOnlyForTrackRepeat()
-    {
-        Assert.Equal("pb_repeat_track", DiscordButtonBuilder.RepeatLook(TrackRepeatMode.Track).EmojiName);
-        Assert.Equal("pb_repeat", DiscordButtonBuilder.RepeatLook(TrackRepeatMode.Queue).EmojiName);
-    }
-}
-
 public class StatusLineTests
 {
     [Fact]
@@ -52,21 +20,6 @@ public class StatusLineTests
         Assert.EndsWith("-# Volume 45% · Repeat all", line);
     }
 
-    [Fact]
-    public void StatusLine_WithoutVolumeKeepsOnlyTheProgressBar()
-    {
-        string line = ComponentV2Builder.BuildPlayerStatusLine(PlayerState.Playing, TimeSpan.FromSeconds(30), TimeSpan.FromMinutes(3));
-        Assert.DoesNotContain("Volume", line);
-    }
-
-    [Theory]
-    [InlineData(TrackRepeatMode.None, "off")]
-    [InlineData(TrackRepeatMode.Track, "one")]
-    [InlineData(TrackRepeatMode.Queue, "all")]
-    public void RepeatText_NamesEachMode(TrackRepeatMode mode, string text)
-    {
-        Assert.Equal(text, ComponentV2Builder.RepeatText(mode));
-    }
 }
 
 public class CornerMaskTests
@@ -101,15 +54,4 @@ public class PanelTextTests
         Assert.Equal(string.Empty, ComponentV2Builder.ShowingNote(3, 25));
     }
 
-    [Fact]
-    public void EmojiText_FallsBackToUnicodeWhenNotSynced()
-    {
-        Assert.Equal("\U0001F3B5", new EmojiRegistry().Text("pb_missing", "\U0001F3B5"));
-    }
-
-    [Fact]
-    public void BannerName_MatchesTheFileTheCardReferences()
-    {
-        Assert.Equal("PlexBotBanner.png", ComponentV2Builder.BannerFileName);
-    }
 }

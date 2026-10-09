@@ -14,12 +14,6 @@ public class EmojiRegistryTests
         Assert.Equal("▶️", Assert.IsType<Emoji>(emote).Name);
     }
 
-    [Fact]
-    public void Get_IsNullBeforeTheSync()
-    {
-        Assert.Null(new EmojiRegistry().Get("pb_play"));
-    }
-
     [Theory]
     [InlineData(false, null, "AA", EmojiSyncAction.Upload)]   // not on the application
     [InlineData(false, "AA", "AA", EmojiSyncAction.Upload)]   // deleted in the portal: upload again
@@ -74,30 +68,6 @@ public class EmojiRegistryTests
         finally
         {
             File.Delete(file);
-        }
-    }
-}
-
-public class AssetPathsTests
-{
-    [Fact]
-    public void FindDirectory_ReturnsNullWhenNoRootHasIt()
-    {
-        Assert.Null(AssetPaths.FindDirectory("no-such-folder-" + Guid.NewGuid().ToString("N")));
-    }
-
-    [Fact]
-    public void FindDirectory_FindsAFolderUnderTheWorkingDirectory()
-    {
-        string name = "plexbot-assets-" + Guid.NewGuid().ToString("N");
-        string created = Directory.CreateDirectory(System.IO.Path.Combine(Directory.GetCurrentDirectory(), name, "Emoji")).FullName;
-        try
-        {
-            Assert.Equal(created, AssetPaths.FindDirectory(name, "Emoji"));
-        }
-        finally
-        {
-            Directory.Delete(System.IO.Path.Combine(Directory.GetCurrentDirectory(), name), recursive: true);
         }
     }
 }

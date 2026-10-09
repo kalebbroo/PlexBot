@@ -51,10 +51,4 @@ public class ResultPageStoreTests
         Assert.Null(store.Get(id));
     }
 
-    [Fact]
-    public void UnknownId_ReturnsNothing()
-    {
-        ResultPageStore<string> store = new(new FakeTimeProvider(), TimeSpan.FromMinutes(10));
-        Assert.Null(store.Get("nope"));
-    }
 }

@@ -137,18 +137,64 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
         Track track,
         CancellationToken cancellationToken = default)
     {
-        await AddToQueueAsync(interaction, [track], cancellationToken);
+        await AddToQueueAsync(interaction, [track], cancellationToken: cancellationToken);
     }
 
     /// <inheritdoc />
-    public Task<bool> AddToQueueAsync(IDiscordInteraction interaction, IEnumerable<Track> tracks,
+    public Task<bool> AddToQueueAsync(IDiscordInteraction interaction, IEnumerable<Track> tracks, bool playNext = false,
         CancellationToken cancellationToken = default)
-        => AddTracksAsync(interaction, tracks, replaceQueue: false, cancellationToken);
+        => AddTracksAsync(interaction, tracks, replaceQueue: false, playNext, cancellationToken);
+
+    /// <inheritdoc />
+    public async Task<bool> PreviousTrackAsync(IDiscordInteraction interaction, CancellationToken cancellationToken = default)
+    {
+        (QueuedLavalinkPlayer? player, string? failure) = await TryGetPlayerAsync(interaction, false, cancellationToken);
+        if (player is not CustomLavaLinkPlayer custom)
+            throw new PlayerException($"No player for previous: {failure}", "Previous", failure ?? Notices.NoPlayer.Body);
+
+        SemaphoreSlim gate = _guildQueueLocks.GetOrAdd(custom.GuildId, _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            CustomTrackQueueItem? previous = custom.TakePreviousTrack();
+            if (previous is null)
+                return false;
+
+            CustomTrackQueueItem? playing = custom.CurrentItem as CustomTrackQueueItem;
+            bool active = custom.State is PlayerState.Playing or PlayerState.Paused;
+            if (playing is not null && active)
+            {
+                // The playing track goes back into the queue, so Next returns to it. Then the earlier track is put in
+                // front of it and the current track is skipped, which plays the earlier one.
+                await custom.Queue.InsertAsync(0, CopyOf(playing), cancellationToken);
+                await custom.Queue.InsertAsync(0, CopyOf(previous), cancellationToken);
+                await custom.SkipAsync(1, cancellationToken);
+            }
+            else
+            {
+                await custom.PlayAsync(CopyOf(previous), cancellationToken: cancellationToken);
+            }
+            Logs.Debug($"[guild {custom.GuildId}] Went back to {previous.Title}");
+            return true;
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    /// <summary>A new queue item for the same track, so the queue never holds an item that is also playing</summary>
+    private static CustomTrackQueueItem CopyOf(CustomTrackQueueItem item) => new()
+    {
+        SourceTrack = item.SourceTrack,
+        RequestedBy = item.RequestedBy,
+        Reference = item.Reference
+    };
 
     /// <inheritdoc />
     public Task<bool> ReplaceQueueAsync(IDiscordInteraction interaction, IEnumerable<Track> tracks,
         CancellationToken cancellationToken = default)
-        => AddTracksAsync(interaction, tracks, replaceQueue: true, cancellationToken);
+        => AddTracksAsync(interaction, tracks, replaceQueue: true, playNext: false, cancellationToken);
 
     /// <inheritdoc />
     public async Task<int> ClearQueueAsync(IDiscordInteraction interaction, CancellationToken cancellationToken = default)
@@ -177,7 +223,7 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
     /// <returns>True if the tracks were applied to the queue; false if they were not (the first track failed to
     /// load, or a clear, stop, or replace superseded this request).</returns>
     private async Task<bool> AddTracksAsync(IDiscordInteraction interaction, IEnumerable<Track> tracks, bool replaceQueue,
-        CancellationToken cancellationToken)
+        bool playNext, CancellationToken cancellationToken)
     {
         (QueuedLavalinkPlayer? player, string? failure) = await TryGetPlayerAsync(interaction, true, cancellationToken);
         if (player == null)
@@ -254,6 +300,8 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
                     shouldPlay = player.State != PlayerState.Playing && player.State != PlayerState.Paused;
                     if (shouldPlay)
                         await player.PlayAsync(firstItem, cancellationToken: cancellationToken);
+                    else if (playNext)
+                        await player.Queue.InsertAsync(0, firstItem, cancellationToken);
                     else
                         await player.Queue.AddAsync(firstItem, cancellationToken);
                 }
@@ -292,6 +340,9 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
                 {
                     if (CurrentGeneration(guildId) != generation)
                         superseded = true;
+                    else if (playNext)
+                        // Right behind the first track: at the front when it is playing, otherwise after the one just inserted
+                        await player.Queue.InsertRangeAsync(shouldPlay ? 0 : 1, placeholders, cancellationToken);
                     else
                         await player.Queue.AddRangeAsync(placeholders, cancellationToken);
                 }
@@ -327,7 +378,7 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
 
                 string summary = shouldPlay
                     ? $"Playing {firstTrack.Title} by {firstTrack.Artist}, and queued {placeholders.Count} more"
-                    : $"Added {totalCount} tracks to the queue";
+                    : playNext ? $"Added {totalCount} tracks to play next" : $"Added {totalCount} tracks to the queue";
                 await interaction.ModifyOriginalResponseAsync(msg =>
                 {
                     msg.Components = ComponentV2Builder.Success("Tracks Added", summary);
@@ -339,7 +390,7 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
             {
                 string message = shouldPlay
                     ? $"Playing: {firstTrack.Title} by {firstTrack.Artist}"
-                    : $"Added to queue: {firstTrack.Title} by {firstTrack.Artist}";
+                    : playNext ? $"Up next: {firstTrack.Title} by {firstTrack.Artist}" : $"Added to queue: {firstTrack.Title} by {firstTrack.Artist}";
                 await interaction.ModifyOriginalResponseAsync(msg =>
                 {
                     msg.Components = ComponentV2Builder.Success("Track Added", message);

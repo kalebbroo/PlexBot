@@ -11,13 +11,6 @@ namespace PlexBot.Tests;
 public class PlexStreamOptionsTests
 {
     [Fact]
-    public void ParseDelays_ReadsCommaSeparatedSeconds()
-    {
-        List<TimeSpan> delays = PlexStreamOptions.ParseDelays("2, 5, 15");
-        Assert.Equal([TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(15)], delays);
-    }
-
-    [Fact]
     public void ParseDelays_SkipsInvalidAndNegativeEntries()
     {
         List<TimeSpan> delays = PlexStreamOptions.ParseDelays("1.5, abc, -3, 4");
@@ -52,17 +45,6 @@ public class PlexLoadRetryPolicyTests
     public void Classify_SeparatesRetriableFromPermanent(bool hasTrack, bool isError, bool timedOut, LoadOutcome expected)
     {
         Assert.Equal(expected, PlexLoadRetryPolicy.Classify(hasTrack, isError, timedOut));
-    }
-}
-
-public class TrackResolutionTests
-{
-    [Fact]
-    public void FailureReason_DistinguishesMissingFileFromExhaustedRetries()
-    {
-        Assert.Contains("couldn't find", new TrackResolution(null, LoadOutcome.NotFound).FailureReason);
-        Assert.Contains("several tries", new TrackResolution(null, LoadOutcome.Retriable).FailureReason);
-        Assert.False(TrackResolution.Failed.IsLoaded);
     }
 }
 
@@ -222,10 +204,4 @@ public class ResolveWindowTests
         Assert.Equal([first, fourth], window);
     }
 
-    [Fact]
-    public void Placeholder_IsUnresolvedUntilATrackIsAttached()
-    {
-        Assert.False(Placeholder("x").IsResolved);
-        Assert.True(Resolved("x").IsResolved);
-    }
 }

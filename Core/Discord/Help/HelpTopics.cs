@@ -13,12 +13,14 @@ public static class HelpTopics
             "**`/play [query]`** plays one track. Type a name or paste a link.\n" +
             "**`/playlist [playlist] [shuffle]`** queues a whole Plex playlist. The first track starts at once; the rest load in the background.\n" +
             "**`/search [mode] [query]`** finds music. Pick a result from the menu to play it.\n\n" +
-            "New tracks queue behind whatever is playing. The player appears in the channel, and its buttons control it.",
+            "New tracks queue behind whatever is playing. Turn on the **next** option to play them after the current track instead.\n" +
+            "The player appears in the channel, and its buttons control it.",
             "help-start.png"),
 
         new("controls", "Player controls", "⏯️", "What each button on the player does",
             "Player controls",
             "**Pause / Resume** toggles playback.\n" +
+            "**Back** goes to the track played before this one.\n" +
             "**Skip** moves to the next track.\n" +
             "**Repeat** cycles Off, Repeat All, Repeat 1.\n" +
             "**Shuffle** shuffles the queue.\n" +
@@ -55,7 +57,7 @@ public static class HelpTopics
         new("trouble", "Troubleshooting", "\U0001F6E0️", "What the messages mean and what to do",
             "Troubleshooting",
             "**\"No active player\"**: nothing is playing. Start it with `/play`.\n" +
-            "**\"Please wait a moment\"**: buttons have a two-second cooldown. Wait, then press again.\n" +
+            "**\"Please wait a moment\"**: buttons have a short cooldown, per person. Wait, then press again.\n" +
             "**\"Playback stopped\"**: the player was stopped. Use `/play` or `/playlist` to start again.\n" +
             "**\"Plex couldn't find a playable file\"**: that track was skipped because Plex has no file for it.\n" +
             "**Plain symbols instead of the bot's emoji**: the emoji haven't synced. See the Custom Emoji guide.",

@@ -131,8 +131,8 @@ These need a Plex track playing and sonic analysis enabled on your Plex server. 
 
 | Command | What it does |
 |---|---|
-| `/play [query]` | Play a track by name or link. Queues it if something is playing. |
-| `/playlist [playlist] [shuffle]` | Queue a Plex playlist, optionally shuffled. |
+| `/play [query] [next]` | Play a track by name or link. Queues it, or with `next` plays it after the current track. |
+| `/playlist [playlist] [shuffle] [next]` | Queue a Plex playlist, optionally shuffled, or with `next` play it after the current track. |
 | `/search [mode] [query]` | Search: **Plex Library**, **Find by Mood**, **Find by Genre**, or **Radio Station**. Extension sources appear here when loaded. |
 | `/help` | The help menu. Only you see it. |
 
@@ -147,6 +147,7 @@ These need a Plex track playing and sonic analysis enabled on your Plex server. 
 | Button | Action |
 |---|---|
 | Pause / Resume | Toggle playback |
+| Back | Go to the track played before this one (the current track is queued to play next) |
 | Skip | Next track |
 | Repeat | Off → Repeat All → Repeat 1 → Off |
 | Shuffle | Shuffle the queue |
@@ -219,6 +220,7 @@ Uses [Frenetic Data Syntax](https://github.com/FreneticLLC/FreneticUtilities), a
 |---|---|---|
 | `visualPlayer.useModernPlayer` | `true` | `true` for the album-art player, `false` for the classic embed |
 | `visualPlayer.inactivityTimeout` | `2.0` | Minutes of silence before the bot leaves voice |
+| `visualPlayer.buttonCooldownSeconds` | `2.0` | Seconds a person must wait between presses of the same button. `0` turns it off. |
 | `visualPlayer.staticChannel.enabled` | `false` | Keep the player in one channel (see [Static player channel](#static-player-channel)) |
 | `visualPlayer.staticChannel.channelId` | `0` | The channel's ID |
 | `visualPlayer.progressBar.enabled` | `true` | Live progress bar. Turn off to make fewer Discord edits. |
