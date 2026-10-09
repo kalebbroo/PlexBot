@@ -1,3 +1,6 @@
+> **Status (2026-10-09): historical.** Written against the code before the playback refactor (#46). The `/ping` command
+> it refers to has been removed. For the current pipeline, see [Plex-Playlist-Refactor-Plan.md](Plex-Playlist-Refactor-Plan.md).
+
 # PlexBot Reliability Audit
 
 Scope: the interaction pipeline (buttons, select menus, modals), player/queue service, radio and sonic services, the visual player progress loop, startup/reconnect, and the Lavalink/Plex plumbing. Evidence is from reading the code at the current `main` (3d39934). No live bot was run: there is no `.env`, Discord token, Lavalink node, or Plex server on this machine.
