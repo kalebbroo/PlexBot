@@ -1,3 +1,4 @@
+﻿using PlexBot.Core.Discord.Design;
 using Discord.Net;
 using PlexBot.Core.Models;
 using PlexBot.Core.Models.Media;
@@ -15,8 +16,8 @@ namespace PlexBot.Core.Discord.Commands;
 
 /// <summary>Provides discord slash commands for music playback with interactive UI components to control playback and manage the music queue</summary>
 public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService playerService,
-    IAudioService audioService, MusicProviderRegistry providerRegistry, IPlexSonicService plexSonicService)
-    : InteractionModuleBase<SocketInteractionContext>
+    IAudioService audioService, MusicProviderRegistry providerRegistry, IPlexSonicService plexSonicService,
+    EmojiRegistry emojis) : InteractionModuleBase<SocketInteractionContext>
 {
 
     /// <summary>Unified entry point for all music discovery — routes to Plex library, sonic features,
@@ -280,7 +281,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
             builder.WithButton("Play All", $"sonic:playall:{title.Replace(":", "-")}:{firstTrackKey}", ButtonStyle.Success);
         }
 
-        await FollowupAsync(components: ComponentV2Builder.BuildSonicResults(title, description, builder), ephemeral: true);
+        await FollowupAsync(components: ComponentV2Builder.BuildSonicResults(title, description, builder, emojis.Text("pb_search", "\U0001F50D")), ephemeral: true);
     }
 
     /// <summary>Builds a station select menu using the search:plex:radio_station interaction pattern
@@ -306,7 +307,8 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         builder.WithSelectMenu(stationMenu);
 
         await FollowupAsync(components: ComponentV2Builder.BuildSonicResults(
-            "Radio Stations", $"Found {stations.Count} stations", builder), ephemeral: true);
+            "Radio Stations", $"Found {stations.Count} stations{ComponentV2Builder.ShowingNote(stations.Count, 25)}", builder,
+            emojis.Text("pb_radio", "\U0001F4FB")), ephemeral: true);
     }
 
     /// <summary>Builds up to three select menus (artists, albums, tracks) dynamically based on which
@@ -380,7 +382,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         if (results.Tracks.Count > 0) summaryParts.Add($"{results.Tracks.Count} tracks");
         string summary = $"Found {string.Join(", ", summaryParts)} on {provider.DisplayName}";
 
-        await FollowupAsync(components: ComponentV2Builder.BuildSearchResults(query, summary, builder), ephemeral: true);
+        await FollowupAsync(components: ComponentV2Builder.BuildSearchResults(query, summary, builder, emojis.Text("pb_search", "\U0001F50D")), ephemeral: true);
     }
 
     /// <summary>Loads a Plex or custom playlist, optionally shuffles it, and queues all tracks for playback</summary>

@@ -95,13 +95,16 @@ The player includes interactive buttons:
 
 | Button | Action |
 |--------|--------|
-| Pause/Resume | Toggle playback |
+| Pause/Resume | Toggle playback (reads Resume while paused) |
 | Skip | Skip to next track |
-| Repeat | Cycle: Off → Queue → Track |
+| Repeat | Cycle: Off → Repeat All → Repeat 1 |
 | Shuffle | Shuffle the current queue |
-| Volume Up/Down | Adjust volume by 10% |
-| Kill | Stop playback, clear queue, and disconnect |
 | Queue | View and manage the queue |
+| Vol - / Vol + | Adjust volume by 10% |
+| Radio, Similar, Adventure | Plex sonic features (see the Commands guide) |
+| Stop | Stop playback, clear queue, and disconnect |
+
+Volume and repeat are also shown as text under the progress bar.
 
 ## Troubleshooting
 

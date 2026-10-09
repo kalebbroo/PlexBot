@@ -174,10 +174,12 @@ public class VisualPlayer(
             if (message is null) return;
 
             MessageComponent cv2;
+            FileAttachment? banner = null;
             if (stateManager.UseStaticChannel)
             {
                 ComponentBuilder buttons = buttonBuilder.BuildButtons(ButtonFlag.VisualPlayer, new ButtonContext());
-                cv2 = ComponentV2Builder.BuildIdlePlayer(buttons);
+                banner = IdleBanner();
+                cv2 = ComponentV2Builder.BuildIdlePlayer(buttons, banner is not null);
             }
             else
             {
@@ -188,7 +190,7 @@ public class VisualPlayer(
             {
                 msg.Components = cv2;
                 msg.Embed = null;
-                msg.Attachments = new List<FileAttachment>();
+                msg.Attachments = banner is null ? new List<FileAttachment>() : new[] { banner.Value };
                 msg.Flags = MessageFlags.ComponentsV2;
             }).ConfigureAwait(false);
 
@@ -204,6 +206,13 @@ public class VisualPlayer(
         {
             updateLock.Release();
         }
+    }
+
+    /// <summary>The banner shown on the idle card, or null when the image isn't installed. Each call returns a new attachment.</summary>
+    public static FileAttachment? IdleBanner()
+    {
+        string? path = AssetPaths.FindFile("Images", ComponentV2Builder.BannerFileName);
+        return path is null ? null : new FileAttachment(path, ComponentV2Builder.BannerFileName);
     }
 
     /// <summary>Stops the progress timer for a guild (call when the player is killed or stopped)</summary>

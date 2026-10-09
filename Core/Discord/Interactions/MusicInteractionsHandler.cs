@@ -1,3 +1,4 @@
+﻿using PlexBot.Core.Discord.Design;
 using System.Collections.Concurrent;
 using Discord.Net;
 using PlexBot.Core.Models.Media;
@@ -21,7 +22,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
     VisualPlayer visualPlayer, DiscordButtonBuilder buttonBuilder,
     MusicProviderRegistry providerRegistry, IPlexSonicService plexSonicService,
     RadioSessionManager radioSessionManager, IPlexMusicService plexMusicService,
-    QueueResolveService queueResolver) : InteractionModuleBase<SocketInteractionContext>
+    QueueResolveService queueResolver, EmojiRegistry emojis) : InteractionModuleBase<SocketInteractionContext>
 {
 
     // Cooldown tracking to prevent spamming
@@ -179,7 +180,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
                     context.CustomData["currentPage"] = currentPage;
                     ComponentBuilder optionsComponents = buttonBuilder.BuildButtons(ButtonFlag.QueueOptions, context);
                     await FollowupAsync(components: ComponentV2Builder.BuildQueueOptions(
-                        displayNow, player.Queue.Count, optionsComponents), ephemeral: true);
+                        displayNow, player.Queue.Count, optionsComponents, emojis.Text("pb_queue", "\U0001F4CB")), ephemeral: true);
                     break;
                 case "view":
                     await ShowQueueAsync(player, currentPage);
@@ -313,6 +314,13 @@ public class MusicInteractionHandler(IPlayerService playerService,
         }
         try
         {
+            // Stop was already pressed, or nothing is playing: say so, rather than report a playback failure
+            if (await playerService.GetPlayerAsync(Context.Interaction, false) is null)
+            {
+                await FollowupAsync(components: ComponentV2Builder.Error(Notices.NoPlayer), ephemeral: true);
+                return;
+            }
+
             if (Context.Guild is not null)
                 radioSessionManager.StopSession(Context.Guild.Id);
 
@@ -371,7 +379,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
             await FollowupAsync(components: ComponentV2Builder.BuildRadioOptions(
                 currentItem.SourceTrack.Title ?? "Unknown",
                 currentItem.SourceTrack.Artist ?? "Unknown",
-                actionButtons), ephemeral: true);
+                actionButtons, emojis.Text("pb_radio", "\U0001F4FB")), ephemeral: true);
         }
         catch (Exception ex)
         {
@@ -527,8 +535,8 @@ public class MusicInteractionHandler(IPlayerService playerService,
             {
                 msg.Components = ComponentV2Builder.BuildSonicResults(
                     "Similar Tracks",
-                    $"Found {similarTracks.Count} sonically similar tracks.",
-                    components);
+                    $"Found {similarTracks.Count} sonically similar tracks.{ComponentV2Builder.ShowingNote(similarTracks.Count, 25)}",
+                    components, emojis.Text("pb_similar", "\U0001F50D"));
                 msg.Embed = null;
                 msg.Flags = MessageFlags.ComponentsV2;
             });
@@ -606,8 +614,8 @@ public class MusicInteractionHandler(IPlayerService playerService,
 
             await FollowupAsync(components: ComponentV2Builder.BuildSonicResults(
                 $"Similar to: {currentItem.SourceTrack.Title}",
-                $"Found {similarTracks.Count} sonically similar tracks to **{currentItem.SourceTrack.Artist}** - {currentItem.SourceTrack.Title}",
-                components), ephemeral: true);
+                $"Found {similarTracks.Count} sonically similar tracks to **{currentItem.SourceTrack.Artist}** - {currentItem.SourceTrack.Title}{ComponentV2Builder.ShowingNote(similarTracks.Count, 25)}",
+                components, emojis.Text("pb_similar", "\U0001F50D")), ephemeral: true);
         }
         catch (Exception ex)
         {
@@ -710,7 +718,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
             await FollowupAsync(components: ComponentV2Builder.BuildSonicResults(
                 "Sonic Adventure",
                 $"Path from **{currentItem.SourceTrack.Artist}** - {currentItem.SourceTrack.Title} to **{endTrack.Artist}** - {endTrack.Title} ({adventureTracks.Count} tracks)",
-                components), ephemeral: true);
+                components, emojis.Text("pb_adventure", "\U0001F9ED")), ephemeral: true);
 
             Logs.Info($"Sonic adventure by {Context.User.Username}: {currentItem.SourceTrack.Title} → {endTrack.Title}, {adventureTracks.Count} tracks");
         }
@@ -849,7 +857,11 @@ public class MusicInteractionHandler(IPlayerService playerService,
             {
                 CustomTrackQueueItem? item = queue[i];
                 if (item is not null)
-                    queueSb.AppendLine($"**#{i + 1}:** {item.Title} - {item.Artist} ({item.Duration})");
+                {
+                    // A placeholder is still waiting for Plex; the loading mark tells the user it isn't stuck
+                    string loading = item.IsResolved ? string.Empty : $" {emojis.Text("pb_loading", "\u23F3")}";
+                    queueSb.AppendLine($"**#{i + 1}:** {item.Title} - {item.Artist} ({item.Duration}){loading}");
+                }
             }
             string queueText = queueSb.ToString().TrimEnd();
 
@@ -870,7 +882,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
             await Context.Interaction.ModifyOriginalResponseAsync(msg =>
             {
                 msg.Components = ComponentV2Builder.BuildQueueDisplay(
-                    nowPlayingLine, queueText, footerLine, components);
+                    nowPlayingLine, queueText, footerLine, components, emojis.Text("pb_queue", "\U0001F4CB"));
                 msg.Embed = null;
                 msg.Flags = MessageFlags.ComponentsV2;
             });

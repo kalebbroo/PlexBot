@@ -138,11 +138,12 @@ public static class ComponentV2Builder
     }
 
     /// <summary>Builds search results layout with select menus inside the container</summary>
-    public static MessageComponent BuildSearchResults(string query, string summary, ComponentBuilder selectMenus)
+    public static MessageComponent BuildSearchResults(string query, string summary, ComponentBuilder selectMenus, string? emoji = null)
     {
+        string icon = emoji ?? "\U0001F50D";
         var container = new ContainerBuilder()
             .WithAccentColor(DesignTokens.Info)
-            .WithTextDisplay($"## \U0001F50D Search Results for: {query}")
+            .WithTextDisplay($"## {icon} Search Results for: {query}")
             .WithTextDisplay(summary)
             .WithSeparator(SeparatorSpacingSize.Small, isDivider: true);
         AddActionRows(container, selectMenus);
@@ -151,11 +152,12 @@ public static class ComponentV2Builder
 
     /// <summary>Builds the ephemeral queue options panel with now-playing info and action buttons</summary>
     public static MessageComponent BuildQueueOptions(
-        string nowPlaying, int queueCount, ComponentBuilder actionButtons)
+        string nowPlaying, int queueCount, ComponentBuilder actionButtons, string? emoji = null)
     {
+        string icon = emoji ?? "\U0001F4CB";
         var container = new ContainerBuilder()
             .WithAccentColor(DesignTokens.Music)
-            .WithTextDisplay("## \U0001F4CB Queue Options")
+            .WithTextDisplay($"## {icon} Queue Options")
             .WithTextDisplay($"\u25B6\uFE0F **Now Playing:** {nowPlaying}")
             .WithTextDisplay($"{queueCount} tracks in queue")
             .WithSeparator(SeparatorSpacingSize.Small, isDivider: true);
@@ -165,11 +167,12 @@ public static class ComponentV2Builder
 
     /// <summary>Builds the queue display layout with pagination</summary>
     public static MessageComponent BuildQueueDisplay(
-        string? nowPlayingLine, string queueText, string footerLine, ComponentBuilder paginationButtons)
+        string? nowPlayingLine, string queueText, string footerLine, ComponentBuilder paginationButtons, string? emoji = null)
     {
+        string icon = emoji ?? "\U0001F4CB";
         var container = new ContainerBuilder()
             .WithAccentColor(DesignTokens.Music)
-            .WithTextDisplay("## \U0001F4CB Current Music Queue");
+            .WithTextDisplay($"## {icon} Current Music Queue");
 
         if (!string.IsNullOrEmpty(nowPlayingLine))
             container.WithTextDisplay(nowPlayingLine);
@@ -215,10 +218,14 @@ public static class ComponentV2Builder
     }
 
     /// <summary>Builds the idle player display for static channel initialization</summary>
-    public static MessageComponent BuildIdlePlayer(ComponentBuilder buttons)
+    /// <summary>The banner is attached to the message by the caller; withBanner points the card at it</summary>
+    public static MessageComponent BuildIdlePlayer(ComponentBuilder buttons, bool withBanner = false)
     {
         var container = new ContainerBuilder()
-            .WithAccentColor(DesignTokens.Music)
+            .WithAccentColor(DesignTokens.Music);
+        if (withBanner)
+            container.WithMediaGallery(new MediaGalleryBuilder().AddItem($"attachment://{BannerFileName}"));
+        container
             .WithTextDisplay("## \U0001F3B5 PlexBot Music Player")
             .WithTextDisplay("No track is currently playing. Use `/play` to start!")
             .WithSeparator(SeparatorSpacingSize.Small, isDivider: true)
@@ -326,6 +333,13 @@ public static class ComponentV2Builder
         return $"{progressLine}\n-# Volume {volumePercent}% \u00B7 Repeat {RepeatText(repeat)}";
     }
 
+    /// <summary>File name the idle banner is attached under, and referenced by the card</summary>
+    public const string BannerFileName = "PlexBotBanner.png";
+
+    /// <summary>Note added to a result list that was cut to the select menu's 25 options</summary>
+    public static string ShowingNote(int total, int shown) =>
+        total > shown ? $" Showing the first {shown}." : string.Empty;
+
     /// <summary>Plain-language name of a repeat mode, as shown in the status line</summary>
     public static string RepeatText(TrackRepeatMode mode) => mode switch
     {
@@ -418,11 +432,12 @@ public static class ComponentV2Builder
 
     /// <summary>Builds the radio options panel shown when the Radio button is clicked on the visual player</summary>
     public static MessageComponent BuildRadioOptions(
-        string trackTitle, string trackArtist, ComponentBuilder actionButtons)
+        string trackTitle, string trackArtist, ComponentBuilder actionButtons, string? emoji = null)
     {
+        string icon = emoji ?? "\uD83D\uDCFB";
         var container = new ContainerBuilder()
             .WithAccentColor(DesignTokens.Music)
-            .WithTextDisplay("## \uD83D\uDCFB Start Radio")
+            .WithTextDisplay($"## {icon} Start Radio")
             .WithTextDisplay($"Seed track: **{trackArtist}** - {trackTitle}")
             .WithTextDisplay("Generate a radio station based on this track's sonic profile.")
             .WithSeparator(SeparatorSpacingSize.Small, isDivider: true);
@@ -432,11 +447,12 @@ public static class ComponentV2Builder
 
     /// <summary>Builds a sonic results display for mood/genre/similar/radio track results</summary>
     public static MessageComponent BuildSonicResults(
-        string title, string description, ComponentBuilder selectMenus)
+        string title, string description, ComponentBuilder selectMenus, string? emoji = null)
     {
+        string icon = emoji ?? "\uD83C\uDFB5";
         var container = new ContainerBuilder()
             .WithAccentColor(DesignTokens.Music)
-            .WithTextDisplay($"## \uD83C\uDFB5 {title}")
+            .WithTextDisplay($"## {icon} {title}")
             .WithTextDisplay(description)
             .WithSeparator(SeparatorSpacingSize.Small, isDivider: true);
         AddActionRows(container, selectMenus);
