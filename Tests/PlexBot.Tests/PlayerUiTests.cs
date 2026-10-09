@@ -1,6 +1,7 @@
 using Discord;
 using Lavalink4NET.Players;
 using Lavalink4NET.Players.Queued;
+using PlexBot.Core.Discord.Design;
 using PlexBot.Core.Discord.Embeds;
 using PlexBot.Core.Models.Players;
 using PlexBot.Utils;
@@ -87,5 +88,28 @@ public class CornerMaskTests
         Assert.Equal(255, mask[400, 399].A);
         Assert.Equal(255, mask[0, 200].A);
         Assert.Equal(255, mask[400, 200].A);
+    }
+}
+
+public class PanelTextTests
+{
+    [Fact]
+    public void ShowingNote_OnlyAppearsWhenTheListWasCut()
+    {
+        Assert.Equal(" Showing the first 25.", ComponentV2Builder.ShowingNote(30, 25));
+        Assert.Equal(string.Empty, ComponentV2Builder.ShowingNote(25, 25));
+        Assert.Equal(string.Empty, ComponentV2Builder.ShowingNote(3, 25));
+    }
+
+    [Fact]
+    public void EmojiText_FallsBackToUnicodeWhenNotSynced()
+    {
+        Assert.Equal("\U0001F3B5", new EmojiRegistry().Text("pb_missing", "\U0001F3B5"));
+    }
+
+    [Fact]
+    public void BannerName_MatchesTheFileTheCardReferences()
+    {
+        Assert.Equal("PlexBotBanner.png", ComponentV2Builder.BannerFileName);
     }
 }

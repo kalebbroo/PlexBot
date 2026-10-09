@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using Discord;
 using Discord.WebSocket;
@@ -138,6 +138,9 @@ public sealed class EmojiRegistry
 
     /// <summary>The synced emoji for a name, or null when it is not on the application</summary>
     public Emote? Get(string name) => ByName.TryGetValue(name, out Emote? emote) ? emote : null;
+
+    /// <summary>The emoji as text for a message body: <c>&lt;:name:id&gt;</c> when synced, otherwise the unicode fallback</summary>
+    public string Text(string name, string unicodeFallback) => Resolve(name, unicodeFallback).ToString();
 
     /// <summary>The synced emoji for a name, or the unicode fallback when it is not available</summary>
     public IEmote Resolve(string name, string unicodeFallback) => Get(name) ?? (IEmote)new Emoji(unicodeFallback);
