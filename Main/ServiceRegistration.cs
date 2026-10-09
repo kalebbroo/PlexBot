@@ -172,6 +172,7 @@ namespace PlexBot.Main
             services.AddSingleton<MusicProviderRegistry>();
             services.AddSingleton<IMusicProvider, PlexMusicProvider>();
             services.AddSingleton<RadioSessionManager>();
+            services.AddSingleton<RadioRefillService>();
         }
 
         /// <summary>Sets up the extension system with two-phase startup: discover and register services

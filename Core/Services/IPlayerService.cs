@@ -1,4 +1,4 @@
-using PlexBot.Core.Models.Media;
+﻿using PlexBot.Core.Models.Media;
 
 namespace PlexBot.Core.Services;
 
@@ -47,6 +47,11 @@ public interface IPlayerService
     /// <returns>The number of tracks removed</returns>
     /// <exception cref="PlayerException">Thrown when the player is unavailable</exception>
     Task<int> ClearQueueAsync(IDiscordInteraction interaction, CancellationToken cancellationToken = default);
+
+    /// <summary>Appends infinite-radio tracks to a guild's queue, without an interaction. Nothing is added when the queue
+    /// was cleared, stopped or replaced after <paramref name="generation"/> was read.</summary>
+    /// <returns>Number of tracks queued</returns>
+    Task<int> AppendRadioTracksAsync(ulong guildId, IReadOnlyList<Track> tracks, long generation, CancellationToken cancellationToken = default);
 
     /// <summary>Toggles between paused and playing states, serving as a convenience method for the most common playback control action</summary>
     /// <param name="interaction">The Discord interaction containing guild context to identify the correct player</param>
