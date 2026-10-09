@@ -156,3 +156,6 @@ Install/Docker/lavalink.application.yml
 /.claude
 config.fds
 /Extensions
+
+# Runtime state written by the bot (emoji hashes, etc.)
+/data/
