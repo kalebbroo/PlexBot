@@ -22,7 +22,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
     VisualPlayer visualPlayer, DiscordButtonBuilder buttonBuilder,
     MusicProviderRegistry providerRegistry, IPlexSonicService plexSonicService,
     RadioSessionManager radioSessionManager, IPlexMusicService plexMusicService,
-    QueueResolveService queueResolver, EmojiRegistry emojis) : InteractionModuleBase<SocketInteractionContext>
+    QueueResolveService queueResolver, EmojiRegistry emojis, ResultPageStore<SimilarResults> similarPages) : InteractionModuleBase<SocketInteractionContext>
 {
 
     // Cooldown tracking to prevent spamming
@@ -588,40 +588,93 @@ public class MusicInteractionHandler(IPlayerService playerService,
                 return;
             }
 
-            List<Track> similarTracks = await plexSonicService.GetSimilarTracksAsync(ratingKey, 25);
+            List<Track> similarTracks = await plexSonicService.GetSimilarTracksAsync(ratingKey, 100);
             if (similarTracks.Count == 0)
             {
                 await FollowupAsync(components: ComponentV2Builder.Info("No Similar Tracks", $"No sonically similar tracks found for '{currentItem.SourceTrack.Title}'."), ephemeral: true);
                 return;
             }
 
-            SelectMenuBuilder selectMenu = new SelectMenuBuilder()
-                .WithCustomId("search:plex:track")
-                .WithPlaceholder("Select a similar track to play")
-                .WithMaxValues(1);
-
-            foreach (Track track in similarTracks.Take(25))
-            {
-                string label = track.Title?.Length > 100 ? track.Title[..97] + "..." : track.Title ?? "Unknown";
-                string desc = $"{track.Artist} - {track.Album}";
-                if (desc.Length > 100) desc = desc[..97] + "...";
-                selectMenu.AddOption(label, track.SourceKey, desc);
-            }
-
-            ComponentBuilder components = new();
-            components.WithSelectMenu(selectMenu);
-            components.WithButton("Play All Similar", $"sonic:playall:plex:{ratingKey}", ButtonStyle.Success, row: 1);
-
-            await FollowupAsync(components: ComponentV2Builder.BuildSonicResults(
-                $"Similar to: {currentItem.SourceTrack.Title}",
-                $"Found {similarTracks.Count} sonically similar tracks to **{currentItem.SourceTrack.Artist}** - {currentItem.SourceTrack.Title}{ComponentV2Builder.ShowingNote(similarTracks.Count, 25)}",
-                components, emojis.Text("pb_similar", "\U0001F50D")), ephemeral: true);
+            SimilarResults results = new(currentItem.SourceTrack.Title ?? "Unknown", currentItem.SourceTrack.Artist ?? "Unknown", ratingKey, similarTracks);
+            string id = similarPages.Save(results);
+            await FollowupAsync(components: BuildSimilarPage(id, results, 1), ephemeral: true);
         }
         catch (Exception ex)
         {
             Logs.Error($"Error handling similar button: {ex.Message}");
             await FollowupAsync(components: ComponentV2Builder.Error("Error", "Failed to find similar tracks."), ephemeral: true);
         }
+    }
+
+    /// <summary>Previous / Next on a similar-tracks list. The list comes from the store, so paging doesn't search again.</summary>
+    [ComponentInteraction("sonic:page:*:*")]
+    public async Task HandleSimilarPageAsync(string id, string page)
+    {
+        await DeferAsync(); // Update the ephemeral panel in place
+        try
+        {
+            SimilarResults? results = similarPages.Get(id);
+            if (results is null)
+            {
+                await Context.Interaction.ModifyOriginalResponseAsync(msg =>
+                {
+                    msg.Components = ComponentV2Builder.Info("List Expired", "This list has expired. Run the command again to see it.");
+                    msg.Embed = null;
+                    msg.Flags = MessageFlags.ComponentsV2;
+                });
+                return;
+            }
+            int requested = int.TryParse(page, out int parsed) ? parsed : 1;
+            MessageComponent components = BuildSimilarPage(id, results, requested);
+            await Context.Interaction.ModifyOriginalResponseAsync(msg =>
+            {
+                msg.Components = components;
+                msg.Embed = null;
+                msg.Flags = MessageFlags.ComponentsV2;
+            });
+        }
+        catch (Exception ex)
+        {
+            Logs.Error($"Error paging similar tracks: {ex.Message}");
+        }
+    }
+
+    /// <summary>One page of a similar-tracks list: a select menu of up to 25 tracks, Previous / Next when there is more, and Play All</summary>
+    private MessageComponent BuildSimilarPage(string id, SimilarResults results, int requestedPage)
+    {
+        int total = results.Tracks.Count;
+        int page = ResultPaging.ClampPage(requestedPage, total);
+        int start = ResultPaging.StartIndex(page, total);
+
+        SelectMenuBuilder selectMenu = new SelectMenuBuilder()
+            .WithCustomId("search:plex:track")
+            .WithPlaceholder("Select a similar track to play")
+            .WithMaxValues(1);
+        foreach (Track track in results.Tracks.Skip(start).Take(ResultPaging.PageSize))
+        {
+            string label = track.Title?.Length > 100 ? track.Title[..97] + "..." : track.Title ?? "Unknown";
+            string desc = $"{track.Artist} - {track.Album}";
+            if (desc.Length > 100) desc = desc[..97] + "...";
+            selectMenu.AddOption(label, track.SourceKey, desc);
+        }
+
+        ComponentBuilder components = new();
+        components.WithSelectMenu(selectMenu);
+        int pages = ResultPaging.PageCount(total);
+        if (pages > 1)
+        {
+            components.WithButton("Previous", $"sonic:page:{id}:{page - 1}", ButtonStyle.Secondary, row: 1, disabled: page <= 1);
+            components.WithButton($"Page {page} of {pages}", "sonic:noop", ButtonStyle.Secondary, row: 1, disabled: true);
+            components.WithButton("Next", $"sonic:page:{id}:{page + 1}", ButtonStyle.Secondary, row: 1, disabled: page >= pages);
+        }
+        components.WithButton("Play All Similar", $"sonic:playall:plex:{results.RatingKey}", ButtonStyle.Success, row: 2);
+
+        (int first, int last) = ResultPaging.DisplayRange(page, total);
+        string range = pages > 1 ? $" Showing {first}-{last} of {total}." : string.Empty;
+        return ComponentV2Builder.BuildSonicResults(
+            $"Similar to: {results.SeedTitle}",
+            $"Found {total} sonically similar tracks to **{results.SeedArtist}** - {results.SeedTitle}.{range}",
+            components, emojis.Text("pb_similar", "\U0001F50D"));
     }
 
     /// <summary>Visual Player button — opens a modal for the user to enter a destination track name
