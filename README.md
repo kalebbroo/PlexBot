@@ -212,6 +212,15 @@ Uses [Frenetic Data Syntax](https://github.com/FreneticLLC/FreneticUtilities) (Y
 |-----|------|---------|-------------|
 | `bot.environment` | string | _(empty)_ | Set to `Development` for guild-scoped slash commands (faster updates during dev) |
 
+### Application Emoji
+
+The player and its panels use 22 emoji (play, skip, volume, radio, status badges and so on). The bot uploads them to
+its own application on first start, so they work in every server with no emoji slots used. Nothing to install by
+hand. If the upload can't run, the bot falls back to plain unicode symbols and everything still works.
+
+See the [Custom Emoji guide](Docs/Guides/Custom-Emoji.md) for the screenshots, how to change the art, and how to
+make your own set.
+
 ### Custom Progress Bar Emoji
 
 PlexBot includes 30 custom emoji for a smooth-fill progress bar. Without them, the bar uses unicode block characters (`▓░`) which work everywhere but look less polished.
