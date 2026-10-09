@@ -73,17 +73,20 @@ Returns a response confirming the bot is online and interactions are working.
 
 All playback controls are buttons on the player message itself — no slash commands needed.
 
+Buttons are labelled and use the bot's emoji set. The status line under the progress bar shows the volume and repeat mode as text.
+
 | Button | Action |
 |--------|--------|
-| Pause / Resume | Toggle playback |
+| Pause / Resume | Toggle playback (the button reads Resume while paused) |
 | Skip | Skip to next track in queue |
-| Repeat | Cycle repeat mode: Off → Queue → Track → Off |
-| Queue Options | View queue, shuffle, or clear |
-| Volume Up / Down | Adjust volume by 10% |
+| Repeat | Cycle repeat mode: Off → Repeat All → Repeat 1 → Off |
+| Shuffle | Shuffle the queue |
+| Queue | View the queue, shuffle, or clear |
+| Vol - / Vol + | Adjust volume by 10% |
 | Radio 📻 | Start a radio station from the current Plex track (replace queue, append, or browse similar tracks) |
 | Similar 🔍 | Show 25 sonically similar tracks to the currently playing Plex track |
-| Adventure 🧭 | Opens a popup to type a destination track — builds a sonic path from what's playing to the destination |
-| Kill | Stop playback, clear queue, and disconnect from voice |
+| Adventure 🧭 | Opens a popup asking where the path should end — builds a sonic path from what's playing to that track |
+| Stop | Stop playback, clear queue, and disconnect from voice |
 
 ### Queue Options
 
