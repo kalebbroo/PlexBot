@@ -33,7 +33,7 @@ controls, Plex's sonic features (similar tracks, radio, and sonic adventures), a
 
 - **Plex library playback.** Play a track, a search result, or a whole playlist. Tracks load in the background, so a 90-track playlist starts at once.
 - **A player that looks like an app.** Album art, labelled buttons with custom emoji, and volume and repeat shown as text.
-- **Sonic features.** Similar tracks (paged, 25 at a time), radio from any track, and sonic adventures between two songs. These use Plex's audio analysis.
+- **Sonic features.** Similar tracks (paged, 25 at a time), radio from any track (optionally endless), and sonic adventures between two songs. These use Plex's audio analysis.
 - **Search by mood, genre, or radio station**, as well as by name.
 - **Queue controls.** Pages of the queue, shuffle, clear, and skip.
 - **Static player channel.** Dedicate one channel to a player that is always there.
@@ -234,10 +234,12 @@ Uses [Frenetic Data Syntax](https://github.com/FreneticLLC/FreneticUtilities), a
 | `plex.stream.resolveAhead` | `3` | Queued tracks loaded ahead of the one playing |
 | `plex.resolveCacheSize` | `500` | Resolved tracks kept in memory |
 | `plex.resolveCacheMinutes` | `60` | How long a resolved track is reused |
-| `plex.radio.batchSize` | `30` | Tracks fetched per radio request |
+| `plex.radio.infinite` | `false` | Keep radio going: when the queue runs low, the bot queues more tracks from the same seed |
+| `plex.radio.refillThreshold` | `5` | Refill when fewer than this many tracks are queued |
+| `plex.radio.batchSize` | `30` | Tracks fetched per radio request, for the first batch and each refill |
 
-> **Infinite radio is not working yet.** `plex.radio.infinite` and `plex.radio.refillThreshold` are read, but nothing
-> refills the queue with them, so they have no effect. This is on the [planned list](#planned).
+With infinite radio on, a radio session runs until you press **Stop**, press **Kill**, or the bot leaves voice. Tracks
+it has already queued are not queued again, and each refill continues from the last track Plex returned.
 
 **Logging and bot**
 
@@ -314,7 +316,6 @@ The [extensions system](./Docs/Extensions/CreatingExtensions.md) adds sources an
 
 ## Planned
 
-- **Infinite radio.** Wire `plex.radio.infinite` into the queue so it refills when it runs low.
 - **More music sources.** Spotify, SoundCloud, and other integrations.
 - **User playlists.** Save, manage and share playlists in Discord.
 - **More player styles and command panels.**
