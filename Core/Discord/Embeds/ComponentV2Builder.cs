@@ -1,4 +1,4 @@
-using PlexBot.Core.Discord.Design;
+﻿using PlexBot.Core.Discord.Design;
 using PlexBot.Core.Discord.Messages;
 using PlexBot.Utils;
 
@@ -314,13 +314,25 @@ public static class ComponentV2Builder
     }
 
     /// <summary>Builds a player status line showing the progress bar (volume/repeat are on the image)</summary>
+    /// <remarks>Volume and repeat are added as text so they read without the image.</remarks>
     public static string BuildPlayerStatusLine(
         PlayerState state = PlayerState.NotPlaying,
-        TimeSpan? position = null, TimeSpan? duration = null)
+        TimeSpan? position = null, TimeSpan? duration = null,
+        int? volumePercent = null, TrackRepeatMode repeat = TrackRepeatMode.None)
     {
         string progressLine = BuildProgressBar(state, position, duration);
-        return progressLine;
+        if (volumePercent is null)
+            return progressLine;
+        return $"{progressLine}\n-# Volume {volumePercent}% \u00B7 Repeat {RepeatText(repeat)}";
     }
+
+    /// <summary>Plain-language name of a repeat mode, as shown in the status line</summary>
+    public static string RepeatText(TrackRepeatMode mode) => mode switch
+    {
+        TrackRepeatMode.Track => "one",
+        TrackRepeatMode.Queue => "all",
+        _ => "off",
+    };
 
     /// <summary>Builds a progress bar using custom emoji (smooth partial fill) or unicode fallback</summary>
     private static string BuildProgressBar(PlayerState state, TimeSpan? position, TimeSpan? duration)

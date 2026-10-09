@@ -1,6 +1,7 @@
 ﻿using System.Collections.Concurrent;
 using Discord;
 using Discord.WebSocket;
+using PlexBot.Core.Discord.Design;
 using PlexBot.Core.Services.LavaLink;
 using PlexBot.Utils;
 using System;
@@ -98,94 +99,68 @@ namespace PlexBot.Core.Discord.Embeds
     public class DiscordButtonBuilder
     {
         private readonly ConcurrentDictionary<string, (ButtonFlag Flags, int Priority, ButtonFactory Factory)> _buttonFactories = new();
+        private readonly EmojiRegistry _emojis;
 
-        public DiscordButtonBuilder()
+        public DiscordButtonBuilder(EmojiRegistry emojis)
         {
+            _emojis = emojis;
             RegisterDefaultButtons();
         }
+
+        /// <summary>Label, emoji and action for the pause button. Pure, so the state mapping can be tested.</summary>
+        public static (string Label, string EmojiName, string Fallback, string Action) PauseLook(bool paused) =>
+            paused
+                ? ("Resume", "pb_play", "\u25B6\uFE0F", "pause_resume:resume")
+                : ("Pause", "pb_pause", "\u23F8\uFE0F", "pause_resume:pause");
+
+        /// <summary>Label, emoji and style for the repeat button. Repeat-one and repeat-all are highlighted.</summary>
+        public static (string Label, string EmojiName, string Fallback, ButtonStyle Style) RepeatLook(TrackRepeatMode mode) => mode switch
+        {
+            TrackRepeatMode.Track => ("Repeat 1", "pb_repeat_track", "\uD83D\uDD02", ButtonStyle.Primary),
+            TrackRepeatMode.Queue => ("Repeat All", "pb_repeat", "\uD83D\uDD01", ButtonStyle.Primary),
+            _ => ("Repeat", "pb_repeat", "\uD83D\uDD01", ButtonStyle.Secondary),
+        };
+
+        private ButtonBuilder Button(string label, string emojiName, string fallback, string customId, ButtonStyle style) =>
+            new ButtonBuilder()
+                .WithEmote(_emojis.Resolve(emojiName, fallback))
+                .WithLabel(label)
+                .WithCustomId(customId)
+                .WithStyle(style);
 
         /// <summary>Registers the default set of buttons used by the core application</summary>
         private void RegisterDefaultButtons()
         {
-            // Row 1: vol up, pause/resume, skip, repeat, queue options
-            RegisterButton("vol_up", ButtonFlag.VisualPlayer, 10, _ =>
+            // Rows are filled by priority, five buttons to a row:
+            // row 1 playback, row 2 volume and extras, row 3 stop.
+            RegisterButton("pause_resume", ButtonFlag.VisualPlayer, 10, context =>
             {
-                return new ButtonBuilder()
-                    .WithEmote(new Emoji("\uD83D\uDD0A"))
-                    .WithCustomId("volume:up")
-                    .WithStyle(ButtonStyle.Secondary);
+                (string label, string emoji, string fallback, string action) = PauseLook(context.Player?.State == PlayerState.Paused);
+                return Button(label, emoji, fallback, action, ButtonStyle.Secondary);
             });
-            RegisterButton("pause_resume", ButtonFlag.VisualPlayer, 20, context =>
+            RegisterButton("skip", ButtonFlag.VisualPlayer, 20, _ =>
+                Button("Skip", "pb_skip", "\u23ED\uFE0F", "skip:skip", ButtonStyle.Secondary));
+            RegisterButton("repeat", ButtonFlag.VisualPlayer, 30, context =>
             {
-                bool isPaused = context.Player?.State == PlayerState.Paused;
-                return new ButtonBuilder()
-                    .WithEmote(new Emoji(isPaused ? "\u25B6\uFE0F" : "\u23F8\uFE0F"))
-                    .WithCustomId(isPaused ? "pause_resume:resume" : "pause_resume:pause")
-                    .WithStyle(ButtonStyle.Secondary);
+                (string label, string emoji, string fallback, ButtonStyle style) = RepeatLook(context.Player?.RepeatMode ?? TrackRepeatMode.None);
+                return Button(label, emoji, fallback, "repeat:cycle", style);
             });
-            RegisterButton("skip", ButtonFlag.VisualPlayer, 30, _ =>
-            {
-                return new ButtonBuilder()
-                    .WithEmote(new Emoji("\u23ED\uFE0F"))
-                    .WithLabel("Skip")
-                    .WithCustomId("skip:skip")
-                    .WithStyle(ButtonStyle.Secondary);
-            });
-            RegisterButton("repeat", ButtonFlag.VisualPlayer, 40, context =>
-            {
-                TrackRepeatMode mode = context.Player?.RepeatMode ?? TrackRepeatMode.None;
-                string emoji = mode == TrackRepeatMode.Track ? "\uD83D\uDD02" : "\uD83D\uDD01";
-                ButtonStyle style = mode != TrackRepeatMode.None ? ButtonStyle.Primary : ButtonStyle.Secondary;
-                return new ButtonBuilder()
-                    .WithEmote(new Emoji(emoji))
-                    .WithCustomId("repeat:cycle")
-                    .WithStyle(style);
-            });
+            RegisterButton("shuffle", ButtonFlag.VisualPlayer, 40, _ =>
+                Button("Shuffle", "pb_shuffle", "\uD83D\uDD00", "queue_options:shuffle:1", ButtonStyle.Secondary));
             RegisterButton("queue_options", ButtonFlag.VisualPlayer, 50, _ =>
-            {
-                return new ButtonBuilder()
-                    .WithEmote(new Emoji("\uD83D\uDCCB"))
-                    .WithLabel("Queue Options")
-                    .WithCustomId("queue_options:options:1")
-                    .WithStyle(ButtonStyle.Secondary);
-            });
-            // Row 2: vol down, radio, kill (vol down stacked under vol up)
+                Button("Queue", "pb_queue", "\uD83D\uDCCB", "queue_options:options:1", ButtonStyle.Secondary));
             RegisterButton("vol_down", ButtonFlag.VisualPlayer, 60, _ =>
-            {
-                return new ButtonBuilder()
-                    .WithEmote(new Emoji("\uD83D\uDD09"))
-                    .WithCustomId("volume:down")
-                    .WithStyle(ButtonStyle.Secondary);
-            });
+                Button("Vol -", "pb_volume_down", "\uD83D\uDD09", "volume:down", ButtonStyle.Secondary));
+            RegisterButton("vol_up", ButtonFlag.VisualPlayer, 61, _ =>
+                Button("Vol +", "pb_volume_up", "\uD83D\uDD0A", "volume:up", ButtonStyle.Secondary));
             RegisterButton("radio", ButtonFlag.VisualPlayer, 65, _ =>
-            {
-                return new ButtonBuilder()
-                    .WithEmote(new Emoji("\uD83D\uDCFB"))
-                    .WithCustomId("radio:start")
-                    .WithStyle(ButtonStyle.Secondary);
-            });
+                Button("Radio", "pb_radio", "\uD83D\uDCFB", "radio:start", ButtonStyle.Secondary));
             RegisterButton("similar", ButtonFlag.VisualPlayer, 66, _ =>
-            {
-                return new ButtonBuilder()
-                    .WithEmote(new Emoji("\uD83D\uDD0D"))
-                    .WithCustomId("sonic:similar")
-                    .WithStyle(ButtonStyle.Secondary);
-            });
+                Button("Similar", "pb_similar", "\uD83D\uDD0D", "sonic:similar", ButtonStyle.Secondary));
             RegisterButton("adventure", ButtonFlag.VisualPlayer, 67, _ =>
-            {
-                return new ButtonBuilder()
-                    .WithEmote(new Emoji("\uD83E\uDDED"))
-                    .WithCustomId("sonic:adventure")
-                    .WithStyle(ButtonStyle.Secondary);
-            });
+                Button("Adventure", "pb_adventure", "\uD83E\uDDED", "sonic:adventure", ButtonStyle.Secondary));
             RegisterButton("kill", ButtonFlag.VisualPlayer, 70, _ =>
-            {
-                return new ButtonBuilder()
-                    .WithEmote(new Emoji("\u23F9\uFE0F"))
-                    .WithLabel("Kill")
-                    .WithCustomId("kill:kill")
-                    .WithStyle(ButtonStyle.Danger);
-            });
+                Button("Stop", "pb_stop", "\u23F9\uFE0F", "kill:kill", ButtonStyle.Danger));
             // Queue Options buttons
             RegisterButton("view_queue", ButtonFlag.QueueOptions, 10, context => {
                 int currentPage = 1;
