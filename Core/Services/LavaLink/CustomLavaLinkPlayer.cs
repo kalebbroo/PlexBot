@@ -1,4 +1,5 @@
-using PlexBot.Utils;
+using PlexBot.Core.Services.Music;
+﻿using PlexBot.Utils;
 using Discord.WebSocket;
 using PlexBot.Core.Discord.Embeds;
 using PlexBot.Core.Events;
@@ -41,6 +42,11 @@ public sealed class CustomLavaLinkPlayer(IPlayerProperties<CustomLavaLinkPlayer,
 
             // The queue moved on, so the resolve-ahead window did too
             serviceProvider.GetRequiredService<QueueResolveService>().Wake(GuildId);
+
+            // Infinite radio tops the queue up in the background when it runs low. Not awaited: this runs on the
+            // Lavalink event loop, which every guild shares.
+            int remaining = Queue.Count;
+            _ = Task.Run(() => serviceProvider.GetRequiredService<RadioRefillService>().RefillIfNeededAsync(GuildId, remaining));
 
             // Prefetch next track's artwork in background (fire and forget)
             ITrackPrefetchService prefetch = serviceProvider.GetRequiredService<ITrackPrefetchService>();
@@ -264,6 +270,7 @@ public sealed class CustomLavaLinkPlayer(IPlayerProperties<CustomLavaLinkPlayer,
         try
         {
             serviceProvider.GetRequiredService<QueueResolveService>().Stop(GuildId);
+            serviceProvider.GetRequiredService<RadioSessionManager>().StopSession(GuildId);
             await StopAsync(cancellationToken).ConfigureAwait(false);
             await DisconnectAsync(cancellationToken).ConfigureAwait(false);
             serviceProvider.GetRequiredService<BotEventBus>().PublishPlayerDestroyed(GuildId);
