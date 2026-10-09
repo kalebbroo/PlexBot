@@ -55,7 +55,15 @@ plex:
         maxConcurrentLoads: 2        # Plex file loads at once, shared by every server the bot is in
         retryDelaysSeconds: 2, 5, 15 # Wait before each retry of a failed load; all Plex loads pause meanwhile
         resolveAhead: 3              # Queued tracks loaded ahead of the one playing
+    radio:
+        infinite: false              # Keep radio going: queue more tracks from the seed when the queue runs low
+        refillThreshold: 5           # Refill when fewer than this many tracks are queued
+        batchSize: 30                # Tracks fetched per radio request (first batch and each refill)
 ```
+
+Infinite radio runs until the player is stopped, killed, or the bot leaves voice. Tracks already queued in a session are not queued again.
+
+**Static player channel.** Set `visualPlayer.staticChannel.enabled: true` and `channelId` to keep one player in one channel. When the bot starts it deletes its own old messages in that channel and posts the idle card, so use a channel for the player only.
 
 Large playlists are queued straight away. Only the next few tracks (`resolveAhead`) are loaded through Lavalink, as they come up, so Plex sees requests only for tracks that are about to play. Plex drops file requests when too many run at once, which Lavalink reports as "Could not read the file for detecting file type" or "Premature end of Content-Length delimited message body". The bot retries those with the delays above. A track that still fails is removed from the queue with a short notice in the channel.
 

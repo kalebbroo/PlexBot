@@ -61,14 +61,6 @@ Searches in order: tracks, then albums, then artists. Plays the first match foun
 
 Displays an interactive help embed with all available commands and player controls.
 
-### `/ping`
-
-A simple test command to verify the bot is responding to interactions.
-
-**Example:** `/ping`
-
-Returns a response confirming the bot is online and interactions are working.
-
 ## Player Controls (Buttons)
 
 All playback controls are buttons on the player message itself — no slash commands needed.

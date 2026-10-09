@@ -1,3 +1,8 @@
+> **Status (2026-10-09): historical.** This report describes the bot as it was on 2026-10-08. Its findings were worked
+> through in the Plex playback refactor (#46) and the UI work (#47–#58). The `/ping` command has been removed, and the
+> stale global commands are cleared at startup in Development (`EventHandler`). The UI findings are tracked in
+> [UI-Audit](UI-Audit/UI-Audit-2026-10-08.md).
+
 # Reliability audit: fixes and test report (2026-10-08)
 
 Branch: `fix/reliability-audit`. Companion to [Reliability-Audit.md](./Reliability-Audit.md), which has the original findings. This report covers what was changed, what was tested live in Discord, what broke during testing, and what is still open.
