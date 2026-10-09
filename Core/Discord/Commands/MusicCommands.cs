@@ -560,7 +560,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
     {
         try
         {
-            await RespondAsync(components: ComponentV2Builder.BuildHelp());
+            await RespondAsync(components: ComponentV2Builder.BuildHelp(), ephemeral: true);
         }
         catch (Exception ex)
         {
