@@ -1,327 +1,323 @@
 # ![PlexBot Banner](./Images/PlexBotBanner.png)
+
 > **Play your Plex music in Discord with style.** <sup><kbd>Alpha 0.5</kbd></sup>
----
 
-<!-- PLACEHOLDER: Add screenshots of the Modern Visual Player and Classic Player Embed below -->
+PlexBot streams your Plex music library into Discord voice channels. It has a visual player with album art and labelled
+controls, Plex's sonic features (similar tracks, radio, and sonic adventures), and a help menu with screenshots.
 
-| Modern Visual Player | Classic Player Embed |
-|:-------------------:|:-------------------:|
-| ![Modern Player Screenshot](./Images/ModernPlayer.JPG) | ![Classic Player Screenshot](./Images/ClassicPlayer.JPG) |
+![The player in a dedicated channel, playing a track](./Docs/screenshots/static-channel-playing.png)
 
 ---
 
-## What Does this bot do and why did I make it?
+## Contents
 
-**PlexBot** is a next-generation Discord music bot designed for Plex users. Seamlessly stream your personal music library (and more!) into your server's voice channels, enjoy a beautiful visual player, and take advantage of a robust extension system for ultimate flexibility.
+- [Features](#features)
+- [Your first five minutes](#your-first-five-minutes)
+- [The player](#the-player)
+- [Static player channel](#static-player-channel)
+- [Sonic features](#sonic-features)
+- [Commands](#commands)
+- [Install](#install)
+- [Configuration](#configuration)
+- [Custom emoji](#custom-emoji)
+- [Remote Lavalink (advanced)](#remote-lavalink-advanced)
+- [Performance tuning](#performance-tuning-audio-stuttering)
+- [Extensions](#extensions)
+- [Support](#support)
+- [Planned](#planned)
+- [License](#license)
 
 ---
 
 ## Features
 
-- **Stream from Plex**: Play tracks, albums, artists, and playlists directly from your Plex server.
-- **Plex Sonic Features**: Mood & genre browsing via `/search`, plus Similar Tracks, Radio, and Sonic Adventure buttons on the player, all powered by Plex's neural audio analysis.
-- **Radio**: Start a radio station from any track with one button press. Optionally enable infinite radio to auto-refill the queue.
-- **YouTube Support**: Search and play music from YouTube via extension.
-- **Interactive Player UI**: Choose between a modern image-based player or a classic Discord embed.
-- **Static Player Channel**: Optionally dedicate a channel for the persistent player UI.
-- **Rich Queue Management**: Add, remove, shuffle, and loop tracks with intuitive controls.
-- **Slash Commands**: Clean, discoverable, and autocomplete-enabled.
-- **Extensible**: Powerful [Extensions system](./Docs/Extensions/CreatingExtensions.md) for custom features.
-- **Easy Setup**: [Guided installation](./Docs/Setup/Installation.md) and [Docker support](./Docs/Setup/Docker-Guide.md).
-- **Troubleshooting & Guides**: [Player UI Guide](./Docs/Guides/Player-UI-Guide.md), [Troubleshooting](./Docs/Guides/Troubleshooting.md), and more.
+- **Plex library playback.** Play a track, a search result, or a whole playlist. Tracks load in the background, so a 90-track playlist starts at once.
+- **A player that looks like an app.** Album art, labelled buttons with custom emoji, and volume and repeat shown as text.
+- **Sonic features.** Similar tracks (paged, 25 at a time), radio from any track, and sonic adventures between two songs. These use Plex's audio analysis.
+- **Search by mood, genre, or radio station**, as well as by name.
+- **Queue controls.** Pages of the queue, shuffle, clear, and skip.
+- **Static player channel.** Dedicate one channel to a player that is always there.
+- **Help inside Discord.** `/help` opens a menu of topics, each with a screenshot.
+- **Extensions.** Add sources or commands with the [extensions system](./Docs/Extensions/CreatingExtensions.md).
+- **Docker install.** The install script runs PlexBot and Lavalink together.
 
 ---
 
-## Planned & Upcoming Features
+## Your first five minutes
 
-- **More Music Sources**: Spotify, SoundCloud, and additional streaming integrations.
-- **User Custom Playlists**: Save, manage, and share your own playlists within Discord.
-- **Expanded Command Set**: More slash commands for advanced control and new features.
-- **Command Panel UI**: In static player channels, use an interactive command panel (embed with buttons) for a seamless experience (no slash commands needed).
-- **Additional Visual Player Styles**: Choose from more themes and layouts for the player UI.
-- **And much more...**
+**1. Start a track.** Type `/play` and a song name. The bot joins your voice channel and posts the player.
 
----
+![Start playing: the Track Added reply and the player](./Docs/screenshots/help-start.png)
 
-## Visual Player Styles
+**2. Use the player.** Each button is labelled. Pause, skip, repeat, shuffle and the queue are on the first row.
 
-PlexBot offers two distinct player UIs:
+![The player's controls, labelled](./Docs/screenshots/player-controls.png)
 
-### 1. Modern Visual Player
-- **Sleek, image-based**: Uses album art as a background, overlaying track info and controls for a rich, modern look.
-- **Best for dedicated channels**: Looks stunning as a persistent player in a static channel.
+**3. Find music.** `/search` looks by name, mood, genre or radio station. Pick a result from the menu.
 
-### 2. Classic Player Embed
-- **Traditional Discord embed**: Familiar, compact, and works anywhere.
-- **Great for multi-purpose channels**: Shows album art as a thumbnail.
+![Search results for "queen" with artist, album and track menus](./Docs/screenshots/help-search.png)
 
-All player settings are in `config.fds` (see [Configuration](#configuration) below).
+**4. Check the queue.** Press **Queue** on the player. Pages of ten tracks; ⏳ marks a track still loading from Plex.
 
-For more, see the [Player UI Guide](./Docs/Guides/Player-UI-Guide.md).
+![The current music queue](./Docs/screenshots/help-queue.png)
+
+**5. Ask for help.** `/help` opens a menu. Each topic has its own card and screenshot.
+
+![The help hub](./Docs/screenshots/help-hub.png)
 
 ---
 
-## Slash Commands
+## The player
 
-<details>
-<summary><b>/search [mode] [query]</b></summary>
+PlexBot has two player styles, set with `visualPlayer.useModernPlayer` in `config.fds`:
 
-Search across all sources with a unified mode selector. The mode dropdown includes built-in Plex features and any extension providers (YouTube, etc.). For Mood, Genre, and Radio modes the query autocomplete populates with real choices from your Plex library.
+| Modern (default) | Classic |
+|:-:|:-:|
+| ![Modern player: album art, progress bar and labelled controls](./Docs/screenshots/player-controls.png) | ![Classic player: now playing with thumbnail and labelled controls](./Docs/screenshots/player-classic.png) |
 
-| Mode | Description | Query |
-|------|-------------|-------|
-| **Plex Library** | Search your Plex music library for artists, albums, and tracks | Free text |
-| **Find by Mood** | Browse tracks by mood tags (e.g. "Happy", "Sad", "Energetic") | Autocomplete lists moods (randomized sample of 25) |
-| **Find by Genre** | Browse tracks by genre (e.g. "Rock", "Jazz", "Electronic") | Autocomplete lists all genres |
-| **Radio Station** | Pick a station or seed radio from a track | Autocomplete lists stations |
-| *YouTube, etc.* | *Extension providers appear automatically when loaded* | Free text |
+Under the progress bar, a status line shows the volume and repeat mode as text, for example `Volume 20% · Repeat off`.
 
-**Examples:**
-- <code>/search mode:Plex Library query:"The Beatles"</code>
-- <code>/search mode:Find by Mood query:Happy</code> pick a mood from the autocomplete dropdown
-- <code>/search mode:Find by Genre query:Rock</code> pick a genre from the autocomplete dropdown
-- <code>/search mode:Radio Station query:Library Radio</code> pick a station from autocomplete, or type a track name to seed radio
-</details>
-
-<details>
-<summary><b>/playlist [playlist] [shuffle]</b></summary>
-Play a full Plex playlist, optionally shuffled.
-<br>Example: <code>/playlist playlist:"Summer Hits" shuffle:true</code>
-</details>
-
-<details>
-<summary><b>/play [query]</b></summary>
-Quickly play a track, album, or artist by search term.
-<br>Example: <code>/play query:"Bohemian Rhapsody"</code>
-</details>
-
-<details>
-<summary><b>/help</b></summary>
-Show an interactive help menu with all commands and usage tips.
-</details>
-
-<details>
-<summary><b>/ping</b></summary>
-Test if the bot is responding to interactions.
-</details>
-
-### Sonic Player Buttons
-
-The visual player's second row includes three Plex Sonic buttons that use neural audio analysis on the currently playing track:
-
-| Button | Emoji | What it does |
-|--------|-------|--------------|
-| **Radio** | 📻 | Opens a panel with **Replace Queue** / **Add to Queue** / **Similar Tracks** options, seeded from the current track |
-| **Similar** | 🔍 | Instantly shows 25 sonically similar tracks in a select menu |
-| **Adventure** | 🧭 | Opens a popup where you type a destination track, then builds a sonic path from what's playing to the destination |
-
-All three require a Plex track to be playing. When infinite radio is enabled in `config.fds`, the queue automatically refills when it runs low.
+For the full button list and the repeat cycle, see the [Commands guide](./Docs/Guides/Commands.md#player-controls-buttons).
+More on the player is in the [Player UI guide](./Docs/Guides/Player-UI-Guide.md).
 
 ---
 
-## Getting Started
+## Static player channel
 
-See the [Installation Guide](./Docs/Setup/Installation.md) and [Configuration Guide](./Docs/Setup/Configuration.md) for full details.
+A static channel keeps one player in one channel. The player is always there, and playback started from any channel
+appears in it.
 
-### Prerequisites
-- Docker & Docker Compose (Docker Desktop recommended)
-- Discord bot token ([Developer Portal](https://discord.com/developers/applications))
-- Plex server URL and token ([How to get a Plex token](https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/))
+![Static channel: idle card with banner and controls](./Docs/screenshots/static-channel-idle.png)
 
-### Quick Install
+When nothing is playing, the card shows the banner and how to start. After **Stop**, the card returns to this idle state.
+
+**To turn it on:**
+
+1. Create or pick a text channel for the player.
+2. Right-click the channel and choose **Copy Channel ID**. You may need Developer Mode in Discord's Advanced settings.
+3. In `config.fds`, set:
+
+   ```yaml
+   visualPlayer:
+     staticChannel:
+       enabled: true
+       channelId: 1360639203829879097   # your channel's ID
+   ```
+
+4. Restart the bot.
+
+> **Heads up:** when the bot starts, it deletes its own old messages in the static channel, then posts the idle card.
+> Use a channel for the player only.
+
+---
+
+## Sonic features
+
+These need a Plex track playing and sonic analysis enabled on your Plex server. The buttons are on the second row of the player.
+
+| Button | What it does |
+|---|---|
+| **Radio** | Replace the queue, add to the queue, or list similar tracks, starting from the current track |
+| **Similar** | Show sonically similar tracks. The list pages 25 at a time, with Previous and Next. |
+| **Adventure** | Ask where the path should end, then build a path from the current track to that one |
+
+![Similar tracks, page 2 of 4](./Docs/screenshots/similar-paging.png)
+
+![Radio and sonic topic card](./Docs/screenshots/help-sonic.png)
+
+---
+
+## Commands
+
+| Command | What it does |
+|---|---|
+| `/play [query]` | Play a track by name or link. Queues it if something is playing. |
+| `/playlist [playlist] [shuffle]` | Queue a Plex playlist, optionally shuffled. |
+| `/search [mode] [query]` | Search: **Plex Library**, **Find by Mood**, **Find by Genre**, or **Radio Station**. Extension sources appear here when loaded. |
+| `/help` | The help menu. Only you see it. |
+
+**Search examples**
+
+- `/search mode:Plex Library query:"The Beatles"`
+- `/search mode:Find by Mood query:Happy`
+- `/search mode:Radio Station query:Library Radio`
+
+### Player buttons
+
+| Button | Action |
+|---|---|
+| Pause / Resume | Toggle playback |
+| Skip | Next track |
+| Repeat | Off → Repeat All → Repeat 1 → Off |
+| Shuffle | Shuffle the queue |
+| Queue | Show the queue, with shuffle and clear |
+| Vol - / Vol + | Change the volume by 10% |
+| Radio, Similar, Adventure | Sonic features (above) |
+| Stop | Stop, clear the queue, and leave voice |
+
+Buttons have a two-second cooldown, so a repeated click is ignored.
+
+---
+
+## Install
+
+You need:
+
+- Docker and Docker Compose (Docker Desktop is easiest)
+- A Discord bot token from the [Developer Portal](https://discord.com/developers/applications)
+- Your Plex server URL and token ([how to find your token](https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/))
+
 ```bash
 git clone https://github.com/kalebbroo/PlexBot.git
 cd PlexBot
 ```
 
-1. **Secrets**: Copy `RenameMe.env.txt` to `.env` and fill in your credentials:
+1. **Secrets.** Copy `RenameMe.env.txt` to `.env` and fill it in:
+
    ```env
    DISCORD_TOKEN=your-discord-bot-token
    PLEX_URL=http://your-plex-ip:32400
    PLEX_TOKEN=your-plex-token
    ```
 
-2. **App settings** *(optional)*: `config.fds` is auto-created from the template with sensible defaults if it doesn't exist. To customize player style, logging, or behavior, copy `RenameMe.config.fds` to `config.fds` and edit it before starting (see [Configuration](#configuration) below).
+2. **Settings (optional).** `config.fds` is created from `RenameMe.config.fds` if it's missing. Copy the file and edit it to change the player or behaviour.
 
-3. **Run the install script**: `Install/win-install.bat` (Windows) or `Install/linux-install.sh` (Linux). This generates the Lavalink config, builds the Docker images, and starts the bot.
+3. **Run the install script.** `Install/win-install.bat` on Windows, or `Install/linux-install.sh` on Linux. It writes the Lavalink config, builds the Docker images, and starts the bot.
+
+For the full walkthrough see the [Installation guide](./Docs/Setup/Installation.md) and the [Docker guide](./Docs/Setup/Docker-Guide.md).
 
 ---
 
 ## Configuration
 
-PlexBot uses **two config files**:
+PlexBot reads two files:
 
-| File | Purpose | Template |
-|------|---------|----------|
-| `.env` | Secrets & infrastructure (tokens, URLs, passwords) | `RenameMe.env.txt` (manual copy required) |
-| `config.fds` | Application settings (player UI, logging, behavior) | `RenameMe.config.fds` (auto-created if missing) |
+| File | Holds | Template |
+|---|---|---|
+| `.env` | Secrets and infrastructure: tokens, URLs, passwords | `RenameMe.env.txt` (copy it) |
+| `config.fds` | Settings: the player, Plex behaviour, logging | `RenameMe.config.fds` (created if missing) |
 
-### `.env` Secrets & Infrastructure
+### `.env`
 
 | Variable | Description | Required |
-|----------|-------------|----------|
+|---|---|---|
 | `DISCORD_TOKEN` | Discord bot token | Yes |
-| `PLEX_URL` | Plex server URL with port (e.g. `http://192.168.1.50:32400`) | Yes |
-| `PLEX_TOKEN` | Plex authentication token | Yes |
-| `LAVALINK_HOST` | Lavalink hostname. Use `Lavalink` for Docker, or an IP/hostname for remote (default: `Lavalink`) | No |
-| `LAVALINK_SERVER_PORT` | Lavalink port (default: `2333`) | No |
-| `LAVALINK_SERVER_PASSWORD` | Lavalink password (default: `youshallnotpass`) | No |
-| `LAVALINK_SECURE` | Use HTTPS/WSS for Lavalink. Set `true` for remote servers behind SSL (default: `false`) | No |
+| `PLEX_URL` | Plex server URL with port, e.g. `http://192.168.1.50:32400` | Yes |
+| `PLEX_TOKEN` | Plex token | Yes |
+| `LAVALINK_HOST` | Lavalink host. `Lavalink` for the Docker install. | No (default `Lavalink`) |
+| `LAVALINK_SERVER_PORT` | Lavalink port | No (default `2333`) |
+| `LAVALINK_SERVER_PASSWORD` | Lavalink password | No (default `youshallnotpass`) |
+| `LAVALINK_SECURE` | `true` for HTTPS/WSS to a remote Lavalink | No (default `false`) |
 
-### `config.fds` Application Settings
+### `config.fds`
 
-Uses [Frenetic Data Syntax](https://github.com/FreneticLLC/FreneticUtilities) (YAML-like format). All settings have sensible defaults and you only need to change what you want to customize.
+Uses [Frenetic Data Syntax](https://github.com/FreneticLLC/FreneticUtilities), a YAML-like format. You only need to set what you want to change.
 
-#### Visual Player
+**Visual player**
 
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `visualPlayer.useModernPlayer` | bool | `true` | `true` = album art image player, `false` = classic Discord embed |
-| `visualPlayer.inactivityTimeout` | float | `2.0` | Minutes of silence before the bot auto-disconnects from voice |
-| `visualPlayer.staticChannel.enabled` | bool | `false` | Lock the player to one specific channel |
-| `visualPlayer.staticChannel.channelId` | int | `0` | Discord channel ID (right-click channel > Copy Channel ID) |
-| `visualPlayer.progressBar.enabled` | bool | `true` | Show a live-updating progress bar (updates every second). Disable to reduce Discord API calls |
-| `visualPlayer.progressBar.size` | string | `medium` | Bar width: `small` (mobile-friendly, 10 segments), `medium` (default, 16 segments), `large` (wide displays, 22 segments) |
-| `visualPlayer.progressBar.emoji.*` | int | _(empty)_ | Custom Discord emoji IDs for smooth-fill progress bar. Leave empty for unicode fallback (`▓░`) |
+| Key | Default | What it does |
+|---|---|---|
+| `visualPlayer.useModernPlayer` | `true` | `true` for the album-art player, `false` for the classic embed |
+| `visualPlayer.inactivityTimeout` | `2.0` | Minutes of silence before the bot leaves voice |
+| `visualPlayer.staticChannel.enabled` | `false` | Keep the player in one channel (see [Static player channel](#static-player-channel)) |
+| `visualPlayer.staticChannel.channelId` | `0` | The channel's ID |
+| `visualPlayer.progressBar.enabled` | `true` | Live progress bar. Turn off to make fewer Discord edits. |
+| `visualPlayer.progressBar.size` | `medium` | `small`, `medium` or `large` |
+| `visualPlayer.progressBar.emoji.*` | _(empty)_ | Optional IDs for the 30-piece smooth progress bar. Empty uses `▓░`. See [Custom emoji](#custom-emoji). |
 
-#### Plex
+**Plex**
 
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `plex.stream.maxConcurrentLoads` | int | `2` | Plex file loads running at once, shared by every server the bot is in. Lower if tracks fail to load |
-| `plex.stream.retryDelaysSeconds` | list | `2, 5, 15` | Wait before each retry of a failed Plex load. All Plex loads pause while waiting |
-| `plex.stream.resolveAhead` | int | `3` | Queued tracks loaded ahead of the one playing. The rest of a playlist waits as a placeholder |
-| `plex.resolveCacheSize` | int | `500` | Resolved tracks kept, keyed by Plex part |
-| `plex.resolveCacheMinutes` | int | `60` | How long a resolved track is reused |
-| `plex.maxConcurrentResolves` | int | `2` | Older name for `plex.stream.maxConcurrentLoads`, used only when that is not set |
-| `plex.radio.infinite` | bool | `false` | Enable infinite radio, which automatically refills the queue when it runs low |
-| `plex.radio.refillThreshold` | int | `5` | Queue size threshold that triggers a refill when infinite radio is enabled |
-| `plex.radio.batchSize` | int | `30` | Number of tracks to fetch per radio request (initial batch or refill) |
+| Key | Default | What it does |
+|---|---|---|
+| `plex.stream.maxConcurrentLoads` | `2` | Plex file loads at once. Lower it if tracks fail to load. |
+| `plex.stream.retryDelaysSeconds` | `2, 5, 15` | Waits before each retry of a failed load |
+| `plex.stream.resolveAhead` | `3` | Queued tracks loaded ahead of the one playing |
+| `plex.resolveCacheSize` | `500` | Resolved tracks kept in memory |
+| `plex.resolveCacheMinutes` | `60` | How long a resolved track is reused |
+| `plex.radio.batchSize` | `30` | Tracks fetched per radio request |
 
-#### Logging
+> **Infinite radio is not working yet.** `plex.radio.infinite` and `plex.radio.refillThreshold` are read, but nothing
+> refills the queue with them, so they have no effect. This is on the [planned list](#planned).
 
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `logging.level` | string | `INFO` | Console log level: `VERBOSE`, `DEBUG`, `INFO`, `WARN`, `ERROR`. Log files always save all levels |
-| `logging.saveToFile` | bool | `true` | Save log files to disk |
-| `logging.path` | string | `logs/plex-bot-[year]-[month]-[day].log` | Log file path (supports `[year]`, `[month]`, `[day]`, `[hour]`, `[minute]`, `[second]`, `[pid]`) |
+**Logging and bot**
 
-#### Bot
-
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `bot.environment` | string | _(empty)_ | Set to `Development` for guild-scoped slash commands (faster updates during dev) |
-
-### Application Emoji
-
-The player and its panels use 22 emoji (play, skip, volume, radio, status badges and so on). The bot uploads them to
-its own application on first start, so they work in every server with no emoji slots used. Nothing to install by
-hand. If the upload can't run, the bot falls back to plain unicode symbols and everything still works.
-
-See the [Custom Emoji guide](Docs/Guides/Custom-Emoji.md) for the screenshots, how to change the art, and how to
-make your own set.
-
-### Custom Progress Bar Emoji
-
-PlexBot includes 30 custom emoji for a smooth-fill progress bar. Without them, the bar uses unicode block characters (`▓░`) which work everywhere but look less polished.
-
-<details>
-<summary><b>Setup instructions</b></summary>
-
-1. Go to the [Discord Developer Portal](https://discord.com/developers/applications) and select your bot application
-2. Click **Emojis** in the left sidebar
-3. Upload all 30 `.png` files from `Images/Icons/progress/`. The filenames become the emoji names automatically
-4. Copy each emoji's numeric ID and paste it into `config.fds` under `visualPlayer.progressBar.emoji`
-
-The 30 emoji are organized into three groups:
-
-| Group | Count | Keys |
-|-------|-------|------|
-| Left cap | 8 | `bar_left_empty`, `bar_left_filled_1` to `bar_left_filled_6`, `bar_left_filled` |
-| Middle | 14 | `bar_mid_empty`, `bar_filled_1` to `bar_filled_12`, `bar_mid_filled` |
-| Right cap | 8 | `bar_right_empty`, `bar_right_filled_1` to `bar_right_filled_6`, `bar_right_filled` |
-
-All 30 IDs must be provided for custom emoji to activate. If any are missing, the bot falls back to unicode.
-
-See the [Configuration Guide](./Docs/Setup/Configuration.md) for a detailed walkthrough with screenshots.
-</details>
+| Key | Default | What it does |
+|---|---|---|
+| `logging.level` | `INFO` | Console level: `VERBOSE`, `DEBUG`, `INFO`, `WARN`, `ERROR` |
+| `logging.saveToFile` | `true` | Write log files (every level) |
+| `logging.path` | `logs/plex-bot-[year]-[month]-[day].log` | Log file path |
+| `bot.environment` | _(empty)_ | `Development` registers slash commands per server, which updates faster |
 
 ---
 
-## Docker Support
+## Custom emoji
 
-PlexBot supports Docker for easy deployment. See the [Docker Guide](./Docs/Setup/Docker-Guide.md).
+The player and its panels use 22 emoji. The bot uploads them to its own Discord application on first start, so they
+work in every server the bot is in and use no emoji slots.
 
-The default install runs both PlexBot and Lavalink together in Docker with no extra setup needed.
+![The emoji listed on the developer portal](./Docs/Guides/images/emoji-developer-portal.jpg)
+
+If an emoji can't be used, the bot shows a plain unicode symbol instead, and everything still works. To change the
+art, edit the PNG in `Images/Emoji` and restart. See the [Custom Emoji guide](./Docs/Guides/Custom-Emoji.md) for
+the full set and how to make your own.
+
+The smooth progress bar uses 30 separate emoji that you set up by hand. See the [Configuration guide](./Docs/Setup/Configuration.md#custom-progress-bar-emoji).
 
 ---
 
-## Remote Lavalink (Advanced)
+## Remote Lavalink (advanced)
 
-By default, the install scripts run Lavalink alongside PlexBot in Docker. If you want to run Lavalink on a separate machine (e.g. a dedicated audio server, or a shared Lavalink instance), you can point PlexBot to it by changing three values in your `.env`:
+By default the install runs Lavalink in Docker next to PlexBot. To use a Lavalink on another machine, change these in `.env`:
 
 ```env
-LAVALINK_HOST=192.168.1.100        # IP or hostname of your Lavalink server
-LAVALINK_SERVER_PORT=2333          # Must match Lavalink's application.yml
+LAVALINK_HOST=192.168.1.100          # Lavalink's IP or hostname
+LAVALINK_SERVER_PORT=2333            # Must match Lavalink's application.yml
 LAVALINK_SERVER_PASSWORD=mypassword  # Must match Lavalink's application.yml
-LAVALINK_SECURE=false              # Set true if behind a reverse proxy with SSL
+LAVALINK_SECURE=false                # true if it sits behind SSL
 ```
 
-Then remove or comment out the `lavalink` service and `depends_on` block in `Install/Docker/docker-compose.yml`. PlexBot will connect to your remote Lavalink instead.
-
-> **Note:** When running Lavalink separately, you are responsible for installing Java 17+, downloading the [Lavalink server jar](https://github.com/lavalink-devs/Lavalink/releases), configuring its `application.yml`, and keeping it updated. See the [Lavalink docs](https://lavalink.dev) for setup instructions.
+Then remove the `lavalink` service and its `depends_on` block from `Install/Docker/docker-compose.yml`. You are responsible
+for running Lavalink (Java 17 or later, its jar, and its `application.yml`). See the [Lavalink docs](https://lavalink.dev).
 
 ---
 
-## Extensions & Customization
+## Performance tuning (audio stuttering)
 
-PlexBot's [Extensions system](./Docs/Extensions/CreatingExtensions.md) lets you add custom features, integrations, and automations. Build your own or browse community extensions.
+If playback stutters, especially when other programs use the same machine, Lavalink's audio thread is being interrupted.
+PlexBot doesn't touch the audio stream, so these settings are for Lavalink.
+
+- **Garbage collection.** Set `_JAVA_OPTIONS` in `.env` to use ZGC, which keeps pauses under 1 ms:
+  ```env
+  _JAVA_OPTIONS=-XX:+UseZGC -XX:+ZGenerational -Xms256m -Xmx512m
+  ```
+  This uses 10–20% more memory and needs Java 21 or later (the Lavalink 4 image has it).
+- **CPU pinning.** Uncomment `cpuset` and `cpu_shares` in [`Install/Docker/docker-compose.yml`](./Install/Docker/docker-compose.yml) to give Lavalink dedicated cores.
+
+Only enable these if you hear stuttering.
 
 ---
 
-## Support & Troubleshooting
+## Extensions
 
-- [Troubleshooting Guide](./Docs/Guides/Troubleshooting.md)
-- [Player UI Guide](./Docs/Guides/Player-UI-Guide.md)
-- [Command Reference](./Docs/Guides/Commands.md)
-- [Discord Dev Server](https://discord.com/invite/5m4Wyu52Ek)
+The [extensions system](./Docs/Extensions/CreatingExtensions.md) adds sources and commands without changing the core.
 
 ---
 
-## Performance Tuning (Audio Stuttering Fix)
+## Support
 
-If you experience brief audio stuttering or "CD skip" sounds during playback, especially when other applications are running on the same machine, this is caused by Lavalink's audio thread being interrupted by the OS.
+- [Troubleshooting](./Docs/Guides/Troubleshooting.md)
+- [Player UI guide](./Docs/Guides/Player-UI-Guide.md)
+- [Commands guide](./Docs/Guides/Commands.md)
+- [Discord dev server](https://discord.com/invite/5m4Wyu52Ek)
 
-**How audio streaming works:** Lavalink (a Java process) must send an Opus audio frame to Discord exactly every 20 milliseconds. When your CPU is under load, the OS scheduler can preempt Lavalink's thread, causing a missed frame and an audible glitch. PlexBot itself does not touch the audio stream and only handles commands and UI.
+---
 
-Two optional settings can help:
+## Planned
 
-### JVM Garbage Collection Tuning
-Uncomment `_JAVA_OPTIONS` in your `.env` file to switch Java from its default garbage collector to **ZGC**, which keeps GC pauses under 1ms (the default can pause for 10-50ms).
-
-```env
-_JAVA_OPTIONS=-XX:+UseZGC -XX:+ZGenerational -Xms256m -Xmx512m
-```
-
-| Pros | Cons |
-|------|------|
-| Eliminates GC-related audio stuttering | Uses ~10-20% more memory than the default GC |
-| Sub-millisecond pause times | Requires Java 21+ (included in the Lavalink 4 Docker image) |
-
-### CPU Pinning & Priority
-Uncomment `cpuset` and `cpu_shares` in [`Install/Docker/docker-compose.yml`](./Install/Docker/docker-compose.yml) to reserve dedicated CPU cores for Lavalink so other processes cannot starve it. These are Docker Compose directives and can only be configured in the YAML file.
-
-```yaml
-cpuset: "0,1"
-cpu_shares: 2048
-```
-
-| Pros | Cons |
-|------|------|
-| Prevents other processes from starving the audio thread | Pinned cores are less available to other containers |
-| No stuttering even under heavy host CPU load | Requires knowing which cores to dedicate |
-
-> **Only enable these if you are experiencing stuttering.** Most users running PlexBot on a dedicated server or low-traffic machine will not need them.
+- **Infinite radio.** Wire `plex.radio.infinite` into the queue so it refills when it runs low.
+- **More music sources.** Spotify, SoundCloud, and other integrations.
+- **User playlists.** Save, manage and share playlists in Discord.
+- **More player styles and command panels.**
 
 ---
 
