@@ -21,6 +21,19 @@ public static class ImageBuilder
     private static readonly FontCollection _fontCollection = new();
     private static readonly Dictionary<string, Image<Rgba32>> _iconCache = [];
 
+    // Fonts and the corner mask are the same for every card, so they are built once
+    private static readonly Lazy<(Font Title, Font Artist, Font Info, Font Small)> _fonts = new(CreateFonts);
+    private const int CardWidth = 800;
+    private const int CardHeight = 400;
+    private const float CornerRadius = 24f;
+    private static readonly Lazy<Image<Rgba32>> _cornerMask = new(() => BuildCornerMask(CardWidth, CardHeight, CornerRadius));
+
+    private static (Font, Font, Font, Font) CreateFonts()
+    {
+        FontFamily family = _fontFamily ?? SystemFonts.Collection.Families.First();
+        return (family.CreateFont(40, FontStyle.Bold), family.CreateFont(32), family.CreateFont(20), family.CreateFont(16));
+    }
+
 
     // These paths cover both standard Linux/Docker locations and system-specific ones
     private static readonly string[] _fontPaths =
@@ -171,10 +184,10 @@ public static class ImageBuilder
                 using Image<Rgba32> backgroundArt = albumArt.Clone();
                 backgroundArt.Mutate(ctx =>
                 {
-                    // Resize to fill the background
+                    // Blur at thumbnail size, then scale up: the same soft look for a fraction of the work
+                    ctx.Resize(new Size(160, 90));
+                    ctx.GaussianBlur(4f);
                     ctx.Resize(new Size(width + 100, height + 100));
-                    // Blur the image
-                    ctx.GaussianBlur(10f);
                 });
                 // Draw blurred background
                 canvas.Mutate(ctx => ctx.DrawImage(backgroundArt, new Point(-50, -50), 1f));
@@ -216,28 +229,7 @@ public static class ImageBuilder
                 try
                 {
                     // Get the font for our text
-                    Font titleFont, artistFont, infoFont, smallInfoFont;
-                    if (_fontFamily != null)
-                    {
-                        // Create fonts of different sizes from our loaded font
-                        titleFont = _fontFamily.Value.CreateFont(40, FontStyle.Bold);
-                        artistFont = _fontFamily.Value.CreateFont(32);
-                        infoFont = _fontFamily.Value.CreateFont(20);
-                        smallInfoFont = _fontFamily.Value.CreateFont(16);
-                    }
-                    else
-                    {
-                        // Emergency fallback - use any available system font
-                        FontFamily fallbackFamily = SystemFonts.Collection.Families.FirstOrDefault();
-                        if (fallbackFamily == null)
-                        {
-                            throw new Exception("No fonts available!");
-                        }
-                        titleFont = fallbackFamily.CreateFont(40, FontStyle.Bold);
-                        artistFont = fallbackFamily.CreateFont(32);
-                        infoFont = fallbackFamily.CreateFont(20);
-                        smallInfoFont = fallbackFamily.CreateFont(16);
-                    }
+                    (Font titleFont, Font artistFont, Font infoFont, Font smallInfoFont) = _fonts.Value;
                     // Helper function to truncate text
                     static string TruncateText(string text, Font font, int maxWidth)
                     {
@@ -317,37 +309,7 @@ public static class ImageBuilder
                 {
                     Logs.Error($"Error adding text: {ex.Message}");
                 }
-                // Apply rounded corners
-                try
-                {
-                    // Create a simple mask using multiple filled circles and rectangles
-                    using Image<Rgba32> mask = new(width, height, Color.Transparent);
-                    mask.Mutate(ctx =>
-                    {
-                        // Fill the center
-                        ctx.Fill(Color.White, new Rectangle(12, 0, width - 24, height));
-                        ctx.Fill(Color.White, new Rectangle(0, 12, width, height - 24));
-                        // Add the rounded corners with circles
-                        int radius = 24; // Slightly larger radius for smoother corners
-                        ctx.Fill(Color.White, new EllipsePolygon(radius, radius, radius));
-                        ctx.Fill(Color.White, new EllipsePolygon(width - radius, radius, radius));
-                        ctx.Fill(Color.White, new EllipsePolygon(radius, height - radius, radius));
-                        ctx.Fill(Color.White, new EllipsePolygon(width - radius, height - radius, radius));
-                    });
-                    // Apply the mask
-                    canvas.Mutate(ctx =>
-                    {
-                        ctx.SetGraphicsOptions(new GraphicsOptions
-                        {
-                            AlphaCompositionMode = PixelAlphaCompositionMode.DestIn
-                        });
-                        ctx.DrawImage(mask, new Point(0, 0), 1f);
-                    });
-                }
-                catch (Exception ex)
-                {
-                    Logs.Warning($"Failed to apply rounded corners: {ex.Message}");
-                }
+                ApplyRoundedCorners(canvas);
                 return canvas;
             }
             catch (Exception ex)
@@ -365,6 +327,42 @@ public static class ImageBuilder
     }
 
     // Helper method to draw a rounded rectangle
+    /// <summary>Clears the pixels outside a rounded rectangle. The mask is built once; each card only composites it.</summary>
+    private static void ApplyRoundedCorners(Image<Rgba32> canvas)
+    {
+        canvas.Mutate(ctx =>
+        {
+            ctx.SetGraphicsOptions(new GraphicsOptions { AlphaCompositionMode = PixelAlphaCompositionMode.DestIn });
+            ctx.DrawImage(_cornerMask.Value, new Point(0, 0), 1f);
+        });
+    }
+
+    internal static Image<Rgba32> BuildCornerMask(int width, int height, float radius)
+    {
+        Image<Rgba32> mask = new(width, height, Color.Transparent);
+        mask.Mutate(ctx => ctx.Fill(Color.White, RoundedRectangle(width, height, radius)));
+        return mask;
+    }
+
+    /// <summary>A rounded rectangle as a polygon, eight segments per corner, so every corner is a true arc</summary>
+    private static IPath RoundedRectangle(float width, float height, float radius)
+    {
+        List<PointF> points = [];
+        void Corner(float cx, float cy, float startDeg)
+        {
+            for (int i = 0; i <= 8; i++)
+            {
+                float a = (startDeg + 90f * i / 8f) * MathF.PI / 180f;
+                points.Add(new PointF(cx + radius * MathF.Cos(a), cy + radius * MathF.Sin(a)));
+            }
+        }
+        Corner(width - radius, radius, -90);
+        Corner(width - radius, height - radius, 0);
+        Corner(radius, height - radius, 90);
+        Corner(radius, radius, 180);
+        return new Polygon(new LinearLineSegment([.. points]));
+    }
+
     private static void DrawRoundedRectangle(IImageProcessingContext ctx, float x, float y, float width, float height, float radius, Color color, bool fill = true)
     {
         // Make sure radius isn't too large for the rectangle

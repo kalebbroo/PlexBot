@@ -6,9 +6,9 @@ public class SonicAdventureModal : IModal
 {
     public string Title => "Sonic Adventure";
 
-    [InputLabel("Destination Track")]
+    [InputLabel("Where should the path end?")]
     [ModalTextInput("destination", TextInputStyle.Short,
-        placeholder: "Enter a track name to travel to...",
+        placeholder: "e.g. Bohemian Rhapsody",
         maxLength: 200)]
     public string Destination { get; set; } = "";
 }

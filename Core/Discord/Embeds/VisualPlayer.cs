@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using PlexBot.Core.Models.Players;
 using PlexBot.Core.Services.LavaLink;
 using PlexBot.Utils;
@@ -288,7 +288,9 @@ public class VisualPlayer(
         return ComponentV2Builder.BuildPlayerStatusLine(
             player?.State ?? PlayerState.NotPlaying,
             position,
-            duration);
+            duration,
+            player is null ? null : (int)Math.Round(player.Volume * 100),
+            player?.RepeatMode ?? TrackRepeatMode.None);
     }
 
     private TimeSpan? DisplayPosition(ulong guildId, CustomLavaLinkPlayer? player)
