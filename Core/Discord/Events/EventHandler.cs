@@ -24,6 +24,7 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
     // module definition twice (Discord.Net keeps earlier definitions when more are added).
     private readonly HashSet<Assembly> _loadedAssemblies = new();
     private readonly HashSet<ulong> _registeredGuilds = new();
+    private bool _globalCleared;
     private bool _commandsRegistered;
     private bool _subscribed;
 
@@ -197,6 +198,22 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
                 bool ok = await RetryAsync($"guild {guild.Name} ({guild.Id})", () => interactions.RegisterCommandsToGuildAsync(guild.Id));
                 if (ok) _registeredGuilds.Add(guild.Id);
                 allRegistered &= ok;
+            }
+
+            // Global commands from an earlier run (a production start, or a command since removed) stay listed next to
+            // the guild commands. Development uses guild commands only, so clear this application's global set once.
+            if (!_globalCleared)
+            {
+                try
+                {
+                    await ((IDiscordClient)client.Rest).BulkOverwriteGlobalApplicationCommand(Array.Empty<ApplicationCommandProperties>());
+                    _globalCleared = true;
+                    Logs.Info("Cleared stale global slash commands (Development uses guild commands)");
+                }
+                catch (Exception ex)
+                {
+                    Logs.Warning($"Could not clear stale global slash commands: {ex.Message}");
+                }
             }
         }
         else
