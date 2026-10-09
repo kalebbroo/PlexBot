@@ -6,7 +6,7 @@ Thanks for your interest in contributing to PlexBot! This guide covers how to ge
 
 ### Prerequisites
 
-- [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)
+- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
 - [Docker & Docker Compose](https://www.docker.com/products/docker-desktop/) (for running Lavalink)
 - A Discord bot token ([Developer Portal](https://discord.com/developers/applications))
 - A Plex server with a music library and an authentication token
@@ -51,17 +51,24 @@ PlexBot/
 │   ├── Discord/             # Discord interaction layer
 │   │   ├── Commands/        # Slash command modules
 │   │   ├── Autocomplete/    # Autocomplete handlers
-│   │   └── Embeds/          # CV2 builders, buttons, visual player
+│   │   ├── Design/          # Colour tokens, the emoji registry
+│   │   ├── Embeds/          # CV2 builders, buttons, visual player
+│   │   ├── Help/            # Help topics (text and screenshot names)
+│   │   ├── Interactions/    # Button, select menu and modal handlers
+│   │   ├── Messages/        # Shared status messages (Notices)
+│   │   └── Modals/          # Modal definitions
 │   ├── Events/              # Event bus system
 │   ├── Extensions/          # Extension base class and manager
 │   ├── Models/              # Data models (Track, Album, Playlist, etc.)
-│   └── Services/            # Music services, providers, Lavalink
+│   └── Services/            # Music services, providers, Lavalink, radio
+├── Docs/                    # All documentation (screenshots in Docs/screenshots)
 ├── Extensions/              # Extension source directories (built at startup)
-├── Docs/                    # All documentation
-├── Images/                  # Player assets, icons, progress bar emoji
+├── Images/                  # Player images, icons, Images/Emoji (bot emoji), Images/Help (help screenshots)
 ├── Install/                 # Docker and install scripts
 ├── Main/                    # Entry point, DI registration, global usings
-└── Utils/                   # Config, logging, HTTP utilities
+├── Tests/PlexBot.Tests/     # xUnit tests (not part of the bot build or Docker image)
+├── Tools/EmojiGenerator/    # Draws the bot's emoji PNGs (not part of the bot build)
+└── Utils/                   # Config, logging, HTTP utilities, asset paths
 ```
 
 ### Key Files
@@ -75,6 +82,12 @@ PlexBot/
 | `Core/Services/Music/PlexMusicService.cs` | Plex API integration with caching |
 | `Core/Services/Music/MusicProviderRegistry.cs` | Routes searches to registered providers |
 | `Core/Services/LavaLink/PlayerService.cs` | Audio playback via Lavalink4NET |
+| `Core/Services/Music/RadioSessionManager.cs` | Radio sessions and the infinite-radio refill rules |
+| `Core/Services/Music/RadioRefillService.cs` | Queues the next radio batch when the queue runs low |
+| `Core/Services/ResultPageStore.cs` | Keeps long result lists for Previous / Next |
+| `Core/Discord/Design/EmojiRegistry.cs` | Uploads and looks up the bot's application emoji |
+| `Core/Discord/Help/HelpTopics.cs` | The help menu topics and their text |
+| `Utils/AssetPaths.cs` | Finds files in `Images/` and `data/` in Docker, the build folder and the working directory |
 | `Core/Extensions/ExtensionManager.cs` | Discovers, builds, and loads extensions |
 | `Utils/BotConfig.cs` | Reads `config.fds` settings |
 | `Utils/EnvConfig.cs` | Reads `.env` secrets |
@@ -114,6 +127,21 @@ All Discord messages use the Components V2 system. Follow these patterns:
 - **Secrets** (tokens, passwords, URLs) go in `.env` — never in code or `config.fds`
 - **App settings** (UI, behavior, logging) go in `config.fds`
 - Never commit `.env` files
+
+## Testing
+
+```bash
+dotnet test PlexBot.sln
+```
+
+Tests cover the pure logic: retry schedules, cache keys, the radio refill rules, paging, the help topics, the
+player's button and status-line text, and the corner mask of the player image. A change to shared wording goes
+through `Notices` and must update the test that pins it.
+
+## Agents
+
+If you work with an AI agent, [AGENTS.md](AGENTS.md) is its entry point: the routing, the commands and the rules for
+commits and pull requests.
 
 ## Extensions
 
