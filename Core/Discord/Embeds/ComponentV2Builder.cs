@@ -1,3 +1,5 @@
+using PlexBot.Core.Discord.Design;
+using PlexBot.Core.Discord.Messages;
 using PlexBot.Utils;
 
 using Color = Discord.Color;
@@ -7,11 +9,6 @@ namespace PlexBot.Core.Discord.Embeds;
 /// <summary>Utility for creating standardized Components V2 layouts for Discord messages</summary>
 public static class ComponentV2Builder
 {
-    private static readonly Color SuccessColor = new(0, 255, 127);
-    private static readonly Color ErrorColor = new(255, 69, 0);
-    private static readonly Color InfoColor = new(30, 144, 255);
-    private static readonly Color WarningColor = new(255, 215, 0);
-    private static readonly Color MusicColor = new(138, 43, 226);
 
     private const string SuccessEmoji = "\u2705";
     private const string ErrorEmoji = "\u274C";
@@ -20,19 +17,31 @@ public static class ComponentV2Builder
 
     /// <summary>Creates a success status message</summary>
     public static MessageComponent Success(string title, string description)
-        => BuildStatusMessage(SuccessColor, SuccessEmoji, title, description);
+        => BuildStatusMessage(DesignTokens.Success, SuccessEmoji, title, description);
 
     /// <summary>Creates an error status message</summary>
     public static MessageComponent Error(string title, string description)
-        => BuildStatusMessage(ErrorColor, ErrorEmoji, title, description);
+        => BuildStatusMessage(DesignTokens.Error, ErrorEmoji, title, description);
 
     /// <summary>Creates an info status message</summary>
     public static MessageComponent Info(string title, string description)
-        => BuildStatusMessage(InfoColor, InfoEmoji, title, description);
+        => BuildStatusMessage(DesignTokens.Info, InfoEmoji, title, description);
 
     /// <summary>Creates a warning status message</summary>
     public static MessageComponent Warning(string title, string description)
-        => BuildStatusMessage(WarningColor, WarningEmoji, title, description);
+        => BuildStatusMessage(DesignTokens.Warning, WarningEmoji, title, description);
+
+    /// <summary>Creates a success status message from a shared notice</summary>
+    public static MessageComponent Success(Notice notice) => Success(notice.Title, notice.Body);
+
+    /// <summary>Creates an error status message from a shared notice</summary>
+    public static MessageComponent Error(Notice notice) => Error(notice.Title, notice.Body);
+
+    /// <summary>Creates an info status message from a shared notice</summary>
+    public static MessageComponent Info(Notice notice) => Info(notice.Title, notice.Body);
+
+    /// <summary>Creates a warning status message from a shared notice</summary>
+    public static MessageComponent Warning(Notice notice) => Warning(notice.Title, notice.Body);
 
     /// <summary>Creates a command error message matching the existing error type handling</summary>
     public static MessageComponent CommandError(InteractionCommandError? errorType, string errorReason)
@@ -78,7 +87,7 @@ public static class ComponentV2Builder
     public static MessageComponent InfoWithComponents(string title, string description, ComponentBuilder additionalComponents)
     {
         var container = new ContainerBuilder()
-            .WithAccentColor(InfoColor)
+            .WithAccentColor(DesignTokens.Info)
             .WithTextDisplay($"## {InfoEmoji} {title}\n{description}")
             .WithSeparator(SeparatorSpacingSize.Small, isDivider: true);
         AddActionRows(container, additionalComponents);
@@ -89,7 +98,7 @@ public static class ComponentV2Builder
     public static MessageComponent BuildModernPlayer(string? statusLine, ComponentBuilder buttons)
     {
         var container = new ContainerBuilder()
-            .WithAccentColor(MusicColor)
+            .WithAccentColor(DesignTokens.Music)
             .WithMediaGallery(new MediaGalleryBuilder().AddItem("attachment://playerImage.png"));
         if (statusLine != null)
         {
@@ -105,7 +114,7 @@ public static class ComponentV2Builder
         string trackInfo, string? artworkUrl, string? statusLine, ComponentBuilder buttons)
     {
         var container = new ContainerBuilder()
-            .WithAccentColor(MusicColor);
+            .WithAccentColor(DesignTokens.Music);
 
         if (!string.IsNullOrEmpty(artworkUrl))
         {
@@ -132,7 +141,7 @@ public static class ComponentV2Builder
     public static MessageComponent BuildSearchResults(string query, string summary, ComponentBuilder selectMenus)
     {
         var container = new ContainerBuilder()
-            .WithAccentColor(InfoColor)
+            .WithAccentColor(DesignTokens.Info)
             .WithTextDisplay($"## \U0001F50D Search Results for: {query}")
             .WithTextDisplay(summary)
             .WithSeparator(SeparatorSpacingSize.Small, isDivider: true);
@@ -145,7 +154,7 @@ public static class ComponentV2Builder
         string nowPlaying, int queueCount, ComponentBuilder actionButtons)
     {
         var container = new ContainerBuilder()
-            .WithAccentColor(MusicColor)
+            .WithAccentColor(DesignTokens.Music)
             .WithTextDisplay("## \U0001F4CB Queue Options")
             .WithTextDisplay($"\u25B6\uFE0F **Now Playing:** {nowPlaying}")
             .WithTextDisplay($"{queueCount} tracks in queue")
@@ -159,7 +168,7 @@ public static class ComponentV2Builder
         string? nowPlayingLine, string queueText, string footerLine, ComponentBuilder paginationButtons)
     {
         var container = new ContainerBuilder()
-            .WithAccentColor(MusicColor)
+            .WithAccentColor(DesignTokens.Music)
             .WithTextDisplay("## \U0001F4CB Current Music Queue");
 
         if (!string.IsNullOrEmpty(nowPlayingLine))
@@ -180,7 +189,7 @@ public static class ComponentV2Builder
     {
         return new ComponentBuilderV2()
             .WithContainer(new ContainerBuilder()
-                .WithAccentColor(InfoColor)
+                .WithAccentColor(DesignTokens.Info)
                 .WithTextDisplay("## \U0001F4FB PlexBot Music Player")
                 .WithTextDisplay("Play music from your Plex library directly in Discord voice channels.")
                 .WithSeparator(SeparatorSpacingSize.Small, isDivider: true)
@@ -199,7 +208,7 @@ public static class ComponentV2Builder
     {
         return new ComponentBuilderV2()
             .WithContainer(new ContainerBuilder()
-                .WithAccentColor(InfoColor)
+                .WithAccentColor(DesignTokens.Info)
                 .WithTextDisplay("## ⏹️ Playback stopped")
                 .WithTextDisplay("Use `/play` or `/playlist` to start music again.")
             ).Build();
@@ -209,7 +218,7 @@ public static class ComponentV2Builder
     public static MessageComponent BuildIdlePlayer(ComponentBuilder buttons)
     {
         var container = new ContainerBuilder()
-            .WithAccentColor(MusicColor)
+            .WithAccentColor(DesignTokens.Music)
             .WithTextDisplay("## \U0001F3B5 PlexBot Music Player")
             .WithTextDisplay("No track is currently playing. Use `/play` to start!")
             .WithSeparator(SeparatorSpacingSize.Small, isDivider: true)
@@ -400,7 +409,7 @@ public static class ComponentV2Builder
         string trackTitle, string trackArtist, ComponentBuilder actionButtons)
     {
         var container = new ContainerBuilder()
-            .WithAccentColor(MusicColor)
+            .WithAccentColor(DesignTokens.Music)
             .WithTextDisplay("## \uD83D\uDCFB Start Radio")
             .WithTextDisplay($"Seed track: **{trackArtist}** - {trackTitle}")
             .WithTextDisplay("Generate a radio station based on this track's sonic profile.")
@@ -414,7 +423,7 @@ public static class ComponentV2Builder
         string title, string description, ComponentBuilder selectMenus)
     {
         var container = new ContainerBuilder()
-            .WithAccentColor(MusicColor)
+            .WithAccentColor(DesignTokens.Music)
             .WithTextDisplay($"## \uD83C\uDFB5 {title}")
             .WithTextDisplay(description)
             .WithSeparator(SeparatorSpacingSize.Small, isDivider: true);
