@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using PlexBot.Utils;
+using PlexBot.Core.Discord.Design;
 using PlexBot.Core.Discord.Embeds;
 using PlexBot.Core.Events;
 using PlexBot.Core.Extensions;
@@ -77,6 +78,10 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
             await Task.Delay(delay);
             delay = TimeSpan.FromSeconds(Math.Min(delay.TotalSeconds * 2, 300));
         }
+
+        // After setup, so the status and event subscriptions are not held behind up to one upload per emoji.
+        // SyncEmojiAsync logs its own failures, so nothing is awaited here.
+        _ = Task.Run(SyncEmojiAsync);
     }
 
     /// <summary>One pass of setup. Returns false if any stage failed, so the caller retries. Stages that already
@@ -331,5 +336,25 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
         }
 
         return Task.CompletedTask;
+    }
+
+    /// <summary>Uploads the bot's application emoji that are missing and replaces any whose art changed. A failure only
+    /// means the unicode fallbacks show, so it is logged and the bot carries on.</summary>
+    public async Task SyncEmojiAsync()
+    {
+        try
+        {
+            string? directory = AssetPaths.FindDirectory("Images", "Emoji");
+            if (directory is null)
+            {
+                Logs.Warning("Emoji folder not found; the bot will use unicode emoji");
+                return;
+            }
+            await services.GetRequiredService<EmojiRegistry>().SyncAsync(client, directory, AssetPaths.DataFile(EmojiRegistry.HashFileName));
+        }
+        catch (Exception ex)
+        {
+            Logs.Warning($"Could not sync application emoji, using unicode fallbacks: {ex.Message}");
+        }
     }
 }
