@@ -399,9 +399,10 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
 
     /// <summary>Waits for a queue turn or lock, giving up after <see cref="BatchDeadline"/>. The caller's own cancellation
     /// passes through unchanged; only the deadline becomes a PlayerException.</summary>
-    private static async Task WaitWithinDeadlineAsync(Func<CancellationToken, Task> wait, CancellationToken cancellationToken, string what)
+    internal static async Task WaitWithinDeadlineAsync(Func<CancellationToken, Task> wait, CancellationToken cancellationToken, string what,
+        TimeProvider? time = null)
     {
-        using CancellationTokenSource deadline = new(BatchDeadline, TimeProvider.System);
+        using CancellationTokenSource deadline = new(BatchDeadline, time ?? TimeProvider.System);
         using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
         try
         {
