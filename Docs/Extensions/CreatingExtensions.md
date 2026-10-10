@@ -21,6 +21,8 @@ This guide provides comprehensive instructions for creating custom extensions fo
 
 ## Overview
 
+> New to extensions? The [step-by-step tutorial](Build-Your-First-Extension.md) builds a working extension from nothing. This page is the full reference.
+
 Extensions in PlexBot are modular components that inherit from the `Extension` base class. They are **built from source at startup** — PlexBot automatically runs `dotnet build` for each extension project it finds. Extensions use shared `.props` files to reference the host without a `ProjectReference`, keeping them fully decoupled. The extension system provides:
 
 - **Build-at-startup**: Extensions are compiled automatically from source when the bot starts

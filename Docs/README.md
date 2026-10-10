@@ -14,4 +14,5 @@
 - [Troubleshooting](Guides/Troubleshooting.md) — Common issues and fixes
 
 ## Extending
+- [Build your first extension](Extensions/Build-Your-First-Extension.md) — A step-by-step tutorial that builds a working `/hello` command
 - [Creating Extensions](Extensions/CreatingExtensions.md) — Build custom extensions with the plugin system
