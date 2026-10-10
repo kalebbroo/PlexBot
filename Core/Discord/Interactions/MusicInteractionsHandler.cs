@@ -11,6 +11,7 @@ using PlexBot.Core.Services.LavaLink;
 using PlexBot.Core.Services.Music;
 using PlexBot.Core.Discord.Modals;
 using PlexBot.Core.Models;
+using PlexBot.Core.Discord.Events;
 using PlexBot.Core.Discord.Messages;
 
 namespace PlexBot.Core.Discord.Interactions;
@@ -370,7 +371,16 @@ public class MusicInteractionHandler(IPlayerService playerService,
     [ComponentInteraction("radio:start")]
     public async Task HandleRadioStartAsync()
     {
-        await DeferAsync(ephemeral: true);
+        try
+        {
+            await DeferAsync(ephemeral: true);
+        }
+        catch (HttpException ex) when (ex.DiscordCode is DiscordErrorCode.InteractionHasAlreadyBeenAcknowledged or DiscordErrorCode.UnknownInteraction)
+        {
+            // A repeated press, or an interaction that expired before it was acknowledged: there is nothing left to answer
+            Logs.Warning($"[{DiscordEventHandler.InstanceId}] Radio start skipped for user {Context.User.Id}: interaction already acknowledged or expired ({ex.DiscordCode})");
+            return;
+        }
         if (IsOnCooldown(Context.User.Id, "radio:start"))
         {
             await FollowupAsync(components: ComponentV2Builder.Error(Notices.Cooldown), ephemeral: true);
