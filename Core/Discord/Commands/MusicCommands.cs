@@ -4,6 +4,7 @@ using PlexBot.Core.Models;
 using PlexBot.Core.Models.Media;
 using PlexBot.Core.Discord.Autocomplete;
 using PlexBot.Core.Discord.Embeds;
+using PlexBot.Core.Exceptions;
 using PlexBot.Core.Services.PlexApi;
 using PlexBot.Utils;
 
@@ -396,7 +397,8 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         IUserMessage ackMessage = await GetOriginalResponseAsync();
         // Set once a final card has gone out. The finally replaces the loading card if none did.
         bool cardFinal = false;
-        Task ShowErrorAsync() => ackMessage.ModifyAsync(msg => { msg.Components = ComponentV2Builder.Error("Playlist Error", "An error occurred while loading the playlist. Please try again later."); msg.Embed = null; msg.Flags = MessageFlags.ComponentsV2; });
+        const string genericPlaylistError = "An error occurred while loading the playlist. Please try again later.";
+        Task ShowErrorAsync(string body) => ackMessage.ModifyAsync(msg => { msg.Components = ComponentV2Builder.Error("Playlist Error", body); msg.Embed = null; msg.Flags = MessageFlags.ComponentsV2; });
         try
         {
             Logs.Debug($"Loading playlist: {playlist}, shuffle: {shuffle}");
@@ -446,7 +448,8 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         catch (Exception ex)
         {
             Logs.Error($"Error in playlist command: {ex.Message}");
-            await ShowErrorAsync();
+            // A queue that is busy, or another PlexBot error, has its own wording; anything else keeps the generic text
+            await ShowErrorAsync(ex is PlexBotException botEx ? botEx.UserFriendlyMessage : genericPlaylistError);
             cardFinal = true;
         }
         finally
@@ -457,7 +460,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
             {
                 try
                 {
-                    await ShowErrorAsync();
+                    await ShowErrorAsync(genericPlaylistError);
                 }
                 catch (Exception ex)
                 {
