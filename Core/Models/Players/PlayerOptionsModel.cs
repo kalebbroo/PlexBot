@@ -91,6 +91,24 @@ public class VisualPlayerStateManager
         lock (state) { state.Message = message; }
     }
 
+    /// <summary>Claims the guild's slot for a playback failure notice. Returns false, and claims nothing, when a notice
+    /// was claimed less than the window before now.</summary>
+    public bool TryClaimFailureNotice(ulong guildId, DateTimeOffset now, TimeSpan window)
+    {
+        GuildPlayerState state = GetState(guildId);
+        lock (state)
+        {
+            if (!ShouldPostFailureNotice(state.LastFailureNotice, now, window)) return false;
+            state.LastFailureNotice = now;
+            return true;
+        }
+    }
+
+    /// <summary>True when no failure notice was claimed within the window before now. A notice exactly one window after
+    /// the last one is allowed.</summary>
+    public static bool ShouldPostFailureNotice(DateTimeOffset? lastPosted, DateTimeOffset now, TimeSpan window) =>
+        lastPosted is null || now - lastPosted.Value >= window;
+
     private GuildPlayerState GetState(ulong guildId) => _guilds.GetOrAdd(guildId, _ => new GuildPlayerState());
 
     /// <summary>Mutable visual player state for a single guild</summary>
@@ -98,5 +116,6 @@ public class VisualPlayerStateManager
     {
         public ITextChannel? Channel;
         public IUserMessage? Message;
+        public DateTimeOffset? LastFailureNotice;
     }
 }
