@@ -96,12 +96,44 @@ public sealed class CustomLavaLinkPlayer(IPlayerProperties<CustomLavaLinkPlayer,
     /// <summary>Times a Plex track is played again after its stream fails to open, before it is skipped</summary>
     public const int MaxPlayRetries = 1;
 
+    /// <summary>At most one provider failure notice is posted per guild in this window</summary>
+    public static readonly TimeSpan PlaybackFailureNoticeWindow = TimeSpan.FromSeconds(60);
+
     /// <inheritdoc />
     protected override async ValueTask NotifyTrackExceptionAsync(ITrackQueueItem track, TrackException exception, CancellationToken cancellationToken = default)
     {
         await base.NotifyTrackExceptionAsync(track, exception, cancellationToken).ConfigureAwait(false);
         string where = track is CustomTrackQueueItem item ? PlexUrlHelper.Describe(item.SourceTrack) : track.Track?.Title ?? "Unknown Track";
         Logs.Warning($"[guild {GuildId}] Playback failed: {where}: {exception.Severity}: {exception.Message} ({exception.Cause})");
+        if (track is CustomTrackQueueItem failed)
+            NotifyProviderFailure(failed, exception.Message);
+    }
+
+    /// <summary>Posts the provider's explanation of a failed track in the player's channel, at most once per window per
+    /// guild. A failure the provider can't explain is only logged.</summary>
+    private void NotifyProviderFailure(CustomTrackQueueItem failed, string? errorMessage)
+    {
+        try
+        {
+            IMusicProvider? provider = serviceProvider.GetRequiredService<MusicProviderRegistry>().GetProvider(failed.SourceTrack.SourceSystem);
+            string? explanation = provider?.DescribePlaybackFailure(failed.SourceTrack, errorMessage);
+            if (string.IsNullOrWhiteSpace(explanation))
+                return;
+
+            DateTimeOffset now = serviceProvider.GetRequiredService<TimeProvider>().GetUtcNow();
+            if (!serviceProvider.GetRequiredService<VisualPlayerStateManager>().TryClaimFailureNotice(GuildId, now, PlaybackFailureNoticeWindow))
+            {
+                Logs.Debug($"[guild {GuildId}] Failure notice skipped: one was posted within {PlaybackFailureNoticeWindow.TotalSeconds:N0}s");
+                return;
+            }
+
+            string title = string.IsNullOrWhiteSpace(failed.Title) ? "Unknown Track" : failed.Title;
+            _ = NotifyChannelAsync("Track Skipped", $"**{title}** couldn't play. {explanation}", warning: true);
+        }
+        catch (Exception ex)
+        {
+            Logs.Warning($"[guild {GuildId}] Could not post the playback failure notice: {ex.Message}");
+        }
     }
 
     /// <inheritdoc />
@@ -253,14 +285,17 @@ public sealed class CustomLavaLinkPlayer(IPlayerProperties<CustomLavaLinkPlayer,
         && PlaybackEpoch == epoch
         && PlayerService.CurrentGeneration(GuildId) == generation;
 
-    /// <summary>Posts a short notice in the player's channel, deleted after 30 seconds</summary>
-    public async Task NotifyChannelAsync(string title, string description)
+    /// <summary>Posts a short notice in the player's channel, deleted after 30 seconds. Shown as a warning when warning is true</summary>
+    public async Task NotifyChannelAsync(string title, string description, bool warning = false)
     {
         try
         {
             ITextChannel? channel = serviceProvider.GetRequiredService<VisualPlayerStateManager>().GetChannel(GuildId);
             if (channel is null) return;
-            IUserMessage message = await channel.SendMessageAsync(components: Discord.Embeds.ComponentV2Builder.Info(title, description),
+            MessageComponent content = warning
+                ? Discord.Embeds.ComponentV2Builder.Warning(title, description)
+                : Discord.Embeds.ComponentV2Builder.Info(title, description);
+            IUserMessage message = await channel.SendMessageAsync(components: content,
                 flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
             _ = Task.Run(async () =>
             {
@@ -271,7 +306,7 @@ public sealed class CustomLavaLinkPlayer(IPlayerProperties<CustomLavaLinkPlayer,
         }
         catch (Exception ex)
         {
-            Logs.Debug($"[guild {GuildId}] Could not post channel notice: {ex.Message}");
+            Logs.Warning($"[guild {GuildId}] Could not post channel notice: {ex.Message}");
         }
     }
 

@@ -55,6 +55,10 @@ public interface IMusicProvider
     /// <summary>Get radio/similar tracks seeded from a track key. Returns empty if not supported.</summary>
     Task<List<Track>> GetRadioTracksAsync(string seedKey, CancellationToken cancellationToken = default) =>
         Task.FromResult(new List<Track>());
+
+    /// <summary>Returns a short user-facing explanation for this provider's track that failed to play, or null when
+    /// there is nothing useful to say. The text is shown in the player's channel.</summary>
+    string? DescribePlaybackFailure(Track track, string? errorMessage) => null;
 }
 
 /// <summary>Flags indicating which capabilities a music provider supports</summary>
