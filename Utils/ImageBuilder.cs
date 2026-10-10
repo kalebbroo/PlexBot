@@ -301,7 +301,8 @@ public static class ImageBuilder
     }
 
     // Places the baseline where the previous renderer put it. Its rule isn't exposed, so this is a fit: the font's
-    // ascent and descent centred in a one-em line, which matched within about 1px on Noto Sans and Noto Sans CJK.
+    // ascent and descent centred in a one-em line. That matches within 1px on Noto Sans; on Noto Sans CJK the artist
+    // line sits 3px lower.
     private static float BaselineOffset(SKFont font)
     {
         SKFontMetrics metrics = font.Metrics;
