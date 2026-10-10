@@ -147,8 +147,8 @@ public class PlexUrlTests
     [Fact]
     public void CacheKey_KeepsNonPlexUrlsWhole()
     {
-        Track track = new() { SourceSystem = "youtube", PlaybackUrl = "https://youtube.com/watch?v=x" };
-        Assert.Equal("https://youtube.com/watch?v=x", TrackResolverService.CacheKey(track));
+        Track track = new() { SourceSystem = "external", PlaybackUrl = "https://example.com/track/x" };
+        Assert.Equal("https://example.com/track/x", TrackResolverService.CacheKey(track));
     }
 
     [Theory]
@@ -165,7 +165,7 @@ public class PlexUrlTests
     public void PartId_ReadsThePartNumberOnly()
     {
         Assert.Equal("part 25631", PlexUrlHelper.PartId(new Track { SourceSystem = "plex", PlaybackUrl = Url }));
-        Assert.Equal("no part id", PlexUrlHelper.PartId(new Track { SourceSystem = "youtube", PlaybackUrl = "https://youtube.com/watch?v=x" }));
+        Assert.Equal("no part id", PlexUrlHelper.PartId(new Track { SourceSystem = "external", PlaybackUrl = "https://example.com/track/x" }));
         Assert.DoesNotContain("secret123", PlexUrlHelper.Describe(new Track { Title = "Song", PlaybackUrl = Url }));
     }
 
@@ -173,7 +173,7 @@ public class PlexUrlTests
     public void IsPlex_IgnoresCase()
     {
         Assert.True(new Track { SourceSystem = "Plex" }.IsPlex);
-        Assert.False(new Track { SourceSystem = "youtube" }.IsPlex);
+        Assert.False(new Track { SourceSystem = "external" }.IsPlex);
     }
 }
 

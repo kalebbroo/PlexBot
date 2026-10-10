@@ -18,7 +18,7 @@ public class CustomTrackQueueItem : ITrackQueueItem
     /// <summary>Provides access to the underlying Lavalink track object through the interface implementation</summary>
     LavalinkTrack? ITrackQueueItem.Track => Reference.Track;
 
-    /// <summary>The source track metadata from Plex/YouTube/etc.</summary>
+    /// <summary>The source track metadata from the originating provider.</summary>
     public Track SourceTrack { get; init; } = new();
 
     /// <summary>The Discord user who requested this track</summary>

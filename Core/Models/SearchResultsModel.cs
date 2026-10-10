@@ -20,7 +20,7 @@ public class SearchResults
     /// <summary>Collection of playlist matches from the search, representing user-curated collections that span across different artists and albums</summary>
     public List<Playlist> Playlists { get; set; } = new();
 
-    /// <summary>Identifies where these results originated from (plex, youtube, spotify, etc.) to help display appropriate context and controls</summary>
+    /// <summary>Identifies where these results originated from (for example, plex or an extension provider) to help display appropriate context and controls</summary>
     public string SourceSystem { get; set; } = "plex";
 
     /// <summary>Indicates whether any matching media was found across any category, used to determine whether to show results or an empty state message</summary>

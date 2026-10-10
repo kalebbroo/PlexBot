@@ -92,7 +92,7 @@ visualPlayer:
 The `/search` command returns interactive select menus:
 - Results are grouped by type (Artists, Albums, Tracks)
 - Select an item from the dropdown to play it or browse deeper
-- YouTube results appear as a separate menu when `source:youtube` is used
+- Results from an extension provider appear as a separate menu when that provider is picked in `mode`
 
 ## Required Bot Permissions
 

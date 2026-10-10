@@ -4,6 +4,7 @@ using PlexBot.Core.Models;
 using PlexBot.Core.Models.Media;
 using PlexBot.Core.Discord.Autocomplete;
 using PlexBot.Core.Discord.Embeds;
+using PlexBot.Core.Exceptions;
 using PlexBot.Core.Services.PlexApi;
 using PlexBot.Utils;
 
@@ -72,7 +73,8 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         catch (Exception ex)
         {
             Logs.Error($"Error in search command: {ex}");
-            try { await FollowupAsync(components: ComponentV2Builder.Error("Search Error", "An error occurred while searching. Please try again later."), ephemeral: true); }
+            string searchError = ex is PlexBotException botEx ? botEx.UserFriendlyMessage : "An error occurred while searching. Please try again later.";
+            try { await FollowupAsync(components: ComponentV2Builder.Error("Search Error", searchError), ephemeral: true); }
             catch { /* interaction may be dead */ }
         }
     }
@@ -507,7 +509,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         }
     }
 
-    /// <summary>Tries each registered provider's CanHandleUrl first (e.g. YouTube provider claims youtube.com),
+    /// <summary>Tries each registered provider's CanHandleUrl first (a provider claims the URLs it can handle),
     /// then falls back to generic Lavalink loading for unclaimed URLs</summary>
     public async Task HandleUrlPlaybackAsync(string url, Uri parsedUri, bool next)
     {
@@ -553,8 +555,8 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         catch (Exception ex)
         {
             Logs.Error($"Error playing URL: {ex.Message}");
-            await FollowupAsync(components: ComponentV2Builder.Error("Playback Error",
-                "An error occurred while loading this URL. Please try again."), ephemeral: true);
+            string urlError = ex is PlexBotException botEx ? botEx.UserFriendlyMessage : "An error occurred while loading this URL. Please try again.";
+            await FollowupAsync(components: ComponentV2Builder.Error("Playback Error", urlError), ephemeral: true);
         }
     }
 

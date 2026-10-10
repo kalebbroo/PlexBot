@@ -166,7 +166,7 @@ namespace PlexBot.Main
         }
 
         /// <summary>Registers the music provider registry and built-in Plex provider.
-        /// Additional providers (YouTube, SoundCloud, etc.) are loaded via extensions.</summary>
+        /// Additional providers are loaded via extensions.</summary>
         private static void AddMusicProviderServices(IServiceCollection services)
         {
             services.AddSingleton<MusicProviderRegistry>();

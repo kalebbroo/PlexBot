@@ -12,10 +12,6 @@ public class PlayerException : PlexBotException
     /// Useful for multi-server debugging and error reporting.</summary>
     public ulong? GuildId { get; }
 
-    /// <summary>Indicates whether this error is due to content requiring login credentials.
-    /// Used specifically for YouTube videos that need age verification or a sign-in.</summary>
-    public bool RequiresLogin { get; }
-
     /// <summary>Basic constructor - Use when you only have an error message without context.
     /// Example: throw new PlayerException("Unknown audio error occurred");</summary>
     /// <param name="message">The technical error message for logs</param>
@@ -23,7 +19,6 @@ public class PlayerException : PlexBotException
         : base(message, "An error occurred while playing audio. Please try again.")
     {
         Operation = "Unknown";
-        RequiresLogin = false;
     }
 
     /// <summary>Operation-specific constructor - Use when you know which operation failed.
@@ -34,7 +29,6 @@ public class PlayerException : PlexBotException
         : base(message, GetUserFriendlyMessage(operation))
     {
         Operation = operation;
-        RequiresLogin = false;
     }
 
     /// <summary>Operation-specific constructor with an explicit user-facing message, for failures
@@ -46,19 +40,6 @@ public class PlayerException : PlexBotException
         : base(message, userMessage)
     {
         Operation = operation;
-        RequiresLogin = false;
-    }
-
-    /// <summary>Login-required constructor - Use specifically for YouTube videos requiring login.
-    /// Example: throw new PlayerException("Age restricted video", "Play", true);</summary>
-    /// <param name="message">The technical error message for logs</param>
-    /// <param name="operation">The operation that failed (usually "Play")</param>
-    /// <param name="requiresLogin">Set to true to indicate content needs authentication</param>
-    public PlayerException(string message, string operation, bool requiresLogin)
-        : base(message, GetUserFriendlyMessage(operation, requiresLogin))
-    {
-        Operation = operation;
-        RequiresLogin = requiresLogin;
     }
 
     /// <summary>Server-specific constructor - Use for multi-server deployments to track errors by guild.
@@ -71,11 +52,9 @@ public class PlayerException : PlexBotException
     {
         Operation = operation;
         GuildId = guildId;
-        RequiresLogin = false;
     }
 
     /// <summary>Exception-wrapping constructor - Use when catching another exception during playback.
-    /// Automatically detects login requirements based on inner exception message.
     /// Example: catch(HttpException ex) { throw new PlayerException("Network error", "Play", ex); }</summary>
     /// <param name="message">The technical error message for logs</param>
     /// <param name="operation">The operation that failed (Connect, Play, Pause, etc.)</param>
@@ -84,7 +63,6 @@ public class PlayerException : PlexBotException
         : base(message, GetUserFriendlyMessage(operation), innerException)
     {
         Operation = operation;
-        RequiresLogin = innerException?.Message?.Contains("login", StringComparison.OrdinalIgnoreCase) ?? false;
     }
 
     /// <summary>Complete constructor - Use for maximum debugging context with server ID and original exception.
@@ -98,21 +76,14 @@ public class PlayerException : PlexBotException
     {
         Operation = operation;
         GuildId = guildId;
-        RequiresLogin = innerException?.Message?.Contains("login", StringComparison.OrdinalIgnoreCase) ?? false;
     }
 
     /// <summary>Maps technical operation names to user-friendly error messages.
-    /// Provides a special message for content that requires login credentials.
     /// Operation names should be one of: Connect, Play, Pause, Resume, Skip, Stop, Queue, Volume, Disconnect.</summary>
     /// <param name="operation">The operation name (must match one of the defined operations)</param>
-    /// <param name="requiresLogin">Whether the error is due to content requiring login credentials</param>
     /// <returns>A user-friendly error message appropriate for the specific situation</returns>
-    private static string GetUserFriendlyMessage(string operation, bool requiresLogin = false)
+    private static string GetUserFriendlyMessage(string operation)
     {
-        if (requiresLogin)
-        {
-            return "This video requires age verification or login and cannot be played.";
-        }
         return operation switch
         {
             "Connect" => "Failed to connect to the voice channel. Please check your permissions and try again.",

@@ -305,6 +305,17 @@ Only enable these if you hear stuttering.
 
 The [extensions system](./Docs/Extensions/CreatingExtensions.md) adds sources and commands without changing the core.
 
+### YouTube (extension)
+
+YouTube is not built into PlexBot. It comes from a separate extension, [PlexBot-YouTube-MusicProvider](https://github.com/kalebbroo/PlexBot-YouTube-MusicProvider). That extension needs Lavalink 4 with the youtube-plugin, which the extension configures itself.
+
+To install it, clone the extension into `Extensions/` and rebuild the stack:
+
+```bash
+git clone https://github.com/kalebbroo/PlexBot-YouTube-MusicProvider Extensions/PlexBot-YouTube-MusicProvider
+Install/start.sh --build
+```
+
 ---
 
 ## Support

@@ -109,7 +109,7 @@ Create a minimal `.csproj` that imports the shared props file. This gives your e
 ```
 
 That's it for project setup. `PlexBot.extension.props` handles:
-- Target framework (net9.0)
+- Target framework (net10.0)
 - Reference to the pre-built `PlexBot.dll` (via `HostOutputDir` passed at build time)
 - Shared NuGet packages (Discord.Net, Lavalink4NET, etc.) via `PlexBot.deps.props`
 - Build settings (nullable, implicit usings, etc.)
@@ -524,9 +524,9 @@ Sets up the build environment and references the host DLL. The `HostOutputDir` M
 
 ### `PlexBot.deps.props`
 
-Provides shared NuGet package references matching the host's versions (Discord.Net, Lavalink4NET, ImageSharp, etc.). These use `PrivateAssets="all"` so they aren't copied to extension output — the host already has them loaded at runtime.
+Provides shared NuGet package references matching the host's versions (Discord.Net, Lavalink4NET, ImageSharp, etc.). They aren't copied to extension output because `PlexBot.extension.props` sets `CopyLocalLockFileAssemblies` to `false`; the host already has them loaded at runtime.
 
-If you need a package not listed in `PlexBot.deps.props`, add it directly to your `.csproj`. If it's a private dependency (not shared with the host), it will be copied to your extension's output and loaded via the extension's `AssemblyLoadContext`.
+If you need a package not listed in `PlexBot.deps.props`, add it directly to your `.csproj`. If it's a private dependency (not shared with the host), its DLL is not copied to your extension's output, because `PlexBot.extension.props` sets `CopyLocalLockFileAssemblies` to `false`. To copy package DLLs, add `<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>` to your `.csproj` after the `<Import>` line. This also copies the shared packages.
 
 ## Best Practices
 
