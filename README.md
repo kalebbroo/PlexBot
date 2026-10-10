@@ -49,7 +49,7 @@ Extensions add music sources and slash commands without changing PlexBot's core.
 
 **Official extensions**
 
-- **[YouTube Music Provider](https://github.com/kalebbroo/PlexBot-YouTube-MusicProvider)** adds YouTube to `/search` and plays YouTube links through Lavalink's YouTube plugin. It lives in its own repository, so clone it into `Extensions/`. Its optional sign-in (OAuth) is off by default; read [its OAuth notes](https://github.com/kalebbroo/PlexBot-YouTube-MusicProvider#optional-oauth) before you turn it on.
+- **[YouTube Music Provider](https://github.com/kalebbroo/PlexBot-YouTube-MusicProvider)** adds YouTube to `/search` and plays YouTube links through Lavalink's YouTube plugin. It lives in its own repository, so clone it into `Extensions/`. Its optional sign-in (OAuth) is off by default; read [its OAuth notes](https://github.com/kalebbroo/PlexBot-YouTube-MusicProvider#set-up-oauth-step-by-step) before you turn it on.
 
 **To install an extension**, clone it into `Extensions/` and rebuild the stack:
 
