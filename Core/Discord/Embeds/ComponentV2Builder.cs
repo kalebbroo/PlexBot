@@ -95,7 +95,7 @@ public static class ComponentV2Builder
         return new ComponentBuilderV2().WithContainer(container).Build();
     }
 
-    /// <summary>Builds the modern visual player layout with the ImageSharp-generated image</summary>
+    /// <summary>Builds the modern visual player layout with the rendered player image</summary>
     public static MessageComponent BuildModernPlayer(string? statusLine, ComponentBuilder buttons)
     {
         var container = new ContainerBuilder()

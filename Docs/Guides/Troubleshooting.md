@@ -55,7 +55,7 @@ See the [Performance Tuning](../../README.md#performance-tuning-audio-stuttering
 
 ### No Text on Player Images
 
-The modern visual player renders text with ImageSharp, which requires fonts installed in the Docker container.
+The modern visual player renders text with SkiaSharp, which requires fonts installed in the Docker container.
 
 - Rebuild the container: `docker-compose up -d --build`
 - The Dockerfile installs DejaVu, Liberation, Noto (including CJK and emoji) fonts automatically
@@ -65,7 +65,7 @@ The modern visual player renders text with ImageSharp, which requires fonts inst
 
 - Ensure `visualPlayer.useModernPlayer` is `true` in `config.fds`
 - Make sure the bot has **Attach Files** permission in the channel
-- Check logs for ImageSharp errors
+- Check logs for SkiaSharp errors
 
 ### Progress Bar Missing or Broken
 

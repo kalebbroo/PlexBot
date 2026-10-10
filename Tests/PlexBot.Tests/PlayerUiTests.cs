@@ -5,8 +5,7 @@ using PlexBot.Core.Discord.Design;
 using PlexBot.Core.Discord.Embeds;
 using PlexBot.Core.Models.Players;
 using PlexBot.Utils;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
+using SkiaSharp;
 using Xunit;
 
 namespace PlexBot.Tests;
@@ -27,20 +26,20 @@ public class CornerMaskTests
     [Fact]
     public void CornerMask_IsRoundedAtEveryCornerAndSolidInTheMiddle()
     {
-        using Image<Rgba32> mask = ImageBuilder.BuildCornerMask(800, 400, 24f);
+        using SKBitmap mask = ImageBuilder.BuildCornerMask(800, 400, 24f);
 
         // The corners are cut off: the very corner pixel and its near neighbours sit outside the 24px arc
-        Assert.Equal(0, mask[0, 0].A);
-        Assert.Equal(0, mask[799, 0].A);
-        Assert.Equal(0, mask[0, 399].A);
-        Assert.Equal(0, mask[799, 399].A);
-        Assert.Equal(0, mask[1, 1].A);
+        Assert.Equal(0, mask.GetPixel(0, 0).Alpha);
+        Assert.Equal(0, mask.GetPixel(799, 0).Alpha);
+        Assert.Equal(0, mask.GetPixel(0, 399).Alpha);
+        Assert.Equal(0, mask.GetPixel(799, 399).Alpha);
+        Assert.Equal(0, mask.GetPixel(1, 1).Alpha);
 
         // Along the edges, away from the corners, the mask is solid
-        Assert.Equal(255, mask[400, 0].A);
-        Assert.Equal(255, mask[400, 399].A);
-        Assert.Equal(255, mask[0, 200].A);
-        Assert.Equal(255, mask[400, 200].A);
+        Assert.Equal(255, mask.GetPixel(400, 0).Alpha);
+        Assert.Equal(255, mask.GetPixel(400, 399).Alpha);
+        Assert.Equal(255, mask.GetPixel(0, 200).Alpha);
+        Assert.Equal(255, mask.GetPixel(400, 200).Alpha);
     }
 }
 

@@ -59,7 +59,7 @@ Rules for the images:
 
 ## Making your own set
 
-The generator in `Tools/EmojiGenerator` draws the set with ImageSharp. It also writes a contact sheet so you can
+The generator in `Tools/EmojiGenerator` draws the set with SkiaSharp. It also writes a contact sheet so you can
 check the art at Discord's real sizes (44px and 22px) on a dark background before the bot uploads anything:
 
 ```bash

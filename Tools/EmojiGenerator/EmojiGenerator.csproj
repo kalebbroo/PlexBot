@@ -8,11 +8,6 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<PackageReference Include="SixLabors.ImageSharp" Version="3.1.11" />
-		<PackageReference Include="SixLabors.ImageSharp.Drawing" Version="2.1.7" />
-	</ItemGroup>
-
-	<ItemGroup>
 		<ProjectReference Include="..\..\PlexBot.csproj" />
 	</ItemGroup>
 
