@@ -12,6 +12,7 @@ controls, Plex's sonic features (similar tracks, radio, and sonic adventures), a
 ## Contents
 
 - [Features](#features)
+- [Extensions](#extensions)
 - [Your first five minutes](#your-first-five-minutes)
 - [The player](#the-player)
 - [Static player channel](#static-player-channel)
@@ -22,7 +23,6 @@ controls, Plex's sonic features (similar tracks, radio, and sonic adventures), a
 - [Custom emoji](#custom-emoji)
 - [Remote Lavalink (advanced)](#remote-lavalink-advanced)
 - [Performance tuning](#performance-tuning-audio-stuttering)
-- [Extensions](#extensions)
 - [Support](#support)
 - [Planned](#planned)
 - [License](#license)
@@ -40,6 +40,26 @@ controls, Plex's sonic features (similar tracks, radio, and sonic adventures), a
 - **Help inside Discord.** `/help` opens a menu of topics, each with a screenshot.
 - **Extensions.** Add sources or commands with the [extensions system](./Docs/Extensions/CreatingExtensions.md).
 - **Docker install.** The install script runs PlexBot and Lavalink together.
+
+---
+
+## Extensions
+
+Extensions add music sources and slash commands without changing PlexBot's core. Each one is a folder in `Extensions/` with its own `.csproj`. At startup the bot builds each enabled folder with the .NET SDK (the Docker image includes it), loads it, and registers its commands. To switch one off, rename its folder with a `.disabled` suffix.
+
+**Official extensions**
+
+- **[YouTube Music Provider](https://github.com/kalebbroo/PlexBot-YouTube-MusicProvider)** adds YouTube to `/search` and plays YouTube links through Lavalink's YouTube plugin. It lives in its own repository, so clone it into `Extensions/`. Its optional sign-in (OAuth) is off by default; read [its OAuth notes](https://github.com/kalebbroo/PlexBot-YouTube-MusicProvider#optional-oauth) before you turn it on.
+
+**To install an extension**, clone it into `Extensions/` and rebuild the stack:
+
+```bash
+git clone https://github.com/kalebbroo/PlexBot-YouTube-MusicProvider.git Extensions/PlexBot-YouTube-MusicProvider
+Install/start.sh --build
+```
+
+- **[Build your own extension (tutorial)](./Docs/Extensions/Build-Your-First-Extension.md)** is a step-by-step guide that builds a working `/hello` command from nothing.
+- **[Full extension guide](./Docs/Extensions/CreatingExtensions.md)** is the complete reference.
 
 ---
 
@@ -298,12 +318,6 @@ PlexBot doesn't touch the audio stream, so these settings are for Lavalink.
 - **CPU pinning.** Uncomment `cpuset` and `cpu_shares` in [`Install/Docker/docker-compose.yml`](./Install/Docker/docker-compose.yml) to give Lavalink dedicated cores.
 
 Only enable these if you hear stuttering.
-
----
-
-## Extensions
-
-The [extensions system](./Docs/Extensions/CreatingExtensions.md) adds sources and commands without changing the core.
 
 ---
 
