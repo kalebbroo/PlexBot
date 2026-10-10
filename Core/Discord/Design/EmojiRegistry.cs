@@ -41,6 +41,12 @@ public sealed class EmojiRegistry
     /// <summary>Number of application emoji known to the registry</summary>
     public int Count => ByName.Count;
 
+    // Completes when a sync has finished, whether or not it worked. Cards built before then can't use the synced emoji.
+    private readonly TaskCompletionSource _syncFinished = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    // Names already reported as falling back to unicode, so each one is logged once rather than for every button
+    private readonly ConcurrentDictionary<string, bool> _reportedFallbacks = new(StringComparer.Ordinal);
+
     /// <summary>Decides what to do with one image, from whether its name is on the application, the hash recorded
     /// when it was last uploaded (null if none), and the hash of the image on disk</summary>
     public static EmojiSyncAction Decide(bool onApplication, string? recordedHash, string currentHash)
@@ -136,12 +142,36 @@ public sealed class EmojiRegistry
         File.Move(temporary, hashFile, overwrite: true);
     }
 
+    /// <summary>Called when a sync has finished, whether it worked or not, so anything waiting for the emoji can go ahead</summary>
+    public void MarkSyncFinished() => _syncFinished.TrySetResult();
+
+    /// <summary>Waits for a sync to finish. Returns false if it has not finished within <paramref name="timeout"/>.</summary>
+    public async Task<bool> WaitForSyncAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await _syncFinished.Task.WaitAsync(timeout, cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+        catch (TimeoutException)
+        {
+            return false;
+        }
+    }
+
     /// <summary>The synced emoji for a name, or null when it is not on the application</summary>
     public Emote? Get(string name) => ByName.TryGetValue(name, out Emote? emote) ? emote : null;
 
     /// <summary>The emoji as text for a message body: <c>&lt;:name:id&gt;</c> when synced, otherwise the unicode fallback</summary>
     public string Text(string name, string unicodeFallback) => Resolve(name, unicodeFallback).ToString();
 
-    /// <summary>The synced emoji for a name, or the unicode fallback when it is not available</summary>
-    public IEmote Resolve(string name, string unicodeFallback) => Get(name) ?? (IEmote)new Emoji(unicodeFallback);
+    /// <summary>The synced emoji for a name, or the unicode fallback when it is not available. A missing name is logged once.</summary>
+    public IEmote Resolve(string name, string unicodeFallback)
+    {
+        Emote? emote = Get(name);
+        if (emote is not null) return emote;
+        if (_reportedFallbacks.TryAdd(name, true))
+            Logs.Warning($"Application emoji :{name}: is not available, so the unicode fallback is shown");
+        return new Emoji(unicodeFallback);
+    }
 }

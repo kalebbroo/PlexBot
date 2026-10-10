@@ -5,6 +5,7 @@ using PlexBot.Core.Models.Players;
 using PlexBot.Core.Services.Music;
 using PlexBot.Utils;
 using PlexBot.Utils.Http;
+using PlexBot.Core.Discord.Design;
 
 namespace PlexBot.Main;
 
@@ -24,6 +25,10 @@ public class BotHostedService(DiscordSocketClient client, DiscordEventHandler ev
             ?? throw new InvalidOperationException("DISCORD_TOKEN environment variable is not set");
 
     private readonly TaskCompletionSource _gatewayReady = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    // Longest the idle card waits for the application emoji sync. Past this it posts with unicode fallbacks and says so.
+    private static readonly TimeSpan EmojiSyncWait = TimeSpan.FromSeconds(60);
+
     private CancellationTokenSource? _connectCts;
     private Task? _connectTask;
 
@@ -219,6 +224,14 @@ public class BotHostedService(DiscordSocketClient client, DiscordEventHandler ev
 
         ulong guildId = textChannel.Guild.Id;
         stateManager.SetChannel(guildId, textChannel);
+
+        // The idle card keeps the buttons it was built with until the next player event, so it is built after the
+        // application emoji have synced. A card posted first kept unicode fallbacks for the rest of the session.
+        EmojiRegistry emojis = serviceProvider.GetRequiredService<EmojiRegistry>();
+        if (!await emojis.WaitForSyncAsync(EmojiSyncWait, ct))
+        {
+            Logs.Warning($"Application emoji still syncing after {EmojiSyncWait.TotalSeconds:N0}s; the idle card uses unicode fallbacks until its next update");
+        }
 
         Logs.Info("Cleaning up static player channel...");
         var messages = await textChannel.GetMessagesAsync(50).FlattenAsync();

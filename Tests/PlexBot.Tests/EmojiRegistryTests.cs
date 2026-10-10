@@ -70,4 +70,32 @@ public class EmojiRegistryTests
             File.Delete(file);
         }
     }
+
+    [Fact]
+    public async Task WaitForSync_TimesOut_WhenNoSyncFinishes()
+    {
+        EmojiRegistry registry = new();
+
+        Assert.False(await registry.WaitForSyncAsync(TimeSpan.FromMilliseconds(50)));
+    }
+
+    [Fact]
+    public async Task WaitForSync_ReturnsAsSoonAsASyncFinishes()
+    {
+        EmojiRegistry registry = new();
+        registry.MarkSyncFinished();
+
+        Assert.True(await registry.WaitForSyncAsync(TimeSpan.FromSeconds(5)));
+    }
+
+    [Fact]
+    public void Resolve_UsesTheSyncedEmoji_WhenItIsOnTheApplication()
+    {
+        EmojiRegistry registry = new();
+        registry.ByName["pb_pause"] = Emote.Parse("<:pb_pause:123456789012345678>");
+
+        Emote emote = Assert.IsAssignableFrom<Emote>(registry.Resolve("pb_pause", "\u23F8\uFE0F"));
+
+        Assert.Equal(123456789012345678UL, emote.Id);
+    }
 }
