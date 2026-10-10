@@ -394,12 +394,16 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
     {
         await RespondAsync(components: ComponentV2Builder.Info("Loading", "Loading playlist..."), ephemeral: true);
         IUserMessage ackMessage = await GetOriginalResponseAsync();
+        // Set once a final card has gone out. The finally replaces the loading card if none did.
+        bool cardFinal = false;
+        Task ShowErrorAsync() => ackMessage.ModifyAsync(msg => { msg.Components = ComponentV2Builder.Error("Playlist Error", "An error occurred while loading the playlist. Please try again later."); msg.Embed = null; msg.Flags = MessageFlags.ComponentsV2; });
         try
         {
             Logs.Debug($"Loading playlist: {playlist}, shuffle: {shuffle}");
             if (string.IsNullOrWhiteSpace(playlist))
             {
                 await ackMessage.ModifyAsync(msg => { msg.Components = ComponentV2Builder.Error("Invalid Playlist", "Please select a playlist."); msg.Embed = null; msg.Flags = MessageFlags.ComponentsV2; });
+                cardFinal = true;
                 return;
             }
 
@@ -414,6 +418,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
                 if (playlistDetails is null)
                 {
                     await ackMessage.ModifyAsync(msg => { msg.Components = ComponentV2Builder.Error("Not Found", "Custom playlist not found."); msg.Embed = null; msg.Flags = MessageFlags.ComponentsV2; });
+                    cardFinal = true;
                     return;
                 }
             }
@@ -425,6 +430,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
             if (playlistDetails.Tracks.Count == 0)
             {
                 await ackMessage.ModifyAsync(msg => { msg.Components = ComponentV2Builder.Info("Empty Playlist", $"Playlist '{playlistDetails.Title}' is empty."); msg.Embed = null; msg.Flags = MessageFlags.ComponentsV2; });
+                cardFinal = true;
                 return;
             }
             List<Track> tracks = playlistDetails.Tracks;
@@ -433,12 +439,31 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
                 Random rng = new();
                 tracks = [.. tracks.OrderBy(x => rng.Next())];
             }
+            // AddToQueueAsync replaces the card with its own result before it returns (the list is never empty here)
             await playerService.AddToQueueAsync(Context.Interaction, tracks, next);
+            cardFinal = true;
         }
         catch (Exception ex)
         {
             Logs.Error($"Error in playlist command: {ex.Message}");
-            await ackMessage.ModifyAsync(msg => { msg.Components = ComponentV2Builder.Error("Playlist Error", "An error occurred while loading the playlist. Please try again later."); msg.Embed = null; msg.Flags = MessageFlags.ComponentsV2; });
+            await ShowErrorAsync();
+            cardFinal = true;
+        }
+        finally
+        {
+            // Reached with no final card only when the error card itself failed to send. One more attempt is made here,
+            // and a failure is logged rather than thrown.
+            if (!cardFinal)
+            {
+                try
+                {
+                    await ShowErrorAsync();
+                }
+                catch (Exception ex)
+                {
+                    Logs.Warning($"Could not replace the playlist loading card: {ex.Message}");
+                }
+            }
         }
     }
 
