@@ -500,7 +500,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
 
             await Context.Interaction.ModifyOriginalResponseAsync(msg =>
             {
-                msg.Components = ComponentV2Builder.Success("Radio Tracks Added", $"Added {tracks.Count} radio tracks to the queue.");
+                msg.Components = ComponentV2Builder.Success("Radio Tracks Queued", $"Queued {tracks.Count} radio tracks; any that can't load are skipped.");
                 msg.Embed = null;
                 msg.Flags = MessageFlags.ComponentsV2;
             });
