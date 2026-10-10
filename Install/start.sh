@@ -59,6 +59,9 @@ fi
 
 mkdir -p "$ROOT_DIR/data" "$ROOT_DIR/logs"
 
+# Clone the extensions listed in Install/extensions.txt that are missing, so their config fragments are merged below
+"$SCRIPT_DIR/sync-extensions.sh" clone
+
 # Regenerate the Lavalink config from base + extension fragments (same as linux-install.sh)
 echo "Generating Lavalink configuration..."
 docker run --rm --entrypoint sh \
@@ -67,6 +70,9 @@ docker run --rm --entrypoint sh \
     -v "$DOCKER_DIR/generate-lavalink-config.sh:/config/generate.sh:ro" \
     -v "$DOCKER_DIR:/output" \
     mikefarah/yq:latest /config/generate.sh /extensions /output /config/base.yml
+
+# Download any Lavalink plugin the config declares that is missing, before Lavalink starts
+"$SCRIPT_DIR/sync-extensions.sh" plugins
 
 if [ "${1:-}" = "--build" ]; then
     echo "Starting PlexBot stack (rebuilding bot image)..."

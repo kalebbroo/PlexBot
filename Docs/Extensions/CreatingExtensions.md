@@ -499,8 +499,12 @@ Extensions are distributed as **source code**, not pre-compiled DLLs. PlexBot bu
 ### For distribution
 
 1. Share your extension folder (the directory with `.csproj` and source files)
-2. Users place it under their `Extensions/` directory
+2. Users place it under their `Extensions/` directory, or list its git URL in `Install/extensions.txt` (one line: `<git URL> <folder name>`). `Install/start.sh` then clones it when the folder is missing.
 3. PlexBot builds and loads it on next startup
+
+### Lavalink plugins
+
+If your extension needs a Lavalink plugin, ship a `lavalink.plugin.yml` in its folder with a `plugin:` dependency (see the YouTube extension for an example). On start, `Install/start.sh` merges that fragment into the Lavalink config and downloads the plugin jar into `Install/Docker/plugins/` when it is missing, as your user. Lavalink cannot write to that folder itself. If a plugin cannot be downloaded, the start stops with the reason, because Lavalink would fail the same way.
 
 ### Disabling an extension
 
@@ -526,9 +530,9 @@ Sets up the build environment and references the host DLL. The `HostOutputDir` M
 
 ### `PlexBot.deps.props`
 
-Provides shared NuGet package references matching the host's versions (Discord.Net, Lavalink4NET, ImageSharp, etc.). These use `PrivateAssets="all"` so they aren't copied to extension output — the host already has them loaded at runtime.
+Provides shared NuGet package references matching the host's versions (Discord.Net, Lavalink4NET, ImageSharp, etc.). They aren't copied to extension output because `PlexBot.extension.props` sets `CopyLocalLockFileAssemblies` to `false`; the host already has them loaded at runtime.
 
-If you need a package not listed in `PlexBot.deps.props`, add it directly to your `.csproj`. If it's a private dependency (not shared with the host), it will be copied to your extension's output and loaded via the extension's `AssemblyLoadContext`.
+If you need a package not listed in `PlexBot.deps.props`, add it directly to your `.csproj`. If it's a private dependency (not shared with the host), its DLL is not copied to your extension's output, because `PlexBot.extension.props` sets `CopyLocalLockFileAssemblies` to `false`. To copy package DLLs, add `<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>` to your `.csproj` after the `<Import>` line. This also copies the shared packages.
 
 ## Best Practices
 

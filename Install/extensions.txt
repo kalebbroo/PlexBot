@@ -1,0 +1,4 @@
+# Extensions that Install/start.sh clones into Extensions/ when the folder is missing.
+# One per line: <git URL> <folder name>
+# A folder that already exists is left alone. Folders with no remote of their own are not listed here.
+https://github.com/kalebbroo/PlexBot-YouTube-MusicProvider.git PlexBot-YouTube-MusicProvider

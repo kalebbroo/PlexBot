@@ -7,10 +7,10 @@ namespace PlexBot.Core.Services.Music;
 /// Extensions implement this interface to add new music providers.</summary>
 public interface IMusicProvider
 {
-    /// <summary>Unique identifier for this provider (e.g., "plex", "youtube", "soundcloud")</summary>
+    /// <summary>Unique identifier for this provider (e.g., "plex")</summary>
     string Id { get; }
 
-    /// <summary>Display name shown in autocomplete and UI (e.g., "Plex", "YouTube")</summary>
+    /// <summary>Display name shown in autocomplete and UI (e.g., "Plex")</summary>
     string DisplayName { get; }
 
     /// <summary>Whether this provider is currently available and configured</summary>
@@ -43,7 +43,7 @@ public interface IMusicProvider
     /// <summary>Get playlist details including tracks. Returns null if not supported.</summary>
     Task<Playlist?> GetPlaylistDetailsAsync(string playlistKey, CancellationToken cancellationToken = default);
 
-    /// <summary>Check if this provider can handle a given URL (e.g., YouTube claims youtube.com URLs).
+    /// <summary>Check if this provider can handle a given URL (e.g., by claiming its host).
     /// Providers that return true should implement ResolveUrlAsync. Default: false.</summary>
     bool CanHandleUrl(Uri uri) => false;
 
@@ -55,6 +55,10 @@ public interface IMusicProvider
     /// <summary>Get radio/similar tracks seeded from a track key. Returns empty if not supported.</summary>
     Task<List<Track>> GetRadioTracksAsync(string seedKey, CancellationToken cancellationToken = default) =>
         Task.FromResult(new List<Track>());
+
+    /// <summary>Returns a short user-facing explanation for this provider's track that failed to play, or null when
+    /// there is nothing useful to say. The text is shown in the player's channel.</summary>
+    string? DescribePlaybackFailure(Track track, string? errorMessage) => null;
 }
 
 /// <summary>Flags indicating which capabilities a music provider supports</summary>

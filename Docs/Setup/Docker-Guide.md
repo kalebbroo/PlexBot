@@ -19,7 +19,7 @@ PlexBot/
 │   ├── docker-compose.yml      # Orchestrates PlexBot + Lavalink
 │   ├── lavalink.application.yml  # Lavalink server config
 │   ├── startup.sh              # Container entrypoint
-│   └── plugins/                # Lavalink plugins (YouTube, etc.)
+│   └── plugins/                # Lavalink plugins (added by extensions)
 ├── .env                        # Secrets (tokens, passwords)
 ├── config.fds                  # Application settings (auto-created if missing)
 └── logs/                       # Persisted log files

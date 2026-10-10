@@ -94,17 +94,11 @@ public class TrackResolverService(IAudioService audioService, PlexStreamGate ple
         return new TrackResolution(null, LoadOutcome.Retriable);
     }
 
-    /// <summary>Loads a non-Plex URL (YouTube and other providers): one load, then a YouTube search fallback</summary>
+    /// <summary>Loads a non-Plex URL with one Lavalink load.</summary>
     public async Task<TrackResolution> LoadOtherAsync(Track track, CancellationToken cancellationToken)
     {
         (TrackLoadResult? result, bool timedOut) = await LoadResultWithTimeoutAsync(track.PlaybackUrl,
             new TrackLoadOptions { SearchMode = TrackSearchMode.None }, cancellationToken).ConfigureAwait(false);
-
-        if (result?.Track is null && track.SourceSystem.Equals("youtube", StringComparison.OrdinalIgnoreCase))
-        {
-            (result, timedOut) = await LoadResultWithTimeoutAsync(track.PlaybackUrl,
-                new TrackLoadOptions { SearchMode = TrackSearchMode.YouTube }, cancellationToken).ConfigureAwait(false);
-        }
 
         LoadOutcome outcome = PlexLoadRetryPolicy.Classify(result?.Track is not null, result?.Exception is not null, timedOut);
         return new TrackResolution(result?.Track, outcome);

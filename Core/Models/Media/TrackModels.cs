@@ -43,7 +43,7 @@ public class Track
     /// <summary>Source-specific key or identifier used to retrieve this track from the source API for playback</summary>
     public string SourceKey { get; set; } = string.Empty;
 
-    /// <summary>Original source system that provided this track data (e.g., "plex", "spotify", "youtube")</summary>
+    /// <summary>Original source system that provided this track data (e.g., "plex", "spotify")</summary>
     public string SourceSystem { get; set; } = "plex";
 
     /// <summary>True when the track streams from a Plex server, so its loads go through the shared Plex gate and retries</summary>
@@ -56,7 +56,7 @@ public class Track
         return $"{Title} by {Artist} ({DurationDisplay})";
     }
 
-    /// <summary>Creates a new Track instance from a direct playback URL for quick creation from external sources like YouTube</summary>
+    /// <summary>Creates a new Track instance from a direct playback URL for quick creation from external sources</summary>
     /// <param name="title">Title of the track</param>
     /// <param name="artist">Artist name</param>
     /// <param name="playbackUrl">Direct URL for playback</param>

@@ -118,12 +118,18 @@ public sealed class QueueResolveService(IAudioService audioService, ITrackResolv
             return false;
 
         // Re-read the queue on every pass, so shuffle, remove, clear and replace never leave stale positions
+        int removed = 0;
         foreach (CustomTrackQueueItem item in SelectWindow(player.Queue, options.ResolveAhead))
         {
             worker.Token.ThrowIfCancellationRequested();
-            if (player.Queue.Contains(item))
-                await worker.ResolveAsync(player, item).ConfigureAwait(false);
+            if (!player.Queue.Contains(item))
+                continue;
+            await worker.ResolveAsync(player, item).ConfigureAwait(false);
+            if (item.ResolveFailed && !player.Queue.Contains(item))
+                removed++;
         }
+        if (removed > 0)
+            Logs.Warning($"[guild {worker.GuildId}] Removed {removed} queued track(s) that could not load");
         return true;
     }
 

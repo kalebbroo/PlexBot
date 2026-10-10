@@ -1,4 +1,5 @@
 ﻿using PlexBot.Core.Models.Media;
+using PlexBot.Core.Services.LavaLink;
 
 namespace PlexBot.Core.Services;
 
@@ -13,6 +14,11 @@ public interface IPlayerService
     /// <exception cref="PlayerException">Thrown when voice connection fails or the player cannot be initialized properly</exception>
     Task<QueuedLavalinkPlayer?> GetPlayerAsync(IDiscordInteraction interaction, bool connectToVoiceChannel = true,
         CancellationToken cancellationToken = default);
+
+    /// <summary>Returns the guild's player from the local cache only. It makes no Lavalink or voice call, so it is fast enough
+    /// to answer an interaction within Discord's response window.</summary>
+    /// <returns>The cached player, or null when the guild has none</returns>
+    CustomLavaLinkPlayer? TryGetCachedPlayer(ulong guildId);
 
     /// <summary>Initiates playback of a single track, handling all aspects from source retrieval to streaming setup</summary>
     /// <param name="interaction">The Discord interaction providing guild and channel context for the playback</param>

@@ -85,7 +85,7 @@ public class PlaylistAutocompleteHandler : AutocompleteHandler
 }
 
 /// <summary>Unified search mode autocomplete that combines Plex sonic features with
-/// dynamically registered extension providers (YouTube, SoundCloud, etc.) into one dropdown</summary>
+/// dynamically registered extension providers into one dropdown</summary>
 public class SearchModeAutocompleteHandler : AutocompleteHandler
 {
     private static readonly List<(string Name, string Value)> BuiltInModes =

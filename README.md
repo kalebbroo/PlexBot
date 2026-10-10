@@ -49,7 +49,7 @@ Extensions add music sources and slash commands without changing PlexBot's core.
 
 **Official extensions**
 
-- **[YouTube Music Provider](https://github.com/kalebbroo/PlexBot-YouTube-MusicProvider)** adds YouTube to `/search` and plays YouTube links through Lavalink's YouTube plugin. It lives in its own repository, so clone it into `Extensions/`. Its optional sign-in (OAuth) is off by default; read [its OAuth notes](https://github.com/kalebbroo/PlexBot-YouTube-MusicProvider#set-up-oauth-step-by-step) before you turn it on.
+- **[YouTube Music Provider](https://github.com/kalebbroo/PlexBot-YouTube-MusicProvider)** adds YouTube to `/search` and plays YouTube links through Lavalink's YouTube plugin, which the extension configures itself. It needs Lavalink 4, which the Docker stack already runs. It lives in its own repository, so clone it into `Extensions/`. Its optional sign-in (OAuth) is off by default; read [its OAuth notes](https://github.com/kalebbroo/PlexBot-YouTube-MusicProvider#set-up-oauth-step-by-step) before you turn it on.
 
 **To install an extension**, clone it into `Extensions/` and rebuild the stack:
 
@@ -57,6 +57,8 @@ Extensions add music sources and slash commands without changing PlexBot's core.
 git clone https://github.com/kalebbroo/PlexBot-YouTube-MusicProvider.git Extensions/PlexBot-YouTube-MusicProvider
 Install/start.sh --build
 ```
+
+`Install/start.sh` also clones each extension listed in [`Install/extensions.txt`](./Install/extensions.txt) whose folder is missing. The YouTube extension is listed there, so the commands above are only the manual route.
 
 - **[Build your own extension (tutorial)](./Docs/Extensions/Build-Your-First-Extension.md)** is a step-by-step guide that builds a working `/hello` command from nothing.
 - **[Full extension guide](./Docs/Extensions/CreatingExtensions.md)** is the complete reference.
