@@ -46,6 +46,10 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
         return player;
     }
 
+    /// <inheritdoc />
+    public CustomLavaLinkPlayer? TryGetCachedPlayer(ulong guildId) =>
+        audioService.Players.TryGetPlayer<CustomLavaLinkPlayer>(guildId, out CustomLavaLinkPlayer? player) ? player : null;
+
     /// <summary>Retrieves the guild's player and returns the reason it could not be retrieved, if it could not.
     /// Does not send any Discord response: callers decide how to report the failure, once.</summary>
     private async Task<(QueuedLavalinkPlayer? Player, string? Failure)> TryGetPlayerAsync(IDiscordInteraction interaction,
