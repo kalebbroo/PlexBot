@@ -497,8 +497,12 @@ Extensions are distributed as **source code**, not pre-compiled DLLs. PlexBot bu
 ### For distribution
 
 1. Share your extension folder (the directory with `.csproj` and source files)
-2. Users place it under their `Extensions/` directory
+2. Users place it under their `Extensions/` directory, or list its git URL in `Install/extensions.txt` (one line: `<git URL> <folder name>`). `Install/start.sh` then clones it when the folder is missing.
 3. PlexBot builds and loads it on next startup
+
+### Lavalink plugins
+
+If your extension needs a Lavalink plugin, ship a `lavalink.plugin.yml` in its folder with a `plugin:` dependency (see the YouTube extension for an example). On start, `Install/start.sh` merges that fragment into the Lavalink config and downloads the plugin jar into `Install/Docker/plugins/` when it is missing, as your user. Lavalink cannot write to that folder itself. If a plugin cannot be downloaded, the start stops with the reason, because Lavalink would fail the same way.
 
 ### Disabling an extension
 

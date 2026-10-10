@@ -34,6 +34,9 @@ echo "Using compose command: $COMPOSE"
 # Create plugins directory for Lavalink
 mkdir -p "$DOCKER_DIR/plugins"
 
+# Clone the extensions listed in Install/extensions.txt that are missing, so their config fragments are merged below
+"$SCRIPT_DIR/sync-extensions.sh" clone
+
 # Generate Lavalink config from base template + extension plugin fragments.
 # Uses the same mikefarah/yq Docker image that docker-compose uses for the init container.
 # This always regenerates so adding/removing extensions is picked up on re-install.
@@ -44,6 +47,9 @@ docker run --rm --entrypoint sh \
     -v "$DOCKER_DIR/generate-lavalink-config.sh:/config/generate.sh:ro" \
     -v "$DOCKER_DIR:/output" \
     mikefarah/yq:latest /config/generate.sh /extensions /output /config/base.yml
+
+# Download any Lavalink plugin the config declares that is missing, before Lavalink starts
+"$SCRIPT_DIR/sync-extensions.sh" plugins
 
 # Check if .env file exists
 if [ ! -f "$ROOT_DIR/.env" ]; then
