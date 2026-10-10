@@ -507,7 +507,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         }
     }
 
-    /// <summary>Tries each registered provider's CanHandleUrl first (e.g. YouTube provider claims youtube.com),
+    /// <summary>Tries each registered provider's CanHandleUrl first (a provider claims the URLs it can handle),
     /// then falls back to generic Lavalink loading for unclaimed URLs</summary>
     public async Task HandleUrlPlaybackAsync(string url, Uri parsedUri, bool next)
     {
