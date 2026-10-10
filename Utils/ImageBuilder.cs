@@ -300,8 +300,8 @@ public static class ImageBuilder
         canvas.DrawText(text, new SKPoint(x, y + BaselineOffset(font)), SKTextAlign.Left, font, paint);
     }
 
-    // The card's text was laid out with the font's ascent and descent centred in a line one em tall. Skia's own
-    // ascent is taller than that for these fonts, so the baseline is worked out this way to keep the layout.
+    // Places the baseline where the previous renderer put it. Its rule isn't exposed, so this is a fit: the font's
+    // ascent and descent centred in a one-em line, which matched within about 1px on Noto Sans and Noto Sans CJK.
     private static float BaselineOffset(SKFont font)
     {
         SKFontMetrics metrics = font.Metrics;

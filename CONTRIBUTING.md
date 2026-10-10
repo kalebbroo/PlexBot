@@ -8,6 +8,7 @@ Thanks for your interest in contributing to PlexBot! This guide covers how to ge
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
 - [Docker & Docker Compose](https://www.docker.com/products/docker-desktop/) (for running Lavalink)
+- On Linux outside Docker, `libfontconfig1` (`sudo apt install libfontconfig1` on Debian or Ubuntu). The player card's renderer, SkiaSharp, loads it.
 - A Discord bot token ([Developer Portal](https://discord.com/developers/applications))
 - A Plex server with a music library and an authentication token
 
