@@ -32,40 +32,9 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
     // playlist. A batch that fails still releases its turn, so it never blocks the batches behind it.
     private static readonly ConcurrentDictionary<ulong, OrderedTurns> _queueTurns = new();
 
-    private sealed class OrderedTurns
-    {
-        private readonly object _sync = new();
-        private readonly Dictionary<long, TaskCompletionSource> _waiting = new();
-        private long _issued;
-        private long _next;
-
-        public long Take()
-        {
-            lock (_sync) return _issued++;
-        }
-
-        public Task WaitTurn(long ticket)
-        {
-            lock (_sync)
-            {
-                if (ticket == _next) return Task.CompletedTask;
-                var waiter = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-                _waiting[ticket] = waiter;
-                return waiter.Task;
-            }
-        }
-
-        public void Done(long ticket)
-        {
-            lock (_sync)
-            {
-                if (ticket != _next) return; // only the holder of the current turn may finish it
-                _next++;
-                if (_waiting.Remove(_next, out var waiter))
-                    waiter.SetResult();
-            }
-        }
-    }
+    /// <summary>How long a queue request may wait for its turn or for the queue lock before it gives up. Resolving the
+    /// first track is not counted.</summary>
+    internal static readonly TimeSpan BatchDeadline = TimeSpan.FromMinutes(5);
 
     private static long BumpGeneration(ulong guildId) => _queueGenerations.AddOrUpdate(guildId, 1, (_, value) => value + 1);
 
@@ -76,6 +45,10 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
         (QueuedLavalinkPlayer? player, _) = await TryGetPlayerAsync(interaction, connectToVoiceChannel, cancellationToken);
         return player;
     }
+
+    /// <inheritdoc />
+    public CustomLavaLinkPlayer? TryGetCachedPlayer(ulong guildId) =>
+        audioService.Players.TryGetPlayer<CustomLavaLinkPlayer>(guildId, out CustomLavaLinkPlayer? player) ? player : null;
 
     /// <summary>Retrieves the guild's player and returns the reason it could not be retrieved, if it could not.
     /// Does not send any Discord response: callers decide how to report the failure, once.</summary>
@@ -236,7 +209,6 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
         // A replace bumps the generation when it is issued, so earlier pending work becomes stale, while later
         // requests carry the new generation and are not dropped by it. An add captures the current generation.
         long issuedGeneration = replaceQueue ? BumpGeneration(guildId) : CurrentGeneration(guildId);
-        bool turnHeld = false;
 
         try
         {
@@ -256,6 +228,8 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
 
             if (firstResolution.Track is not LavalinkTrack firstResolved)
             {
+                // Nothing was queued, so this request must not hold up the ones behind it while its error is sent
+                turns.Release(ticket);
                 Logs.Error($"[guild {guildId}] Failed to load track ({firstResolution.Outcome}): {PlexUrlHelper.Describe(firstTrack)}");
                 await interaction.ModifyOriginalResponseAsync(msg =>
                 {
@@ -274,8 +248,7 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
             };
 
             // Wait for this batch's place in the request order before touching the queue
-            await turns.WaitTurn(ticket);
-            turnHeld = true;
+            await WaitWithinDeadlineAsync(ct => turns.WaitTurnAsync(ticket, ct), cancellationToken, "its turn in the queue");
 
             // The generation is checked under the gate, so a clear, stop, or replace that takes the gate first is
             // seen here. A superseded request is dropped before its first insertion, so it cannot repopulate a
@@ -283,7 +256,7 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
             bool shouldPlay = false;
             long generation = 0;
             bool superseded = false;
-            await gate.WaitAsync(cancellationToken);
+            await WaitWithinDeadlineAsync(ct => gate.WaitAsync(ct), cancellationToken, "the queue lock");
             try
             {
                 if (CurrentGeneration(guildId) != issuedGeneration)
@@ -313,6 +286,7 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
 
             if (superseded)
             {
+                turns.Release(ticket);
                 Logs.Warning($"[guild {guildId}] Dropping a queue request: the queue was cleared or replaced after it was issued");
                 await interaction.ModifyOriginalResponseAsync(msg =>
                 {
@@ -335,7 +309,7 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
 
                 // If the queue was cleared, stopped, or replaced since the first track went in, drop the rest
                 // rather than resurrect stale tracks.
-                await gate.WaitAsync(cancellationToken);
+                await WaitWithinDeadlineAsync(ct => gate.WaitAsync(ct), cancellationToken, "the queue lock");
                 try
                 {
                     if (CurrentGeneration(guildId) != generation)
@@ -350,6 +324,9 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
                 {
                     gate.Release();
                 }
+
+                // The rest are queued (or dropped), so the batches behind this one may go in now
+                turns.Release(ticket);
 
                 if (superseded)
                 {
@@ -388,6 +365,7 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
             }
             else
             {
+                turns.Release(ticket);
                 string message = shouldPlay
                     ? $"Playing: {firstTrack.Title} by {firstTrack.Artist}"
                     : playNext ? $"Up next: {firstTrack.Title} by {firstTrack.Artist}" : $"Added to queue: {firstTrack.Title} by {firstTrack.Artist}";
@@ -400,6 +378,12 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
             }
             return true;
         }
+        catch (PlayerException ex)
+        {
+            // A queue wait ran past its deadline: keep that message rather than wrapping it as a generic failure
+            Logs.Warning($"[guild {guildId}] Queue request not added: {ex.Message}");
+            throw;
+        }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             Logs.Error($"[guild {guildId}] Error adding tracks to queue: {ex.Message}");
@@ -407,11 +391,27 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
         }
         finally
         {
-            // Release this batch's place in the order, even on early return or failure. If it never reached the
-            // queue step, wait for its turn first so the order stays intact.
-            if (!turnHeld)
-                await turns.WaitTurn(ticket);
-            turns.Done(ticket);
+            // Frees this batch's place in the order on every path that did not already do so (early return, failure, a
+            // wait that timed out or was cancelled). Releasing twice is harmless, and it never waits.
+            turns.Release(ticket);
+        }
+    }
+
+    /// <summary>Waits for a queue turn or lock, giving up after <see cref="BatchDeadline"/>. The caller's own cancellation
+    /// passes through unchanged; only the deadline becomes a PlayerException.</summary>
+    internal static async Task WaitWithinDeadlineAsync(Func<CancellationToken, Task> wait, CancellationToken cancellationToken, string what,
+        TimeProvider? time = null)
+    {
+        using CancellationTokenSource deadline = new(BatchDeadline, time ?? TimeProvider.System);
+        using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
+        try
+        {
+            await wait(linked.Token);
+        }
+        catch (OperationCanceledException) when (deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            throw new PlayerException($"Gave up waiting for {what} after {BatchDeadline.TotalMinutes:N0} minutes", "Queue",
+                "The queue is busy right now. Please try again in a moment.");
         }
     }
 
@@ -557,30 +557,35 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
         SemaphoreSlim gate = _guildQueueLocks.GetOrAdd(player.GuildId, _ => new SemaphoreSlim(1, 1));
         try
         {
-            await gate.WaitAsync(cancellationToken);
-            try
+            // A kill announces the player is gone even when stopping or disconnecting throws, so the card is replaced
+            await PlayerTeardown.RunAsync(async () =>
             {
-                BumpGeneration(player.GuildId);
-                queueResolver.Stop(player.GuildId);
-                serviceProvider.GetRequiredService<RadioSessionManager>().StopSession(player.GuildId);
-                await player.StopAsync(cancellationToken);
-                await player.Queue.ClearAsync(cancellationToken);
-            }
-            finally
+                await gate.WaitAsync(cancellationToken);
+                try
+                {
+                    BumpGeneration(player.GuildId);
+                    queueResolver.Stop(player.GuildId);
+                    serviceProvider.GetRequiredService<RadioSessionManager>().StopSession(player.GuildId);
+                    await player.StopAsync(cancellationToken);
+                    await player.Queue.ClearAsync(cancellationToken);
+                }
+                finally
+                {
+                    gate.Release();
+                }
+
+                if (disconnect)
+                    await player.DisconnectAsync(cancellationToken);
+            }, () =>
             {
-                gate.Release();
-            }
+                if (disconnect)
+                    serviceProvider.GetRequiredService<BotEventBus>().PublishPlayerDestroyed(player.GuildId);
+            });
 
             if (disconnect)
-            {
-                await player.DisconnectAsync(cancellationToken);
-                serviceProvider.GetRequiredService<BotEventBus>().PublishPlayerDestroyed(player.GuildId);
                 Logs.Debug($"Player stopped and disconnected by {interaction.User.Username}");
-            }
             else
-            {
                 Logs.Debug($"Player stopped by {interaction.User.Username}");
-            }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

@@ -24,11 +24,19 @@ public class VisualPlayer(
     // no message yet and each send a new one, leaving two players in the channel.
     private readonly ConcurrentDictionary<ulong, SemaphoreSlim> _updateLocks = new();
 
+    // An update that waits this long for the guild's previous update is skipped, so a slow Discord edit cannot stall
+    // the callers behind it. Skipping does not throw: the batch that asked for the update has already queued its tracks.
+    private static readonly TimeSpan UpdateLockWait = TimeSpan.FromSeconds(15);
+
     /// <summary>Updates or creates the visual player for a guild with current track information and buttons using Components V2</summary>
     public async Task AddOrUpdateVisualPlayerAsync(ulong guildId, ComponentBuilder components, bool recreateImage = false)
     {
         SemaphoreSlim updateLock = _updateLocks.GetOrAdd(guildId, _ => new SemaphoreSlim(1, 1));
-        await updateLock.WaitAsync().ConfigureAwait(false);
+        if (!await updateLock.WaitAsync(UpdateLockWait).ConfigureAwait(false))
+        {
+            Logs.Warning($"[guild {guildId}] Skipped a player card update: the previous update was still running after {UpdateLockWait.TotalSeconds:N0}s");
+            return;
+        }
         try
         {
             await AddOrUpdateCoreAsync(guildId, components, recreateImage).ConfigureAwait(false);

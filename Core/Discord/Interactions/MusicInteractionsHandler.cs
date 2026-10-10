@@ -11,6 +11,7 @@ using PlexBot.Core.Services.LavaLink;
 using PlexBot.Core.Services.Music;
 using PlexBot.Core.Discord.Modals;
 using PlexBot.Core.Models;
+using PlexBot.Core.Discord.Events;
 using PlexBot.Core.Discord.Messages;
 
 namespace PlexBot.Core.Discord.Interactions;
@@ -370,7 +371,16 @@ public class MusicInteractionHandler(IPlayerService playerService,
     [ComponentInteraction("radio:start")]
     public async Task HandleRadioStartAsync()
     {
-        await DeferAsync(ephemeral: true);
+        try
+        {
+            await DeferAsync(ephemeral: true);
+        }
+        catch (HttpException ex) when (ex.DiscordCode is DiscordErrorCode.InteractionHasAlreadyBeenAcknowledged or DiscordErrorCode.UnknownInteraction)
+        {
+            // A repeated press, or an interaction that expired before it was acknowledged: there is nothing left to answer
+            Logs.Warning($"[{DiscordEventHandler.InstanceId}] Radio start skipped for user {Context.User.Id}: interaction already acknowledged or expired ({ex.DiscordCode})");
+            return;
+        }
         if (IsOnCooldown(Context.User.Id, "radio:start"))
         {
             await FollowupAsync(components: ComponentV2Builder.Error(Notices.Cooldown), ephemeral: true);
@@ -500,7 +510,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
 
             await Context.Interaction.ModifyOriginalResponseAsync(msg =>
             {
-                msg.Components = ComponentV2Builder.Success("Radio Tracks Added", $"Added {tracks.Count} radio tracks to the queue.");
+                msg.Components = ComponentV2Builder.Success("Radio Tracks Queued", $"Queued {tracks.Count} radio tracks; any that can't load are skipped.");
                 msg.Embed = null;
                 msg.Flags = MessageFlags.ComponentsV2;
             });
@@ -706,6 +716,9 @@ public class MusicInteractionHandler(IPlayerService playerService,
             components, emojis.Text("pb_similar", "\U0001F50D"));
     }
 
+    /// <summary>The "No Player" text shown by the Sonic Adventure button and, if the player has gone, its modal</summary>
+    private const string SonicNoPlayerBody = "No active player found. Start playback with /play first.";
+
     /// <summary>Visual Player button — opens a modal for the user to enter a destination track name
     /// for a Sonic Adventure path from the currently playing track</summary>
     [ComponentInteraction("sonic:adventure")]
@@ -713,15 +726,11 @@ public class MusicInteractionHandler(IPlayerService playerService,
     {
         try
         {
-            if (await playerService.GetPlayerAsync(Context.Interaction, false) is not CustomLavaLinkPlayer player)
+            // Cache only: Discord allows three seconds to open the modal, so the full lookup and the Plex check run when
+            // the modal is submitted. A user who is not in a voice channel is refused here, as the lookup refused them before
+            if (Context.User is not IGuildUser { VoiceChannel: not null } member || playerService.TryGetCachedPlayer(member.Guild.Id) is null)
             {
-                await RespondAsync(components: ComponentV2Builder.Error("No Player", "No active player found. Start playback with /play first."), ephemeral: true);
-                return;
-            }
-            if (player.CurrentItem is not CustomTrackQueueItem currentItem
-                || !currentItem.SourceTrack.SourceSystem.Equals("plex", StringComparison.OrdinalIgnoreCase))
-            {
-                await RespondAsync(components: ComponentV2Builder.Error("Not Available", "Play a Plex track first to use Sonic Adventure."), ephemeral: true);
+                await RespondAsync(components: ComponentV2Builder.Error("No Player", SonicNoPlayerBody), ephemeral: true);
                 return;
             }
 
@@ -743,11 +752,21 @@ public class MusicInteractionHandler(IPlayerService playerService,
         await DeferAsync(ephemeral: true);
         try
         {
-            if (await playerService.GetPlayerAsync(Context.Interaction, false) is not CustomLavaLinkPlayer player
-                || player.CurrentItem is not CustomTrackQueueItem currentItem
-                || !currentItem.SourceTrack.SourceSystem.Equals("plex", StringComparison.OrdinalIgnoreCase))
+            // The full lookup and the Plex check, moved here from the button so the modal could open in time
+            if (await playerService.GetPlayerAsync(Context.Interaction, false) is not CustomLavaLinkPlayer player)
+            {
+                await FollowupAsync(components: ComponentV2Builder.Error("No Player", SonicNoPlayerBody), ephemeral: true);
+                return;
+            }
+            if (player.CurrentItem is null)
             {
                 await FollowupAsync(components: ComponentV2Builder.Error("No Start Track", "The Plex track you were playing has stopped. Play a Plex track and try again."), ephemeral: true);
+                return;
+            }
+            if (player.CurrentItem is not CustomTrackQueueItem currentItem
+                || !currentItem.SourceTrack.SourceSystem.Equals("plex", StringComparison.OrdinalIgnoreCase))
+            {
+                await FollowupAsync(components: ComponentV2Builder.Error("Not Available", "Play a Plex track first to use Sonic Adventure."), ephemeral: true);
                 return;
             }
 
