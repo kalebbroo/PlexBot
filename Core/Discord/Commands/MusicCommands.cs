@@ -394,17 +394,16 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
     [Summary("next", "Play after the current track instead of at the end")] bool next = false)
     {
         await RespondAsync(components: ComponentV2Builder.Info("Loading", "Loading playlist..."), ephemeral: true);
-        IUserMessage ackMessage = await GetOriginalResponseAsync();
         // Set once a final card has gone out. The finally replaces the loading card if none did.
         bool cardFinal = false;
         const string genericPlaylistError = "An error occurred while loading the playlist. Please try again later.";
-        Task ShowErrorAsync(string body) => ackMessage.ModifyAsync(msg => { msg.Components = ComponentV2Builder.Error("Playlist Error", body); msg.Embed = null; msg.Flags = MessageFlags.ComponentsV2; });
+        Task ShowErrorAsync(string body) => Context.Interaction.ModifyOriginalResponseAsync(msg => { msg.Components = ComponentV2Builder.Error("Playlist Error", body); msg.Embed = null; msg.Flags = MessageFlags.ComponentsV2; });
         try
         {
             Logs.Debug($"Loading playlist: {playlist}, shuffle: {shuffle}");
             if (string.IsNullOrWhiteSpace(playlist))
             {
-                await ackMessage.ModifyAsync(msg => { msg.Components = ComponentV2Builder.Error("Invalid Playlist", "Please select a playlist."); msg.Embed = null; msg.Flags = MessageFlags.ComponentsV2; });
+                await Context.Interaction.ModifyOriginalResponseAsync(msg => { msg.Components = ComponentV2Builder.Error("Invalid Playlist", "Please select a playlist."); msg.Embed = null; msg.Flags = MessageFlags.ComponentsV2; });
                 cardFinal = true;
                 return;
             }
@@ -419,7 +418,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
 
                 if (playlistDetails is null)
                 {
-                    await ackMessage.ModifyAsync(msg => { msg.Components = ComponentV2Builder.Error("Not Found", "Custom playlist not found."); msg.Embed = null; msg.Flags = MessageFlags.ComponentsV2; });
+                    await Context.Interaction.ModifyOriginalResponseAsync(msg => { msg.Components = ComponentV2Builder.Error("Not Found", "Custom playlist not found."); msg.Embed = null; msg.Flags = MessageFlags.ComponentsV2; });
                     cardFinal = true;
                     return;
                 }
@@ -431,7 +430,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
 
             if (playlistDetails.Tracks.Count == 0)
             {
-                await ackMessage.ModifyAsync(msg => { msg.Components = ComponentV2Builder.Info("Empty Playlist", $"Playlist '{playlistDetails.Title}' is empty."); msg.Embed = null; msg.Flags = MessageFlags.ComponentsV2; });
+                await Context.Interaction.ModifyOriginalResponseAsync(msg => { msg.Components = ComponentV2Builder.Info("Empty Playlist", $"Playlist '{playlistDetails.Title}' is empty."); msg.Embed = null; msg.Flags = MessageFlags.ComponentsV2; });
                 cardFinal = true;
                 return;
             }
