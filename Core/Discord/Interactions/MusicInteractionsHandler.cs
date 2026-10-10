@@ -727,8 +727,8 @@ public class MusicInteractionHandler(IPlayerService playerService,
         try
         {
             // Cache only: Discord allows three seconds to open the modal, so the full lookup and the Plex check run when
-            // the modal is submitted
-            if (Context.Guild is null || playerService.TryGetCachedPlayer(Context.Guild.Id) is null)
+            // the modal is submitted. A user who is not in a voice channel is refused here, as the lookup refused them before
+            if (Context.User is not IGuildUser { VoiceChannel: not null } member || playerService.TryGetCachedPlayer(member.Guild.Id) is null)
             {
                 await RespondAsync(components: ComponentV2Builder.Error("No Player", SonicNoPlayerBody), ephemeral: true);
                 return;
