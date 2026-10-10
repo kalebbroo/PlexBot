@@ -25,7 +25,7 @@ public static class ImageBuilder
     private static readonly Lazy<SKBitmap> _cornerMask = new(() => BuildCornerMask(CardWidth, CardHeight, CornerRadius));
 
     // One resampling choice for every resize, so shrinking the artwork and enlarging the blur look alike
-    private static readonly SKSamplingOptions Sampling = new(SKCubicResampler.Mitchell);
+    private static readonly SKSamplingOptions Sampling = new(SKCubicResampler.CatmullRom);
 
     // These paths cover both standard Linux/Docker locations and system-specific ones
     private static readonly string[] _fontPaths =
@@ -417,7 +417,8 @@ public static class ImageBuilder
         DrawText(canvas, displayText, valueFont, indicatorColor, textX + 100, y + yOffset + 4);
     }
 
-    private static SKFont CreateFont(float size) => new(_typeface ?? SKTypeface.Default, size);
+    // Unhinted, with sub-pixel placement, so glyph advances aren't rounded to whole pixels
+    private static SKFont CreateFont(float size) => new(_typeface ?? SKTypeface.Default, size) { Hinting = SKFontHinting.None, Subpixel = true };
 
     private static SKBitmap Solid(int width, int height, SKColor color)
     {
