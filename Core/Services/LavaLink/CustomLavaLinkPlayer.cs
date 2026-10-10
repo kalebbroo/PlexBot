@@ -291,11 +291,13 @@ public sealed class CustomLavaLinkPlayer(IPlayerProperties<CustomLavaLinkPlayer,
 
         try
         {
-            serviceProvider.GetRequiredService<QueueResolveService>().Stop(GuildId);
-            serviceProvider.GetRequiredService<RadioSessionManager>().StopSession(GuildId);
-            await StopAsync(cancellationToken).ConfigureAwait(false);
-            await DisconnectAsync(cancellationToken).ConfigureAwait(false);
-            serviceProvider.GetRequiredService<BotEventBus>().PublishPlayerDestroyed(GuildId);
+            await PlayerTeardown.RunAsync(async () =>
+            {
+                serviceProvider.GetRequiredService<QueueResolveService>().Stop(GuildId);
+                serviceProvider.GetRequiredService<RadioSessionManager>().StopSession(GuildId);
+                await StopAsync(cancellationToken).ConfigureAwait(false);
+                await DisconnectAsync(cancellationToken).ConfigureAwait(false);
+            }, () => serviceProvider.GetRequiredService<BotEventBus>().PublishPlayerDestroyed(GuildId));
         }
         catch (Exception ex)
         {

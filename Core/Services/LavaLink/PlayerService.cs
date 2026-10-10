@@ -557,30 +557,35 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
         SemaphoreSlim gate = _guildQueueLocks.GetOrAdd(player.GuildId, _ => new SemaphoreSlim(1, 1));
         try
         {
-            await gate.WaitAsync(cancellationToken);
-            try
+            // A kill announces the player is gone even when stopping or disconnecting throws, so the card is replaced
+            await PlayerTeardown.RunAsync(async () =>
             {
-                BumpGeneration(player.GuildId);
-                queueResolver.Stop(player.GuildId);
-                serviceProvider.GetRequiredService<RadioSessionManager>().StopSession(player.GuildId);
-                await player.StopAsync(cancellationToken);
-                await player.Queue.ClearAsync(cancellationToken);
-            }
-            finally
+                await gate.WaitAsync(cancellationToken);
+                try
+                {
+                    BumpGeneration(player.GuildId);
+                    queueResolver.Stop(player.GuildId);
+                    serviceProvider.GetRequiredService<RadioSessionManager>().StopSession(player.GuildId);
+                    await player.StopAsync(cancellationToken);
+                    await player.Queue.ClearAsync(cancellationToken);
+                }
+                finally
+                {
+                    gate.Release();
+                }
+
+                if (disconnect)
+                    await player.DisconnectAsync(cancellationToken);
+            }, () =>
             {
-                gate.Release();
-            }
+                if (disconnect)
+                    serviceProvider.GetRequiredService<BotEventBus>().PublishPlayerDestroyed(player.GuildId);
+            });
 
             if (disconnect)
-            {
-                await player.DisconnectAsync(cancellationToken);
-                serviceProvider.GetRequiredService<BotEventBus>().PublishPlayerDestroyed(player.GuildId);
                 Logs.Debug($"Player stopped and disconnected by {interaction.User.Username}");
-            }
             else
-            {
                 Logs.Debug($"Player stopped by {interaction.User.Username}");
-            }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
