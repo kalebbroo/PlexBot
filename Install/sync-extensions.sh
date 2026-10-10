@@ -31,6 +31,9 @@ clone_extensions() {
         target="$EXTENSIONS_DIR/$name"
         if [ -e "$target" ]; then
             echo "[extensions] $name: already present"
+        elif [ -e "$target.disabled" ]; then
+            # Renamed on purpose (see Docs/Extensions/CreatingExtensions.md); cloning it again would undo that
+            echo "[extensions] $name: disabled, left alone"
         elif git clone --quiet "$url" "$target" </dev/null; then
             echo "[extensions] $name: cloned from $url"
         else
