@@ -359,6 +359,7 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
     /// means the unicode fallbacks show, so it is logged and the bot carries on.</summary>
     public async Task SyncEmojiAsync()
     {
+        EmojiRegistry emojis = services.GetRequiredService<EmojiRegistry>();
         try
         {
             string? directory = AssetPaths.FindDirectory("Images", "Emoji");
@@ -367,11 +368,16 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
                 Logs.Warning("Emoji folder not found; the bot will use unicode emoji");
                 return;
             }
-            await services.GetRequiredService<EmojiRegistry>().SyncAsync(client, directory, AssetPaths.DataFile(EmojiRegistry.HashFileName));
+            await emojis.SyncAsync(client, directory, AssetPaths.DataFile(EmojiRegistry.HashFileName));
         }
         catch (Exception ex)
         {
             Logs.Warning($"Could not sync application emoji, using unicode fallbacks: {ex.Message}");
+        }
+        finally
+        {
+            // Whatever the outcome, the idle card can be built now. It uses unicode only if the sync did not work.
+            emojis.MarkSyncFinished();
         }
     }
 }
