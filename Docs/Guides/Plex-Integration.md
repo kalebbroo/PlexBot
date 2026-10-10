@@ -40,7 +40,7 @@ Quick method:
 Use `/search` to find music in your Plex library:
 
 ```
-/search query:The Beatles source:plex
+/search query:The Beatles mode:plex
 ```
 
 This returns interactive select menus for:
@@ -48,10 +48,7 @@ This returns interactive select menus for:
 - **Albums** — select to queue the full album
 - **Tracks** — select to play or queue individual tracks
 
-The `source` parameter defaults to `plex`, so you can also just use:
-```
-/search query:The Beatles
-```
+Both options are required. Pick **Plex Library** in the `mode` dropdown to search your library.
 
 ## Playing Music
 

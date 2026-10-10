@@ -23,7 +23,7 @@ Unified search across all sources and Plex sonic features.
 | **Find by Mood** | Browse tracks matching a mood tag (e.g. "Happy", "Aggressive") | Randomized sample of 25 moods; type to filter |
 | **Find by Genre** | Browse tracks matching a genre (e.g. "Rock", "Jazz") | Lists all available genres |
 | **Radio Station** | Pick a station or search for a track to seed radio from | Lists available stations |
-| *Extension providers* | Any loaded extensions (YouTube, SoundCloud, etc.) appear automatically in the dropdown | Free text (hint shown) |
+| *Extension providers* | Any loaded extension providers appear automatically in the dropdown | Free text (hint shown) |
 
 > **Note:** Similar Tracks and Sonic Adventure are available as buttons on the Visual Player (see [Player Controls](#player-controls-buttons) below), not as search modes. They require a currently playing Plex track as context.
 
