@@ -330,8 +330,16 @@ public sealed class CustomLavaLinkPlayer(IPlayerProperties<CustomLavaLinkPlayer,
             {
                 serviceProvider.GetRequiredService<QueueResolveService>().Stop(GuildId);
                 serviceProvider.GetRequiredService<RadioSessionManager>().StopSession(GuildId);
-                await StopAsync(cancellationToken).ConfigureAwait(false);
-                await DisconnectAsync(cancellationToken).ConfigureAwait(false);
+                try
+                {
+                    await StopAsync(cancellationToken).ConfigureAwait(false);
+                    await DisconnectAsync(cancellationToken).ConfigureAwait(false);
+                }
+                catch (ObjectDisposedException)
+                {
+                    // Lavalink4NET disposes an expired player before it calls this, so there is nothing left to stop
+                    Logs.Debug($"[guild {GuildId}] Player was already disposed by inactivity tracking");
+                }
             }, () => serviceProvider.GetRequiredService<BotEventBus>().PublishPlayerDestroyed(GuildId));
         }
         catch (Exception ex)
