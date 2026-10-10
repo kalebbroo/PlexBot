@@ -4,7 +4,7 @@ lavalink:
   server:
     # Password comes from environment variables
     sources:
-      youtube: true
+      youtube: false
       bandcamp: true
       soundcloud: true
       twitch: true
@@ -14,10 +14,10 @@ lavalink:
       nico: true
     bufferDurationMs: 400
     frameBufferDurationMs: 5000
+    # Read by the YouTube plugin when the YouTube extension is installed
     youtubePlaylistLoadLimit: 10
     playerUpdateInterval: 3
     trackStuckThresholdMs: 10000
-    youtubeSearchEnabled: true
     soundcloudSearchEnabled: true
     gc-warnings: true
   plugins: []
