@@ -8,7 +8,7 @@ PlexBot offers two player UI styles and a configurable progress bar. All player 
 
 ### 1. Modern Visual Player (Default)
 
-A rich image-based player that uses album artwork as the background with track info overlaid using ImageSharp rendering.
+A rich image-based player that uses album artwork as the background with track info overlaid using SkiaSharp rendering.
 
 - Album artwork fills the player background
 - Track title, artist, and album overlaid on the image

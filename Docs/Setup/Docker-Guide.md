@@ -66,7 +66,7 @@ RUN dotnet restore PlexBot.csproj
 RUN dotnet publish PlexBot.csproj -c Release -o /app
 ```
 
-**Runtime stage**: Uses the SDK image (not just runtime) to support live source rebuilds. Installs font packages for ImageSharp text rendering:
+**Runtime stage**: Uses the SDK image (not just runtime) to support live source rebuilds. Installs font packages for SkiaSharp text rendering:
 - `fonts-dejavu`, `fonts-liberation` — Latin text
 - `fonts-noto`, `fonts-noto-cjk`, `fonts-noto-color-emoji` — CJK characters and emoji
 - `fonts-ipafont-gothic`, `fonts-ipafont-mincho` — Japanese text

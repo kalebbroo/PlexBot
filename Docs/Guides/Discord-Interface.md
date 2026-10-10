@@ -8,7 +8,7 @@ PlexBot uses Discord's Components V2 system for its player UI — a container-ba
 
 ### Modern Visual Player (Default)
 
-An image-based player rendered with ImageSharp:
+An image-based player rendered with SkiaSharp:
 - Album artwork fills the background
 - Track title, artist, album, and duration overlaid on the image
 - Volume level and repeat mode indicators rendered on the image

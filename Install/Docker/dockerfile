@@ -7,13 +7,15 @@ COPY . .
 
 RUN dotnet restore PlexBot.csproj
 RUN dotnet publish PlexBot.csproj -c Release -o /app
+# SkiaSharp ships a native library for every platform. Keep the two glibc Linux builds and drop the rest.
+RUN find /app/runtimes -mindepth 1 -maxdepth 1 -not \( -name linux-x64 -o -name linux-arm64 \) -exec rm -rf {} +
 
 # ── Runtime Stage (SDK required for live-source rebuild support) ─────────────
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS runtime
 
 WORKDIR /app
 
-# Install dependencies and fonts for CJK / emoji rendering (ImageSharp)
+# Install dependencies and fonts for CJK / emoji rendering (SkiaSharp)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     git \

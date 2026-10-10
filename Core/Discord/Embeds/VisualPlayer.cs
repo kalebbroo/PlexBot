@@ -2,7 +2,6 @@
 using PlexBot.Core.Models.Players;
 using PlexBot.Core.Services.LavaLink;
 using PlexBot.Utils;
-using SixLabors.ImageSharp.Formats.Png;
 
 namespace PlexBot.Core.Discord.Embeds;
 
@@ -96,10 +95,7 @@ public class VisualPlayer(
                 {
                     if (stateManager.UseModernPlayer)
                     {
-                        using MemoryStream memoryStream = new();
-                        using SixLabors.ImageSharp.Image image = await ImageBuilder.BuildPlayerImageAsync(currentTrack, player, upcomingTracks, prefetchService);
-                        await image.SaveAsync(memoryStream, new PngEncoder());
-                        memoryStream.Position = 0;
+                        using MemoryStream memoryStream = await ImageBuilder.BuildPlayerPngAsync(currentTrack, player, upcomingTracks, prefetchService);
                         FileAttachment fileAttachment = new(memoryStream, "playerImage.png");
                         MessageComponent cv2 = ComponentV2Builder.BuildModernPlayer(statusLine, components);
                         await message.ModifyAsync(msg =>
@@ -148,10 +144,7 @@ public class VisualPlayer(
             // Create new player message
             if (stateManager.UseModernPlayer)
             {
-                using MemoryStream memoryStream = new();
-                using SixLabors.ImageSharp.Image image = await ImageBuilder.BuildPlayerImageAsync(currentTrack, player, upcomingTracks, prefetchService);
-                await image.SaveAsync(memoryStream, new PngEncoder());
-                memoryStream.Position = 0;
+                using MemoryStream memoryStream = await ImageBuilder.BuildPlayerPngAsync(currentTrack, player, upcomingTracks, prefetchService);
                 FileAttachment fileAttachment = new(memoryStream, "playerImage.png");
                 MessageComponent cv2 = ComponentV2Builder.BuildModernPlayer(statusLine, components);
                 stateManager.SetMessage(guildId, await channel.SendFileAsync(fileAttachment, components: cv2).ConfigureAwait(false));

@@ -1,12 +1,9 @@
 ﻿using System.Net.Http;
+using PlexBot.Core.Services.LavaLink;
 using PlexBot.Utils.Http;
+using SkiaSharp;
 
 using Path = System.IO.Path;
-using Color = SixLabors.ImageSharp.Color;
-using Image = SixLabors.ImageSharp.Image;
-using Font = SixLabors.Fonts.Font;
-using FontFamily = SixLabors.Fonts.FontFamily;
-using PlexBot.Core.Services.LavaLink;
 
 namespace PlexBot.Utils;
 
@@ -14,26 +11,21 @@ namespace PlexBot.Utils;
 public static class ImageBuilder
 {
     /// <summary>Royal blue used for the volume bar fill and the repeat indicator</summary>
-    public static readonly Rgba32 AccentBlue = new(65, 105, 225, 255);
+    public static readonly SKColor AccentBlue = new(65, 105, 225);
 
     private static readonly HttpClientWrapper? _httpClient;
-    private static readonly FontFamily? _fontFamily;
-    private static readonly FontCollection _fontCollection = new();
-    private static readonly Dictionary<string, Image<Rgba32>> _iconCache = [];
+    private static readonly SKTypeface? _typeface;
+    private static readonly Dictionary<string, SKBitmap> _iconCache = [];
 
-    // Fonts and the corner mask are the same for every card, so they are built once
-    private static readonly Lazy<(Font Title, Font Artist, Font Info, Font Small)> _fonts = new(CreateFonts);
     private const int CardWidth = 800;
     private const int CardHeight = 400;
     private const float CornerRadius = 24f;
-    private static readonly Lazy<Image<Rgba32>> _cornerMask = new(() => BuildCornerMask(CardWidth, CardHeight, CornerRadius));
 
-    private static (Font, Font, Font, Font) CreateFonts()
-    {
-        FontFamily family = _fontFamily ?? SystemFonts.Collection.Families.First();
-        return (family.CreateFont(40, FontStyle.Bold), family.CreateFont(32), family.CreateFont(20), family.CreateFont(16));
-    }
+    // The corner mask is the same for every card, so it is built once
+    private static readonly Lazy<SKBitmap> _cornerMask = new(() => BuildCornerMask(CardWidth, CardHeight, CornerRadius));
 
+    // One resampling choice for every resize, so shrinking the artwork and enlarging the blur look alike
+    private static readonly SKSamplingOptions Sampling = new(SKCubicResampler.CatmullRom);
 
     // These paths cover both standard Linux/Docker locations and system-specific ones
     private static readonly string[] _fontPaths =
@@ -78,49 +70,27 @@ public static class ImageBuilder
             {
                 Logs.Debug("Attempting to find usable fonts...");
                 List<string> loadedFonts = [];
-                // Try to find an appropriate font
-                bool foundFont = false;
+                List<SKTypeface> typefaces = [];
                 foreach (string fontPath in _fontPaths)
                 {
-                    if (File.Exists(fontPath))
+                    if (!File.Exists(fontPath)) continue;
+                    SKTypeface? typeface = SKTypeface.FromFile(fontPath);
+                    if (typeface is null)
                     {
-                        try
-                        {
-                            // Attempt to load the font
-                            _fontCollection.Add(fontPath);
-                            loadedFonts.Add(System.IO.Path.GetFileName(fontPath));
-                            foundFont = true;
-                            Logs.Debug($"Successfully loaded font: {fontPath}");
-                        }
-                        catch (Exception ex)
-                        {
-                            Logs.Warning($"Failed to load font {fontPath}: {ex.Message}");
-                        }
+                        Logs.Warning($"Failed to load font {fontPath}");
+                        continue;
                     }
+                    typefaces.Add(typeface);
+                    loadedFonts.Add(Path.GetFileName(fontPath));
+                    Logs.Debug($"Successfully loaded font: {fontPath}");
                 }
-                if (foundFont)
+                // Prefer a CJK-capable family, then any font that loaded
+                string[] cjkFontNames = ["Noto", "CJK", "Gothic", "Mincho", "Apple"];
+                _typeface = typefaces.FirstOrDefault(t => cjkFontNames.Any(cjk => t.FamilyName.Contains(cjk, StringComparison.OrdinalIgnoreCase)))
+                    ?? typefaces.FirstOrDefault();
+                if (_typeface is not null)
                 {
-                    // Try to find a good CJK-compatible font first
-                    string[] cjkFontNames = ["Noto", "CJK", "Gothic", "Mincho", "Apple"];
-                    foreach (var family in _fontCollection.Families)
-                    {
-                        if (cjkFontNames.Any(cjk => family.Name.Contains(cjk, StringComparison.OrdinalIgnoreCase)))
-                        {
-                            _fontFamily = family;
-                            Logs.Debug($"Selected CJK-compatible font: {family.Name}");
-                            break;
-                        }
-                    }
-                    // If no CJK font found, use any available font
-                    if (_fontFamily == null && _fontCollection.Families.Any())
-                    {
-
-                        if (_fontFamily == null && _fontCollection.Families.Any())
-                        {
-                            _fontFamily = _fontCollection.Families.First();
-                            Logs.Debug($"Selected font: {_fontFamily.Value.Name}");
-                        }
-                    }
+                    Logs.Debug($"Selected font: {_typeface.FamilyName}");
                 }
                 Logs.Info($"ImageBuilder initialized with {loadedFonts.Count} fonts: {string.Join(", ", loadedFonts)}");
             }
@@ -136,12 +106,23 @@ public static class ImageBuilder
         }
     }
 
-    /// <summary>Creates a visually appealing player image by downloading album art and overlaying track details for Discord display</summary>
-    /// <param name="track">Dictionary containing track information</param>
-    /// <param name="player">Optional player object to get current state (volume and repeat mode)</param>
-    /// <returns>The generated image</returns>
-    /// <summary>Creates a visually appealing player image by downloading album art and overlaying track details</summary>
-    public static async Task<Image> BuildPlayerImageAsync(CustomTrackQueueItem track, CustomLavaLinkPlayer? player = null, List<CustomTrackQueueItem>? upcomingTracks = null, ITrackPrefetchService? prefetchService = null)
+    /// <summary>Renders the player card for a track and encodes it as a PNG for a Discord attachment</summary>
+    /// <param name="track">The track being played</param>
+    /// <param name="player">Optional player, for the volume and repeat mode</param>
+    /// <param name="upcomingTracks">Optional queue, shown as Next Up</param>
+    /// <param name="prefetchService">Optional prefetch cache, checked before the artwork is downloaded</param>
+    /// <returns>A stream of PNG bytes positioned at the start. The caller disposes it.</returns>
+    public static async Task<MemoryStream> BuildPlayerPngAsync(CustomTrackQueueItem track, CustomLavaLinkPlayer? player = null, List<CustomTrackQueueItem>? upcomingTracks = null, ITrackPrefetchService? prefetchService = null)
+    {
+        using SKBitmap card = await BuildPlayerBitmapAsync(track, player, upcomingTracks, prefetchService);
+        using SKData png = card.Encode(SKEncodedImageFormat.Png, 100);
+        MemoryStream stream = new();
+        png.SaveTo(stream);
+        stream.Position = 0;
+        return stream;
+    }
+
+    private static async Task<SKBitmap> BuildPlayerBitmapAsync(CustomTrackQueueItem track, CustomLavaLinkPlayer? player, List<CustomTrackQueueItem>? upcomingTracks, ITrackPrefetchService? prefetchService)
     {
         try
         {
@@ -151,301 +132,263 @@ public static class ImageBuilder
             {
                 artworkUrl = "https://via.placeholder.com/150"; // TODO: Add a real placeholder image
             }
-            Image<Rgba32> albumArt;
-            try
-            {
-                // Check prefetch cache first for pre-downloaded artwork
-                byte[]? prefetchedBytes = prefetchService?.GetCachedArtwork(artworkUrl);
-                if (prefetchedBytes != null)
-                {
-                    albumArt = Image.Load<Rgba32>(prefetchedBytes);
-                }
-                else
-                {
-                    // Download artwork directly to memory (no temp file needed)
-                    byte[] imageBytes = await _httpClient!.DownloadBytesAsync(artworkUrl);
-                    albumArt = Image.Load<Rgba32>(imageBytes);
-                }
-            }
-            catch (Exception ex)
-            {
-                Logs.Error($"Failed to download artwork from {artworkUrl}: {ex.Message}");
-                // Create a blank image if download fails
-                albumArt = new Image<Rgba32>(400, 400, Color.DarkGray);
-            }
-            // Final image dimensions
-            int width = 800;
-            int height = 400;
-            // Create our canvas
-            Image<Rgba32> canvas = new(width, height, Color.Black);
-            try
-            {
-                // Create a blurred copy of the album art for background
-                using Image<Rgba32> backgroundArt = albumArt.Clone();
-                backgroundArt.Mutate(ctx =>
-                {
-                    // Blur at thumbnail size, then scale up: the same soft look for a fraction of the work
-                    ctx.Resize(new Size(160, 90));
-                    ctx.GaussianBlur(4f);
-                    ctx.Resize(new Size(width + 100, height + 100));
-                });
-                // Draw blurred background
-                canvas.Mutate(ctx => ctx.DrawImage(backgroundArt, new Point(-50, -50), 1f));
-                // Add a semi-transparent overlay for better text contrast and darkening
-                canvas.Mutate(ctx =>
-                {
-                    // Create a darker overlay
-                    ctx.Fill(new Rgba32(0, 0, 0, 180), new RectangleF(0, 0, width, height));
-                    // Add gradient effect
-                    ctx.Fill(new LinearGradientBrush(
-                        new PointF(0, 0),
-                        new PointF(width, height),
-                        GradientRepetitionMode.None,
-                        new ColorStop(0f, new Rgba32(0, 0, 0, 50)),
-                        new ColorStop(1f, new Rgba32(0, 0, 0, 100))
-                    ), new RectangleF(0, 0, width, height));
-                });
-                // Create a clean version of album art for display
-                using Image<Rgba32> displayArt = albumArt.Clone();
-                displayArt.Mutate(ctx =>
-                {
-                    // Make it square if it's not already
-                    if (displayArt.Width != displayArt.Height)
-                    {
-                        int size = Math.Min(displayArt.Width, displayArt.Height);
-                        ctx.Crop(new Rectangle(
-                            (displayArt.Width - size) / 2,
-                            (displayArt.Height - size) / 2,
-                            size, size));
-                    }
-                    // Resize to fit our layout
-                    ctx.Resize(new Size(280, 280));
-                });
-                // Draw album art on left side
-                canvas.Mutate(ctx => ctx.DrawImage(displayArt, new Point(40, 60), 1f));
-                // Dispose original albumArt - no longer needed after cloning
-                albumArt.Dispose();
-                // Add text information
-                try
-                {
-                    // Get the font for our text
-                    (Font titleFont, Font artistFont, Font infoFont, Font smallInfoFont) = _fonts.Value;
-                    // Helper function to truncate text
-                    static string TruncateText(string text, Font font, int maxWidth)
-                    {
-                        if (string.IsNullOrEmpty(text)) return text;
-                        FontRectangle size = TextMeasurer.MeasureSize(text, new TextOptions(font));
-                        if (size.Width <= maxWidth) return text;
-                        // Truncate and add ellipsis
-                        for (int i = text.Length - 1; i >= 0; i--)
-                        {
-                            string truncated = text[..i] + "...";
-                            size = TextMeasurer.MeasureSize(truncated, new TextOptions(font));
-                            if (size.Width <= maxWidth) return truncated;
-                        }
-                        return "...";
-                    }
-                    int textX = 360;  // Start text after the album art
-                    int maxWidth = 400; // Maximum width for text
-                    // Draw track information
-                    canvas.Mutate(ctx =>
-                    {
-                        // Title
-                        string title = track.Title ?? "Unknown Title";
-                        string truncatedTitle = TruncateText(title, titleFont, maxWidth);
-                        ctx.DrawText(truncatedTitle, titleFont, Color.White, new PointF(textX, 70));
-                        // Artist
-                        string artist = track.Artist ?? "Unknown Artist";
-                        string truncatedArtist = TruncateText(artist, artistFont, maxWidth);
-                        ctx.DrawText(truncatedArtist, artistFont, new Rgba32(220, 220, 220, 255), new PointF(textX, 130));
-                        // Album
-                        string album = track.Album ?? "Unknown Album";
-                        string truncatedAlbum = TruncateText(album, infoFont, maxWidth);
-                        ctx.DrawText(truncatedAlbum, infoFont, new Rgba32(180, 180, 180, 255), new PointF(textX, 190));
-                        // Load and draw the time icon
-                        Image timeIcon = GetIcon("time.png");
-                        ctx.DrawImage(timeIcon, new Point(textX, 230), 1.0f);
-                        // Calculate spacing based on icon size
-                        int timeIconWidth = timeIcon.Width;
-                        int durationTextX = textX + timeIconWidth + 8; // 8px spacing between icon and text
-                        // Draw duration text
-                        string duration = track.Duration ?? "00:00";
-                        ctx.DrawText(duration, infoFont, new Rgba32(180, 180, 180, 255), new PointF(durationTextX, 230));
-                        // Volume indicator
-                        int volumePercent = player != null ? (int)Math.Round(player.Volume * 100) : 20;
-                        DrawVolumeIndicator(ctx, textX, 275, 100, 8, volumePercent, infoFont, smallInfoFont);
-                        // Repeat indicator
-                        string repeatMode = player?.RepeatMode switch
-                        {
-                            TrackRepeatMode.Track => "Track",
-                            TrackRepeatMode.Queue => "Queue",
-                            _ => "None"
-                        };
-                        DrawRepeatIndicator(ctx, textX, 305, repeatMode, infoFont, smallInfoFont);
-                        // Next Up queue preview on the right side
-                        if (upcomingTracks != null && upcomingTracks.Count > 0)
-                        {
-                            int nextUpX = 560; // Right portion of the image
-                            int nextUpY = 225;
-                            int nextUpMaxWidth = 200;
-                            ctx.DrawText("Next Up", infoFont, new Rgba32(180, 180, 180, 255), new PointF(nextUpX, nextUpY));
-                            for (int i = 0; i < Math.Min(upcomingTracks.Count, 2); i++)
-                            {
-                                var upcoming = upcomingTracks[i];
-                                int itemY = nextUpY + 28 + (i * 40);
-                                string upTitle = TruncateText(upcoming.Title ?? "Unknown", smallInfoFont, nextUpMaxWidth);
-                                string upArtist = TruncateText(upcoming.Artist ?? "Unknown", smallInfoFont, nextUpMaxWidth);
-                                ctx.DrawText(upTitle, smallInfoFont, Color.White, new PointF(nextUpX, itemY));
-                                ctx.DrawText(upArtist, smallInfoFont, new Rgba32(140, 140, 140, 255), new PointF(nextUpX, itemY + 18));
-                            }
-                        }
-                        // Requested by credit (bottom of image)
-                        string credit = "Requested by: " + (track.RequestedBy ?? "Unknown");
-                        string truncatedCredit = TruncateText(credit, smallInfoFont, maxWidth + 200);
-                        ctx.DrawText(truncatedCredit, smallInfoFont, new Rgba32(150, 150, 150, 255), new PointF(40, 365));
-                    });
-                }
-                catch (Exception ex)
-                {
-                    Logs.Error($"Error adding text: {ex.Message}");
-                }
-                ApplyRoundedCorners(canvas);
-                return canvas;
-            }
-            catch (Exception ex)
-            {
-                Logs.Error($"Failed to process image: {ex.Message}");
-                return new Image<Rgba32>(width, height, Color.Black); // Return simple fallback
-            }
+            using SKBitmap albumArt = await LoadArtworkAsync(artworkUrl, prefetchService);
+            return RenderCard(track, player, upcomingTracks, albumArt);
         }
         catch (Exception ex)
         {
             Logs.Error($"Failed to build player image: {ex.Message}");
             // Create and return a fallback image
-            return new Image<Rgba32>(800, 400, Color.Black);
+            return Solid(CardWidth, CardHeight, SKColors.Black);
         }
     }
 
-    // Helper method to draw a rounded rectangle
-    /// <summary>Clears the pixels outside a rounded rectangle. The mask is built once; each card only composites it.</summary>
-    private static void ApplyRoundedCorners(Image<Rgba32> canvas)
+    private static SKBitmap RenderCard(CustomTrackQueueItem track, CustomLavaLinkPlayer? player, List<CustomTrackQueueItem>? upcomingTracks, SKBitmap albumArt)
     {
-        canvas.Mutate(ctx =>
+        SKBitmap card = new(CardWidth, CardHeight);
+        try
         {
-            ctx.SetGraphicsOptions(new GraphicsOptions { AlphaCompositionMode = PixelAlphaCompositionMode.DestIn });
-            ctx.DrawImage(_cornerMask.Value, new Point(0, 0), 1f);
-        });
+            using SKCanvas canvas = new(card);
+            canvas.Clear(SKColors.Black);
+            DrawBlurredBackground(canvas, albumArt);
+            DrawOverlay(canvas);
+            DrawDisplayArt(canvas, albumArt);
+            DrawTrackText(canvas, track, player, upcomingTracks);
+            ApplyRoundedCorners(canvas);
+            return card;
+        }
+        catch
+        {
+            card.Dispose();
+            throw;
+        }
     }
 
-    internal static Image<Rgba32> BuildCornerMask(int width, int height, float radius)
+    private static void DrawBlurredBackground(SKCanvas canvas, SKBitmap albumArt)
     {
-        Image<Rgba32> mask = new(width, height, Color.Transparent);
-        mask.Mutate(ctx => ctx.Fill(Color.White, RoundedRectangle(width, height, radius)));
+        // Blur at thumbnail size, then scale up: the same soft look for a fraction of the work
+        using SKBitmap thumbnail = Resized(albumArt, 160, 90);
+        using SKBitmap blurred = Solid(160, 90, SKColors.Transparent);
+        using SKImageFilter blur = SKImageFilter.CreateBlur(4f, 4f);
+        using (SKCanvas blurCanvas = new(blurred))
+        using (SKPaint blurPaint = new() { ImageFilter = blur })
+        {
+            blurCanvas.DrawBitmap(thumbnail, new SKPoint(0, 0), SKSamplingOptions.Default, blurPaint);
+        }
+        using SKBitmap background = Resized(blurred, CardWidth + 100, CardHeight + 100);
+        canvas.DrawBitmap(background, new SKPoint(-50, -50), SKSamplingOptions.Default);
+    }
+
+    private static void DrawOverlay(SKCanvas canvas)
+    {
+        // A darker overlay for better text contrast, then a gradient
+        using SKPaint overlay = new() { Color = new SKColor(0, 0, 0, 180), IsAntialias = true };
+        canvas.DrawRect(0, 0, CardWidth, CardHeight, overlay);
+        using SKShader gradient = SKShader.CreateLinearGradient(
+            new SKPoint(0, 0),
+            new SKPoint(CardWidth, CardHeight),
+            [new SKColor(0, 0, 0, 50), new SKColor(0, 0, 0, 100)],
+            [0f, 1f],
+            SKShaderTileMode.Clamp);
+        using SKPaint gradientPaint = new() { Shader = gradient, IsAntialias = true };
+        canvas.DrawRect(0, 0, CardWidth, CardHeight, gradientPaint);
+    }
+
+    private static void DrawDisplayArt(SKCanvas canvas, SKBitmap albumArt)
+    {
+        // Crop to a square around the centre, then scale to fit the left side of the card
+        int size = Math.Min(albumArt.Width, albumArt.Height);
+        int left = (albumArt.Width - size) / 2;
+        int top = (albumArt.Height - size) / 2;
+        using SKBitmap square = new();
+        albumArt.ExtractSubset(square, new SKRectI(left, top, left + size, top + size));
+        using SKBitmap display = Resized(square, 280, 280);
+        canvas.DrawBitmap(display, new SKPoint(40, 60), SKSamplingOptions.Default);
+    }
+
+    private static void DrawTrackText(SKCanvas canvas, CustomTrackQueueItem track, CustomLavaLinkPlayer? player, List<CustomTrackQueueItem>? upcomingTracks)
+    {
+        try
+        {
+            using SKFont titleFont = CreateFont(40);
+            using SKFont artistFont = CreateFont(32);
+            using SKFont infoFont = CreateFont(20);
+            using SKFont smallInfoFont = CreateFont(16);
+            int textX = 360;  // Start text after the album art
+            int maxWidth = 400; // Maximum width for text
+            // Title
+            DrawText(canvas, Fit(track.Title ?? "Unknown Title", titleFont, maxWidth), titleFont, SKColors.White, textX, 70);
+            // Artist
+            DrawText(canvas, Fit(track.Artist ?? "Unknown Artist", artistFont, maxWidth), artistFont, new SKColor(220, 220, 220), textX, 130);
+            // Album
+            DrawText(canvas, Fit(track.Album ?? "Unknown Album", infoFont, maxWidth), infoFont, new SKColor(180, 180, 180), textX, 190);
+            // Time icon, then the duration after it
+            SKBitmap timeIcon = GetIcon("time.png");
+            canvas.DrawBitmap(timeIcon, new SKPoint(textX, 230), SKSamplingOptions.Default);
+            int durationTextX = textX + timeIcon.Width + 8; // 8px spacing between icon and text
+            DrawText(canvas, track.Duration ?? "00:00", infoFont, new SKColor(180, 180, 180), durationTextX, 230);
+            // Volume indicator
+            int volumePercent = player != null ? (int)Math.Round(player.Volume * 100) : 20;
+            DrawVolumeIndicator(canvas, textX, 275, 100, 8, volumePercent, infoFont, smallInfoFont);
+            // Repeat indicator
+            string repeatMode = player?.RepeatMode switch
+            {
+                TrackRepeatMode.Track => "Track",
+                TrackRepeatMode.Queue => "Queue",
+                _ => "None"
+            };
+            DrawRepeatIndicator(canvas, textX, 305, repeatMode, infoFont, smallInfoFont);
+            // Next Up queue preview on the right side
+            if (upcomingTracks is { Count: > 0 })
+            {
+                int nextUpX = 560; // Right portion of the image
+                int nextUpY = 225;
+                int nextUpMaxWidth = 200;
+                DrawText(canvas, "Next Up", infoFont, new SKColor(180, 180, 180), nextUpX, nextUpY);
+                for (int i = 0; i < Math.Min(upcomingTracks.Count, 2); i++)
+                {
+                    CustomTrackQueueItem upcoming = upcomingTracks[i];
+                    int itemY = nextUpY + 28 + (i * 40);
+                    DrawText(canvas, Fit(upcoming.Title ?? "Unknown", smallInfoFont, nextUpMaxWidth), smallInfoFont, SKColors.White, nextUpX, itemY);
+                    DrawText(canvas, Fit(upcoming.Artist ?? "Unknown", smallInfoFont, nextUpMaxWidth), smallInfoFont, new SKColor(140, 140, 140), nextUpX, itemY + 18);
+                }
+            }
+            // Requested by credit (bottom of image)
+            string credit = "Requested by: " + (track.RequestedBy ?? "Unknown");
+            DrawText(canvas, Fit(credit, smallInfoFont, maxWidth + 200), smallInfoFont, new SKColor(150, 150, 150), 40, 365);
+        }
+        catch (Exception ex)
+        {
+            Logs.Error($"Error adding text: {ex.Message}");
+        }
+    }
+
+    // Clears the pixels outside a rounded rectangle. The mask is built once; each card only composites it.
+    private static void ApplyRoundedCorners(SKCanvas canvas)
+    {
+        using SKPaint paint = new() { BlendMode = SKBlendMode.DstIn };
+        canvas.DrawBitmap(_cornerMask.Value, new SKPoint(0, 0), SKSamplingOptions.Default, paint);
+    }
+
+    internal static SKBitmap BuildCornerMask(int width, int height, float radius)
+    {
+        SKBitmap mask = Solid(width, height, SKColors.Transparent);
+        using SKCanvas canvas = new(mask);
+        using SKPaint paint = new() { Color = SKColors.White, IsAntialias = true };
+        canvas.DrawRoundRect(SKRect.Create(0, 0, width, height), new SKSize(radius, radius), paint);
         return mask;
     }
 
-    /// <summary>A rounded rectangle as a polygon, eight segments per corner, so every corner is a true arc</summary>
-    private static IPath RoundedRectangle(float width, float height, float radius)
-    {
-        List<PointF> points = [];
-        void Corner(float cx, float cy, float startDeg)
-        {
-            for (int i = 0; i <= 8; i++)
-            {
-                float a = (startDeg + 90f * i / 8f) * MathF.PI / 180f;
-                points.Add(new PointF(cx + radius * MathF.Cos(a), cy + radius * MathF.Sin(a)));
-            }
-        }
-        Corner(width - radius, radius, -90);
-        Corner(width - radius, height - radius, 0);
-        Corner(radius, height - radius, 90);
-        Corner(radius, radius, 180);
-        return new Polygon(new LinearLineSegment([.. points]));
-    }
-
-    private static void DrawRoundedRectangle(IImageProcessingContext ctx, float x, float y, float width, float height, float radius, Color color, bool fill = true)
+    private static void DrawRoundedRectangle(SKCanvas canvas, float x, float y, float width, float height, float radius, SKColor color, bool fill = true)
     {
         // Make sure radius isn't too large for the rectangle
         radius = Math.Min(radius, Math.Min(width / 2, height / 2));
-        IPath path = new PathBuilder()
-            .AddArc(new PointF(x + radius, y + radius), radius, radius, 0, 180, 90) // Top-left corner
-            .AddLine(x + radius, y, x + width - radius, y) // Top edge
-            .AddArc(new PointF(x + width - radius, y + radius), radius, radius, 0, 270, 90) // Top-right corner
-            .AddLine(x + width, y + radius, x + width, y + height - radius) // Right edge
-            .AddArc(new PointF(x + width - radius, y + height - radius), radius, radius, 0, 0, 90) // Bottom-right corner
-            .AddLine(x + width - radius, y + height, x + radius, y + height) // Bottom edge
-            .AddArc(new PointF(x + radius, y + height - radius), radius, radius, 0, 90, 90) // Bottom-left corner
-            .AddLine(x, y + height - radius, x, y + radius) // Left edge
-            .CloseFigure()
-            .Build();
-        // Fill or draw the rectangle
-        if (fill)
+        using SKPaint paint = new()
         {
-            ctx.Fill(color, path);
+            Color = color,
+            IsAntialias = true,
+            Style = fill ? SKPaintStyle.Fill : SKPaintStyle.Stroke,
+            StrokeWidth = 1f
+        };
+        canvas.DrawRoundRect(SKRect.Create(x, y, width, height), new SKSize(radius, radius), paint);
+    }
+
+    /// <summary>Draws text with its top at y, where the card's layout has always placed it</summary>
+    private static void DrawText(SKCanvas canvas, string text, SKFont font, SKColor color, float x, float y)
+    {
+        using SKPaint paint = new() { Color = color, IsAntialias = true };
+        canvas.DrawText(text, new SKPoint(x, y + BaselineOffset(font)), SKTextAlign.Left, font, paint);
+    }
+
+    // Places the baseline where the previous renderer put it. Its rule isn't exposed, so this is a fit: the font's
+    // ascent and descent centred in a one-em line. That matches within 1px on Noto Sans; on Noto Sans CJK the artist
+    // line sits 3px lower.
+    private static float BaselineOffset(SKFont font)
+    {
+        SKFontMetrics metrics = font.Metrics;
+        return (font.Size / 2) - ((metrics.Ascent + metrics.Descent) / 2);
+    }
+
+    private static string Fit(string text, SKFont font, float maxWidth) => TruncateToWidth(text, s => font.MeasureText(s), maxWidth);
+
+    /// <summary>Shortens text to fit a width and ends it with an ellipsis. Takes a measure function so the rule is testable without a font.</summary>
+    internal static string TruncateToWidth(string text, Func<string, float> measure, float maxWidth)
+    {
+        if (string.IsNullOrEmpty(text) || measure(text) <= maxWidth) return text;
+        // Keep the longest prefix that still fits with an ellipsis
+        for (int i = text.Length - 1; i >= 0; i--)
+        {
+            string truncated = text[..i] + "...";
+            if (measure(truncated) <= maxWidth) return truncated;
         }
-        else
+        return "...";
+    }
+
+    private static SKBitmap GetIcon(string iconName)
+    {
+        lock (_iconCache)
         {
-            ctx.Draw(color, 1f, path);
+            if (_iconCache.TryGetValue(iconName, out SKBitmap? cachedIcon))
+            {
+                return cachedIcon;
+            }
+            SKBitmap icon = LoadIcon(iconName);
+            _iconCache[iconName] = icon;
+            return icon;
         }
     }
 
-    private static Image<Rgba32> GetIcon(string iconName)
+    private static SKBitmap LoadIcon(string iconName)
     {
-        // Check if the icon is already cached
-        if (_iconCache.TryGetValue(iconName, out Image<Rgba32> cachedIcon))
-        {
-            return cachedIcon;
-        }
         string? path = AssetPaths.FindFile("Images", "Icons", iconName);
         if (path is not null)
         {
             try
             {
                 Logs.Debug($"Loading icon from {path}");
-                Image<Rgba32> icon = Image.Load<Rgba32>(path);
-                _iconCache[iconName] = icon;
-                return icon;
+                SKBitmap? icon = SKBitmap.Decode(File.ReadAllBytes(path));
+                if (icon is not null) return icon;
+                Logs.Error($"Failed to decode icon from {path}");
             }
             catch (Exception ex)
             {
                 Logs.Error($"Failed to load icon from {path}: {ex.Message}");
             }
         }
-        // If we get here, we couldn't load the icon
+        // Cached as blank, so a missing icon is logged and allocated once
         Logs.Error($"Could not find icon file: {iconName}");
-        // Return a blank image
-        return new Image<Rgba32>(24, 24, Color.Transparent);
+        return Solid(24, 24, SKColors.Transparent);
     }
 
-    private static void DrawVolumeIndicator(IImageProcessingContext ctx, int x, int y, int width, int height, int volumePercent, Font labelFont, Font valueFont)
+    private static void DrawVolumeIndicator(SKCanvas canvas, int x, int y, int width, int height, int volumePercent, SKFont labelFont, SKFont valueFont)
     {
         // Ensure volume is between 0-100
         volumePercent = Math.Clamp(volumePercent, 0, 100);
         // Load and draw the volume icon (vertically centered with the bar)
-        Image<Rgba32> icon = GetIcon("audio.png");
+        SKBitmap icon = GetIcon("audio.png");
         int iconY = y + (icon.Height - height) / 2 - 8; // Center icon relative to bar
-        ctx.DrawImage(icon, new Point(x, iconY), 1.0f);
+        canvas.DrawBitmap(icon, new SKPoint(x, iconY), SKSamplingOptions.Default);
         // Bar starts after the icon with spacing
         int barX = x + icon.Width + 8;
         // Background track - with rounded corners
         int barY = y + icon.Height / 2 - height / 2; // Vertically center the bar with the icon
         int cornerRadius = height;
-        DrawRoundedRectangle(ctx, barX, barY, width, height, cornerRadius, new Rgba32(80, 80, 80, 200), true);
+        DrawRoundedRectangle(canvas, barX, barY, width, height, cornerRadius, new SKColor(80, 80, 80, 200), true);
         // Active volume level - with rounded corners
         float fillWidth = (width * volumePercent) / 100f;
         if (fillWidth > 0)
         {
-            DrawRoundedRectangle(ctx, barX, barY, (int)fillWidth, height, cornerRadius, AccentBlue, true);
+            DrawRoundedRectangle(canvas, barX, barY, (int)fillWidth, height, cornerRadius, AccentBlue, true);
         }
         // Percentage text after the bar (vertically centered)
         int textX = barX + width + 8;
         int textY = barY - 4; // Slight offset up to visually center text with bar
-        ctx.DrawText($"{volumePercent}%", valueFont, Color.White, new PointF(textX, textY));
+        DrawText(canvas, $"{volumePercent}%", valueFont, SKColors.White, textX, textY);
     }
 
-    private static void DrawRepeatIndicator(IImageProcessingContext ctx, int x, int y, string repeatMode, Font labelFont, Font valueFont)
+    private static void DrawRepeatIndicator(SKCanvas canvas, int x, int y, string repeatMode, SKFont labelFont, SKFont valueFont)
     {
-        Color indicatorColor = new Rgba32(120, 120, 120, 255);
+        SKColor indicatorColor = new(120, 120, 120, 255);
         string displayText = "Off";
         int yOffset = 10; // Offset for the text position to give more padding between volume bar and repeat indicator
         // Determine the proper display based on repeat mode
@@ -465,13 +408,42 @@ public static class ImageBuilder
                 break;
         }
         // Load and draw the repeat icon
-        Image<Rgba32> icon = GetIcon("repeat.png");
-        ctx.DrawImage(icon, new Point(x, y + yOffset), 1.0f);
+        SKBitmap icon = GetIcon("repeat.png");
+        canvas.DrawBitmap(icon, new SKPoint(x, y + yOffset), SKSamplingOptions.Default);
         // Calculate spacing based on icon size
         int iconWidth = icon.Width;
         int textX = x + iconWidth + 8; // 8px spacing between icon and text
-        ctx.DrawText(" Repeat", labelFont, Color.White, new PointF(textX, y + yOffset));
+        DrawText(canvas, " Repeat", labelFont, SKColors.White, textX, y + yOffset);
         // Draw mode text (position relative to the label)
-        ctx.DrawText(displayText, valueFont, indicatorColor, new PointF(textX + 100, y + yOffset + 4));
+        DrawText(canvas, displayText, valueFont, indicatorColor, textX + 100, y + yOffset + 4);
+    }
+
+    // Unhinted, with sub-pixel placement, so glyph advances aren't rounded to whole pixels
+    private static SKFont CreateFont(float size) => new(_typeface ?? SKTypeface.Default, size) { Hinting = SKFontHinting.None, Subpixel = true };
+
+    private static SKBitmap Solid(int width, int height, SKColor color)
+    {
+        SKBitmap bitmap = new(width, height);
+        bitmap.Erase(color);
+        return bitmap;
+    }
+
+    private static SKBitmap Resized(SKBitmap source, int width, int height) =>
+        source.Resize(new SKImageInfo(width, height), Sampling) ?? throw new InvalidOperationException($"Could not resize the image to {width}x{height}");
+
+    private static async Task<SKBitmap> LoadArtworkAsync(string artworkUrl, ITrackPrefetchService? prefetchService)
+    {
+        try
+        {
+            // Check the prefetch cache first, otherwise download the artwork straight to memory
+            byte[] imageBytes = prefetchService?.GetCachedArtwork(artworkUrl) ?? await _httpClient!.DownloadBytesAsync(artworkUrl);
+            return SKBitmap.Decode(imageBytes) ?? throw new InvalidDataException("The artwork is not a supported image");
+        }
+        catch (Exception ex)
+        {
+            Logs.Error($"Failed to download artwork from {artworkUrl}: {ex.Message}");
+            // Use a flat grey square if the artwork can't be fetched or decoded
+            return Solid(400, 400, SKColors.DarkGray);
+        }
     }
 }
