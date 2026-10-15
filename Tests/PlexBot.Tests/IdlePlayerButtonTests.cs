@@ -3,6 +3,7 @@ using PlexBot.Core.Discord.Design;
 using PlexBot.Core.Discord.Embeds;
 using PlexBot.Core.Models;
 using PlexBot.Core.Models.Media;
+using PlexBot.Core.Models.Players;
 using PlexBot.Core.Services.Music;
 using Xunit;
 
@@ -105,6 +106,14 @@ public class IdlePlayerButtonTests
 
         Assert.Equal(new[] { 5, 5, 2 }, rows.Select(row => row.Count).ToArray());
         Assert.Equal(ControlIds, rows.SelectMany(row => row).Select(button => button.CustomId));
+    }
+
+    [Fact]
+    public void RegularGuildsCard_KeepsItsControls_WhenTheStaticRuleSaysNo()
+    {
+        bool staticCard = VisualPlayerStateManager.IsStaticCard(true, 100, 200);
+
+        Assert.Equal(ControlIds, Ids(Builder().BuildPlayingButtons(new ButtonContext(), staticCard)));
     }
 
     /// <summary>A provider with only the members the button builder reads. Nothing here is called by these tests.</summary>

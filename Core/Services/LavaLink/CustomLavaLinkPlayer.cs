@@ -60,7 +60,7 @@ public sealed class CustomLavaLinkPlayer(IPlayerProperties<CustomLavaLinkPlayer,
                 return;
             }
             ButtonContext context = new() { Player = this };
-            ComponentBuilder components = buttonBuilder.BuildPlayingButtons(context, stateManager.UseStaticChannel);
+            ComponentBuilder components = buttonBuilder.BuildPlayingButtons(context, stateManager.IsStaticCard(GuildId));
             await visualPlayer.AddOrUpdateVisualPlayerAsync(GuildId, components, recreateImage: true).ConfigureAwait(false);
 
             // The queue moved on, so the resolve-ahead window did too

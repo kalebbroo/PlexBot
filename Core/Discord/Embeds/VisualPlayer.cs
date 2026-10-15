@@ -174,9 +174,10 @@ public class VisualPlayer(
             IUserMessage? message = stateManager.GetMessage(guildId);
             if (message is null) return;
 
+            bool isStatic = stateManager.IsStaticCard(guildId);
             MessageComponent cv2;
             FileAttachment? banner = null;
-            if (stateManager.UseStaticChannel)
+            if (isStatic)
             {
                 ComponentBuilder buttons = buttonBuilder.BuildButtons(ButtonFlag.Idle, new ButtonContext());
                 banner = IdleBanner();
@@ -195,7 +196,7 @@ public class VisualPlayer(
                 msg.Flags = MessageFlags.ComponentsV2;
             }).ConfigureAwait(false);
 
-            if (!stateManager.UseStaticChannel)
+            if (!isStatic)
                 stateManager.SetMessage(guildId, null);
             Logs.Debug($"[guild {guildId}] Player message replaced after disconnect");
         }
@@ -262,7 +263,7 @@ public class VisualPlayer(
                 try
                 {
                     ButtonContext context = new() { Player = player };
-                    ComponentBuilder components = buttonBuilder.BuildPlayingButtons(context, stateManager.UseStaticChannel);
+                    ComponentBuilder components = buttonBuilder.BuildPlayingButtons(context, stateManager.IsStaticCard(guildId));
                     string statusLine = BuildStatusLine(guildId, player);
 
                     MessageComponent cv2 = stateManager.UseModernPlayer
