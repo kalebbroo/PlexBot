@@ -221,7 +221,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
                     // The player image shows Next Up, so redraw it with the new order
                     ButtonContext shuffleContext = new() { Player = player, Interaction = interaction };
                     await visualPlayer.AddOrUpdateVisualPlayerAsync(player.GuildId,
-                        buttonBuilder.BuildButtons(ButtonFlag.VisualPlayer, shuffleContext), recreateImage: true);
+                        buttonBuilder.BuildPlayingButtons(shuffleContext, stateManager.UseStaticChannel), recreateImage: true);
                     await interaction.ModifyOriginalResponseAsync(msg =>
                     {
                         msg.Components = ComponentV2Builder.Success("Queue Shuffled", $"Shuffled {countBefore} tracks.");
