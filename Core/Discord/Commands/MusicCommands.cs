@@ -4,6 +4,7 @@ using PlexBot.Core.Models;
 using PlexBot.Core.Models.Media;
 using PlexBot.Core.Discord.Autocomplete;
 using PlexBot.Core.Discord.Embeds;
+using PlexBot.Core.Discord.Modals;
 using PlexBot.Core.Exceptions;
 using PlexBot.Core.Services.PlexApi;
 using PlexBot.Utils;
@@ -52,19 +53,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
             }
 
             string providerId = normalizedMode == "library" ? "plex" : normalizedMode;
-            IMusicProvider? provider = providerRegistry.GetProvider(providerId);
-            if (provider is null)
-            {
-                await FollowupAsync(components: ComponentV2Builder.Error("Unknown Source", $"Music source '{providerId}' is not available."), ephemeral: true);
-                return;
-            }
-            SearchResults results = await provider.SearchAsync(query);
-            if (!results.HasResults)
-            {
-                await FollowupAsync(components: ComponentV2Builder.Info("No Results", $"No results found for '{query}' in {provider.DisplayName}."), ephemeral: true);
-                return;
-            }
-            await DisplaySearchResults(query, results, provider);
+            await SearchProviderAsync(providerId, query);
         }
         catch (HttpException httpEx) when (httpEx.DiscordCode == DiscordErrorCode.UnknownInteraction)
         {
@@ -77,6 +66,100 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
             try { await FollowupAsync(components: ComponentV2Builder.Error("Search Error", searchError), ephemeral: true); }
             catch { /* interaction may be dead */ }
         }
+    }
+
+    /// <summary>Searches one provider and posts the results as an ephemeral follow-up. The caller has already deferred.</summary>
+    private async Task SearchProviderAsync(string providerId, string query)
+    {
+        IMusicProvider? provider = providerRegistry.GetProvider(providerId);
+        if (provider is null)
+        {
+            await FollowupAsync(components: ComponentV2Builder.Error("Unknown Source", $"Music source '{providerId}' is not available."), ephemeral: true);
+            return;
+        }
+        SearchResults results = await provider.SearchAsync(query);
+        if (!results.HasResults)
+        {
+            await FollowupAsync(components: ComponentV2Builder.Info("No Results", $"No results found for '{query}' in {provider.DisplayName}."), ephemeral: true);
+            return;
+        }
+        await DisplaySearchResults(query, results, provider);
+    }
+
+    /// <summary>The idle card's Search button. Asks for a query and searches the Plex library, so playback can start
+    /// without a slash command. Voice is checked before the modal opens, so nobody types a query that could not play.</summary>
+    [ComponentInteraction("idle:search")]
+    public async Task OpenIdleSearchAsync()
+    {
+        if (!await RequireVoiceAsync())
+            return;
+        await RespondWithModalAsync<IdleSearchModal>("idle:search_modal");
+    }
+
+    [ModalInteraction("idle:search_modal")]
+    public async Task HandleIdleSearchAsync(IdleSearchModal modal)
+    {
+        try
+        {
+            await DeferAsync(ephemeral: true);
+            string query = modal.Query.Trim();
+            if (query.Length == 0)
+            {
+                await FollowupAsync(components: ComponentV2Builder.Error("Invalid Query", "Please type a song, artist or album name."), ephemeral: true);
+                return;
+            }
+            await SearchProviderAsync("plex", query);
+        }
+        catch (HttpException httpEx) when (httpEx.DiscordCode == DiscordErrorCode.UnknownInteraction)
+        {
+            Logs.Warning("Idle search hit 10062 (Unknown interaction) — Discord-side timing issue");
+        }
+        catch (Exception ex)
+        {
+            Logs.Error($"Error in idle search: {ex}");
+            string searchError = ex is PlexBotException botEx ? botEx.UserFriendlyMessage : "An error occurred while searching. Please try again later.";
+            try { await FollowupAsync(components: ComponentV2Builder.Error("Search Error", searchError), ephemeral: true); }
+            catch { /* interaction may be dead */ }
+        }
+    }
+
+    /// <summary>The idle card's Radio button. Asks for a track to start radio from, then shows the same results as
+    /// /search mode:radio. Queuing a result joins the user's voice channel, so no player has to exist first.</summary>
+    [ComponentInteraction("idle:radio")]
+    public async Task OpenIdleRadioAsync()
+    {
+        if (!await RequireVoiceAsync())
+            return;
+        await RespondWithModalAsync<IdleRadioModal>("idle:radio_modal");
+    }
+
+    [ModalInteraction("idle:radio_modal")]
+    public async Task HandleIdleRadioAsync(IdleRadioModal modal)
+    {
+        try
+        {
+            await DeferAsync(ephemeral: true);
+            await HandleRadioSearchAsync(modal.Query.Trim());
+        }
+        catch (HttpException httpEx) when (httpEx.DiscordCode == DiscordErrorCode.UnknownInteraction)
+        {
+            Logs.Warning("Idle radio hit 10062 (Unknown interaction) — Discord-side timing issue");
+        }
+        catch (Exception ex)
+        {
+            Logs.Error($"Error in idle radio: {ex}");
+            try { await FollowupAsync(components: ComponentV2Builder.Error("Radio Error", "An error occurred while starting radio. Please try again later."), ephemeral: true); }
+            catch { /* interaction may be dead */ }
+        }
+    }
+
+    /// <summary>Replies with an ephemeral error and returns false when the user is not in a voice channel</summary>
+    private async Task<bool> RequireVoiceAsync()
+    {
+        if (Context.User is IGuildUser { VoiceChannel: not null })
+            return true;
+        await RespondAsync(components: ComponentV2Builder.Error("Not In Voice", "Join a voice channel first, then press the button again."), ephemeral: true);
+        return false;
     }
 
     /// <summary>Dispatches non-library search modes to the appropriate sonic handler based on mode string</summary>

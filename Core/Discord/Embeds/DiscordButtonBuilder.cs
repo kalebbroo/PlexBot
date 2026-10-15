@@ -27,6 +27,7 @@ namespace PlexBot.Core.Discord.Embeds
         public static readonly ButtonFlag VisualPlayer = new(1L << 0, "VisualPlayer");
         public static readonly ButtonFlag QueueOptions = new(1L << 1, "QueueOptions");
         public static readonly ButtonFlag PlaylistOptions = new(1L << 2, "PlaylistOptions");
+        public static readonly ButtonFlag Idle = new(1L << 3, "Idle");
 
         // Registry of all flags
         private static readonly Dictionary<string, ButtonFlag> _registry = new()
@@ -34,11 +35,12 @@ namespace PlexBot.Core.Discord.Embeds
             { "None", None },
             { "VisualPlayer", VisualPlayer },
             { "QueueOptions", QueueOptions },
-            { "PlaylistOptions", PlaylistOptions }
+            { "PlaylistOptions", PlaylistOptions },
+            { "Idle", Idle }
         };
 
         // Bit position tracking for dynamic registration
-        private static int _nextBitPosition = 3; // Start after pre-defined flags
+        private static int _nextBitPosition = 4; // Start after pre-defined flags
 
         /// <summary>Register a new button flag</summary>
         /// <param name="name">Unique name for the flag</param>
@@ -163,6 +165,12 @@ namespace PlexBot.Core.Discord.Embeds
                 Button("Adventure", "pb_adventure", "\uD83E\uDDED", "sonic:adventure", ButtonStyle.Secondary));
             RegisterButton("kill", ButtonFlag.VisualPlayer, 70, _ =>
                 Button("Stop", "pb_stop", "\u23F9\uFE0F", "kill:kill", ButtonStyle.Danger));
+            // The idle card offers Search and Radio, which start playback themselves. Adventure needs a playing track
+            // to start from, so it stays on the playing card only.
+            RegisterButton("idle_search", ButtonFlag.Idle, 10, _ =>
+                Button("Search", "pb_search", "\U0001F50D", "idle:search", ButtonStyle.Primary));
+            RegisterButton("idle_radio", ButtonFlag.Idle, 20, _ =>
+                Button("Radio", "pb_radio", "\U0001F4FB", "idle:radio", ButtonStyle.Secondary));
             // Queue Options buttons
             RegisterButton("view_queue", ButtonFlag.QueueOptions, 10, context => {
                 int currentPage = 1;

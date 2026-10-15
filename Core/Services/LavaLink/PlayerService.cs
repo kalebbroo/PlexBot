@@ -90,7 +90,7 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
                 string friendly = result.Status switch
                 {
                     PlayerRetrieveStatus.UserNotInVoiceChannel => "You are not connected to a voice channel.",
-                    PlayerRetrieveStatus.BotNotConnected => "No active player. Start playback with /play first.",
+                    PlayerRetrieveStatus.BotNotConnected => "No active player. Start playback first.",
                     _ => $"The player is unavailable right now ({result.Status}). Please try again."
                 };
                 return (null, friendly);

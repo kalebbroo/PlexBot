@@ -717,7 +717,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
     }
 
     /// <summary>The "No Player" text shown by the Sonic Adventure button and, if the player has gone, its modal</summary>
-    private const string SonicNoPlayerBody = "No active player found. Start playback with /play first.";
+    private const string SonicNoPlayerBody = "No active player found. Start playback first.";
 
     /// <summary>Visual Player button — opens a modal for the user to enter a destination track name
     /// for a Sonic Adventure path from the currently playing track</summary>

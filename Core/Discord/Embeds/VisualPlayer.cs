@@ -178,7 +178,7 @@ public class VisualPlayer(
             FileAttachment? banner = null;
             if (stateManager.UseStaticChannel)
             {
-                ComponentBuilder buttons = buttonBuilder.BuildButtons(ButtonFlag.VisualPlayer, new ButtonContext());
+                ComponentBuilder buttons = buttonBuilder.BuildButtons(ButtonFlag.Idle, new ButtonContext());
                 banner = IdleBanner();
                 cv2 = ComponentV2Builder.BuildIdlePlayer(buttons, banner is not null);
             }

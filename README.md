@@ -111,7 +111,7 @@ appears in it.
 
 ![Static channel: idle card with banner and controls](./Docs/screenshots/static-channel-idle.png)
 
-When nothing is playing, the card shows the banner and how to start. After **Stop**, the card returns to this idle state.
+When nothing is playing, the card shows the banner with **Search** and **Radio** buttons. Search finds a track in your Plex library, and Radio starts from a track you name. Both join the voice channel you're in. After **Stop**, the card returns to this idle state.
 
 **To turn it on:**
 
