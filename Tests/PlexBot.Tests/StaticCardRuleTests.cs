@@ -38,4 +38,72 @@ public class StaticCardRuleTests
         Assert.False(VisualPlayerStateManager.IsStaticCard(true, 0, 0));
         Assert.False(VisualPlayerStateManager.IsStaticCard(true, null, null));
     }
+
+    [Fact]
+    public void HasStaticChannel_IsFalseWhenTheIdIsNullOrZero()
+    {
+        Assert.False(VisualPlayerStateManager.HasStaticChannel(null));
+        Assert.False(VisualPlayerStateManager.HasStaticChannel(0));
+    }
+
+    [Fact]
+    public void HasStaticChannel_IsTrueForAConfiguredId()
+    {
+        Assert.True(VisualPlayerStateManager.HasStaticChannel(100));
+    }
+
+    [Fact]
+    public void ResolveCardChannel_IsTheStaticChannelForAStaticCard()
+    {
+        Assert.Equal((ulong?)100, VisualPlayerStateManager.ResolveCardChannel(true, 100, 200));
+    }
+
+    [Fact]
+    public void ResolveCardChannel_IsNullForAStaticCardWithoutAnId()
+    {
+        // A static card never falls back to the channel a /play moved to
+        Assert.Null(VisualPlayerStateManager.ResolveCardChannel(true, 0, 200));
+        Assert.Null(VisualPlayerStateManager.ResolveCardChannel(true, null, 200));
+    }
+
+    [Fact]
+    public void ResolveCardChannel_IsTheLastChannelForACardThatIsNotStatic()
+    {
+        Assert.Equal((ulong?)200, VisualPlayerStateManager.ResolveCardChannel(false, 100, 200));
+        Assert.Null(VisualPlayerStateManager.ResolveCardChannel(false, 100, null));
+    }
+
+    [Fact]
+    public void CardChannelFor_IsTheMessageChannelWhenThereIsOne()
+    {
+        Assert.Equal((ulong?)300, VisualPlayerStateManager.CardChannelFor(300, 1, 1, 100));
+        Assert.Equal((ulong?)200, VisualPlayerStateManager.CardChannelFor(200, 1, 2, null));
+    }
+
+    [Fact]
+    public void CardChannelFor_IsTheStaticChannelForANullMessageOnTheStaticGuild()
+    {
+        // A lost card is recreated in the static channel, not in the channel a /play moved GetChannel to
+        Assert.Equal((ulong?)100, VisualPlayerStateManager.CardChannelFor(null, 1, 1, 100));
+    }
+
+    [Fact]
+    public void CardChannelFor_IsNullForANullMessageOnAnotherGuild()
+    {
+        Assert.Null(VisualPlayerStateManager.CardChannelFor(null, 1, 2, 100));
+        Assert.Null(VisualPlayerStateManager.CardChannelFor(null, null, 2, 100));
+    }
+
+    [Fact]
+    public void CardChannelFor_IsNullWhenTheStaticChannelIdIsNull()
+    {
+        Assert.Null(VisualPlayerStateManager.CardChannelFor(null, 1, 1, null));
+    }
+
+    [Fact]
+    public void CardChannelFor_IsNullWhenTheConfiguredIdIsZero()
+    {
+        // BotConfig.GetULong defaults to 0, so an unset id arrives as 0 rather than null
+        Assert.Null(VisualPlayerStateManager.CardChannelFor(null, 1, 1, 0));
+    }
 }

@@ -9,26 +9,6 @@ controls, Plex's sonic features (similar tracks, radio, and sonic adventures), a
 
 ---
 
-## Contents
-
-- [Features](#features)
-- [Extensions](#extensions)
-- [Your first five minutes](#your-first-five-minutes)
-- [The player](#the-player)
-- [Static player channel](#static-player-channel)
-- [Sonic features](#sonic-features)
-- [Commands](#commands)
-- [Install](#install)
-- [Configuration](#configuration)
-- [Custom emoji](#custom-emoji)
-- [Remote Lavalink (advanced)](#remote-lavalink-advanced)
-- [Performance tuning](#performance-tuning-audio-stuttering)
-- [Support](#support)
-- [Planned](#planned)
-- [License](#license)
-
----
-
 ## Features
 
 - **Plex library playback.** Play a track, a search result, or a whole playlist. Tracks load in the background, so a 90-track playlist starts at once.
@@ -49,16 +29,34 @@ Extensions add music sources and slash commands without changing PlexBot's core.
 
 **Official extensions**
 
-- **[YouTube Music Provider](https://github.com/kalebbroo/PlexBot-YouTube-MusicProvider)** adds YouTube to `/search` and plays YouTube links through Lavalink's YouTube plugin, which the extension configures itself. It needs Lavalink 4, which the Docker stack already runs. It lives in its own repository, so clone it into `Extensions/`. Its optional sign-in (OAuth) is off by default; read [its OAuth notes](https://github.com/kalebbroo/PlexBot-YouTube-MusicProvider#set-up-oauth-step-by-step) before you turn it on.
+- **[YouTube Music Provider](https://github.com/kalebbroo/PlexBot-YouTube-MusicProvider)** adds YouTube to `/search` and plays YouTube links through Lavalink's YouTube plugin, which the extension configures itself. It needs Lavalink 4, which the Docker stack already runs. Its optional sign-in (OAuth) is off by default; read [its OAuth notes](https://github.com/kalebbroo/PlexBot-YouTube-MusicProvider#set-up-oauth-step-by-step) before you turn it on.
 
-**To install an extension**, clone it into `Extensions/` and rebuild the stack:
+**To install YouTube (recommended):**
 
-```bash
-git clone https://github.com/kalebbroo/PlexBot-YouTube-MusicProvider.git Extensions/PlexBot-YouTube-MusicProvider
-Install/start.sh --build
-```
+1. In `config.fds`, set the switch in the `youtube` section (copy `RenameMe.config.fds` to `config.fds` first if you haven't yet):
 
-`Install/start.sh` also acts on each extension listed in [`Install/extensions.txt`](./Install/extensions.txt). The YouTube extension has a switch in `config.fds`: `youtube: enabled: true` clones it (or brings back a disabled copy), and `false` renames it to `<name>.disabled` without deleting anything. The template ships with `false`, so set it to `true` before you install YouTube, or the install renames the folder you cloned. See [Configuration](./Docs/Setup/Configuration.md#youtube-extension).
+   ```yaml
+   youtube:
+     enabled: true
+   ```
+
+   The shipped template has `enabled: false`, so a fresh install does not pull YouTube until you change it.
+
+2. Run the start script: `Install/start.sh --build` on Linux, or `Install\win-install.bat` on Windows. It clones the extension and downloads the `youtube-plugin` Lavalink plugin for you.
+
+**Manual alternative:**
+
+1. Clone the extension yourself into `Extensions/PlexBot-YouTube-MusicProvider`:
+
+   ```bash
+   git clone https://github.com/kalebbroo/PlexBot-YouTube-MusicProvider.git Extensions/PlexBot-YouTube-MusicProvider
+   ```
+
+2. Put [`youtube-plugin-1.18.2.jar`](https://maven.lavalink.dev/releases/dev/lavalink/youtube/youtube-plugin/1.18.2/youtube-plugin-1.18.2.jar) in `Install/Docker/plugins/`. The version is the one the extension's `lavalink.plugin.yml` pins.
+3. Before you run the script, edit `config.fds` (copy `RenameMe.config.fds` to it first if you don't have one) and remove the `enabled` line from the `youtube` section, or comment it out. The scripts then leave your clone alone. With `enabled: false`, which is what the template ships with, they rename the folder to `.disabled`.
+4. Run the start script as above. It regenerates the Lavalink config.
+
+For YouTube, use the switch rather than renaming the folder by hand. Renaming it to `.disabled` is undone on the next start while `enabled` is `true`. The switch is described in [Configuration](./Docs/Setup/Configuration.md#youtube-extension). Turning it off renames the folder and deletes nothing.
 
 - **[Build your own extension (tutorial)](./Docs/Extensions/Build-Your-First-Extension.md)** is a step-by-step guide that builds a working `/hello` command from nothing.
 - **[Full extension guide](./Docs/Extensions/CreatingExtensions.md)** is the complete reference.
@@ -107,11 +105,13 @@ More on the player is in the [Player UI guide](./Docs/Guides/Player-UI-Guide.md)
 ## Static player channel
 
 A static channel keeps one player in one channel. The player is always there, and playback started from any channel
-appears in it.
+appears in it. Only the server that owns that channel gets this card. Players elsewhere are unchanged.
 
 ![Static channel: idle card with banner and controls](./Docs/screenshots/static-channel-idle.png)
 
-When nothing is playing, the card shows the banner and these buttons: **Play** (a song, artist, album or link), **Search** (your Plex library), **Radio** and **Adventure** (both ask for a track name first), and one search button for each loaded source, such as YouTube. While a track plays, the same Play, Search and source buttons sit below the playback controls. Everything joins the voice channel you're in. After **Stop**, the card returns to this idle state.
+**Idle card** (nothing playing): the banner, then **Play** (a song, artist, album or link), **Search** (your Plex library), one button for each loaded search source (YouTube when its extension is loaded), **Radio** and **Adventure**. Radio and Adventure ask for a track first.
+
+**Playing card** (static channel only): the playback controls, then Play, Search and the source buttons. Radio and Adventure stay in the controls and use the current track. Everything joins the voice channel you're in. After **Stop** (or when the bot leaves voice), the card returns to the idle card.
 
 **To turn it on:**
 
@@ -126,7 +126,7 @@ When nothing is playing, the card shows the banner and these buttons: **Play** (
        channelId: 1360639203829879097   # your channel's ID
    ```
 
-4. Restart the bot.
+4. Restart the bot. If `enabled` is `true` but `channelId` is not set, the bot skips static setup and logs a warning.
 
 > **Heads up:** when the bot starts, it deletes its own old messages in the static channel, then posts the idle card.
 > Use a channel for the player only.
@@ -203,9 +203,9 @@ cd PlexBot
    PLEX_TOKEN=your-plex-token
    ```
 
-2. **Settings (optional).** `config.fds` is created from `RenameMe.config.fds` if it's missing. Copy the file and edit it to change the player or behaviour.
+2. **Settings (optional).** Copy `RenameMe.config.fds` to `config.fds` and edit it to change the player or behaviour. If the file is missing, the install script makes the copy itself. To install YouTube, set its switch in `config.fds` before you run the script (see [Extensions](#extensions)).
 
-3. **Run the install script.** `Install/win-install.bat` on Windows, or `Install/linux-install.sh` on Linux. It writes the Lavalink config, builds the Docker images, and starts the bot.
+3. **Run the install script.** `Install\win-install.bat` on Windows, or `bash Install/linux-install.sh` on Linux. It creates `config.fds` if it's missing, syncs the extensions listed in `Install/extensions.txt` with their switches, downloads the Lavalink plugins they need, writes the Lavalink config, builds the Docker images, and starts the bot.
 
 For the full walkthrough see the [Installation guide](./Docs/Setup/Installation.md) and the [Docker guide](./Docs/Setup/Docker-Guide.md).
 
@@ -241,7 +241,7 @@ Uses [Frenetic Data Syntax](https://github.com/FreneticLLC/FreneticUtilities), a
 | Key | Default | What it does |
 |---|---|---|
 | `visualPlayer.useModernPlayer` | `true` | `true` for the album-art player, `false` for the classic embed |
-| `visualPlayer.inactivityTimeout` | `2.0` | Minutes of silence before the bot leaves voice |
+| `visualPlayer.inactivityTimeout` | `2.0` | Minutes of inactivity before the bot leaves voice |
 | `visualPlayer.buttonCooldownSeconds` | `2.0` | Seconds a person must wait between presses of the same button. `0` turns it off. |
 | `visualPlayer.staticChannel.enabled` | `false` | Keep the player in one channel (see [Static player channel](#static-player-channel)) |
 | `visualPlayer.staticChannel.channelId` | `0` | The channel's ID |
@@ -262,7 +262,7 @@ Uses [Frenetic Data Syntax](https://github.com/FreneticLLC/FreneticUtilities), a
 | `plex.radio.refillThreshold` | `5` | Refill when fewer than this many tracks are queued |
 | `plex.radio.batchSize` | `30` | Tracks fetched per radio request, for the first batch and each refill |
 
-With infinite radio on, a radio session runs until you press **Stop**, press **Kill**, or the bot leaves voice. Tracks
+With infinite radio on, a radio session runs until you press **Stop** or the bot leaves voice. Tracks
 it has already queued are not queued again, and each refill continues from the last track Plex returned.
 
 **Logging and bot**
@@ -273,6 +273,12 @@ it has already queued are not queued again, and each refill continues from the l
 | `logging.saveToFile` | `true` | Write log files (every level) |
 | `logging.path` | `logs/plex-bot-[year]-[month]-[day].log` | Log file path |
 | `bot.environment` | _(empty)_ | `Development` registers slash commands per server, which updates faster |
+
+**YouTube extension** (read by the install scripts, not the bot)
+
+| Key | Default | What it does |
+|---|---|---|
+| `youtube.enabled` | `false` | `true` clones the YouTube extension (or restores it from `.disabled`) and fetches its plugin on the next install or start. `false` renames it to `.disabled`. Unset leaves it as it is. See [Extensions](#extensions). |
 
 ---
 
