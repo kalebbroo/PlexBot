@@ -186,10 +186,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
             if (await playerService.GetPlayerAsync(interaction, false) is not CustomLavaLinkPlayer player)
             {
                 MessageComponent errorMsg = ComponentV2Builder.Error(Notices.NoPlayer);
-                if (isInitialOpen)
-                    await FollowupAsync(components: errorMsg, ephemeral: true);
-                else
-                    await interaction.ModifyOriginalResponseAsync(msg => { msg.Components = errorMsg; msg.Embed = null; msg.Flags = MessageFlags.ComponentsV2; });
+                await FollowupAsync(components: errorMsg, ephemeral: true);
                 return;
             }
             ButtonContext context = new()
@@ -233,10 +230,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
                     break;
                 default:
                     MessageComponent unknownMsg = ComponentV2Builder.Error("Unknown Action", $"Unrecognized queue action: {action}");
-                    if (isInitialOpen)
-                        await FollowupAsync(components: unknownMsg, ephemeral: true);
-                    else
-                        await interaction.ModifyOriginalResponseAsync(msg => { msg.Components = unknownMsg; msg.Embed = null; msg.Flags = MessageFlags.ComponentsV2; });
+                    await FollowupAsync(components: unknownMsg, ephemeral: true);
                     break;
             }
         }
@@ -246,10 +240,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
             MessageComponent errorMsg = ComponentV2Builder.Error("Queue Error", "An error occurred while managing the queue. Please try again later.");
             try
             {
-                if (isInitialOpen)
-                    await FollowupAsync(components: errorMsg, ephemeral: true);
-                else
-                    await interaction.ModifyOriginalResponseAsync(msg => { msg.Components = errorMsg; msg.Embed = null; msg.Flags = MessageFlags.ComponentsV2; });
+                await FollowupAsync(components: errorMsg, ephemeral: true);
             }
             catch { /* Ignore if the error response itself fails */ }
         }
