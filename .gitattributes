@@ -1,2 +1,5 @@
 # Force LF line endings for shell scripts (critical for Linux/Docker)
 *.sh text eol=lf
+
+# Batch files need CRLF for cmd.exe, and the Windows installer depends on it
+*.bat text eol=crlf
