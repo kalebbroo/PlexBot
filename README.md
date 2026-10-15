@@ -53,7 +53,7 @@ Extensions add music sources and slash commands without changing PlexBot's core.
    ```
 
 2. Put [`youtube-plugin-1.18.2.jar`](https://maven.lavalink.dev/releases/dev/lavalink/youtube/youtube-plugin/1.18.2/youtube-plugin-1.18.2.jar) in `Install/Docker/plugins/`. The version is the one the extension's `lavalink.plugin.yml` pins.
-3. Remove the `enabled` line from the `youtube` section, or comment it out. The scripts then leave your clone alone. With `enabled: false`, they rename the folder to `.disabled`.
+3. Before you run the script, edit `config.fds` (copy `RenameMe.config.fds` to it first if you don't have one) and remove the `enabled` line from the `youtube` section, or comment it out. The scripts then leave your clone alone. With `enabled: false`, which is what the template ships with, they rename the folder to `.disabled`.
 4. Run the start script as above. It regenerates the Lavalink config.
 
 For YouTube, use the switch rather than renaming the folder by hand. Renaming it to `.disabled` is undone on the next start while `enabled` is `true`. The switch is described in [Configuration](./Docs/Setup/Configuration.md#youtube-extension). Turning it off renames the folder and deletes nothing.
