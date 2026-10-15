@@ -230,7 +230,6 @@ public class BotHostedService(DiscordSocketClient client, DiscordEventHandler ev
 
         ulong guildId = textChannel.Guild.Id;
         stateManager.SetChannel(guildId, textChannel);
-        stateManager.SetStaticChannel(textChannel);
 
         // The idle card keeps the buttons it was built with until the next player event, so it is built after the
         // application emoji have synced. A card posted first kept unicode fallbacks for the rest of the session.
@@ -265,6 +264,8 @@ public class BotHostedService(DiscordSocketClient client, DiscordEventHandler ev
             ? await textChannel.SendMessageAsync(components: cv2)
             : await textChannel.SendFileAsync(banner.Value, components: cv2);
         stateManager.SetMessage(guildId, initPlayer);
+        // Published once the card exists, so a concurrent update cannot post into the static channel before it
+        stateManager.SetStaticChannel(textChannel);
         Logs.Init($"Static player channel initialized successfully (message {initPlayer.Id})");
         return true;
     }
