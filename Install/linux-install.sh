@@ -34,7 +34,18 @@ echo "Using compose command: $COMPOSE"
 # Create plugins directory for Lavalink
 mkdir -p "$DOCKER_DIR/plugins"
 
-# Clone the extensions listed in Install/extensions.txt that are missing, so their config fragments are merged below
+# Create config.fds from template if it doesn't exist. The clone step reads its YouTube switch, so this must come first
+if [ ! -f "$ROOT_DIR/config.fds" ]; then
+    if [ -f "$ROOT_DIR/RenameMe.config.fds" ]; then
+        echo "No config.fds found — creating from template with defaults..."
+        cp "$ROOT_DIR/RenameMe.config.fds" "$ROOT_DIR/config.fds"
+        echo "Edit config.fds to customize player settings."
+    else
+        echo "Warning: No config.fds or RenameMe.config.fds found. Bot will use built-in defaults."
+    fi
+fi
+
+# Clone or rename the extensions listed in Install/extensions.txt, so their config fragments are merged below
 "$SCRIPT_DIR/sync-extensions.sh" clone
 
 # Generate Lavalink config from base template + extension plugin fragments.
@@ -60,17 +71,6 @@ if [ ! -f "$ROOT_DIR/.env" ]; then
     echo "Then fill in your Discord token and Plex server details."
     echo ""
     exit 1
-fi
-
-# Create config.fds from template if it doesn't exist
-if [ ! -f "$ROOT_DIR/config.fds" ]; then
-    if [ -f "$ROOT_DIR/RenameMe.config.fds" ]; then
-        echo "No config.fds found — creating from template with defaults..."
-        cp "$ROOT_DIR/RenameMe.config.fds" "$ROOT_DIR/config.fds"
-        echo "Edit config.fds to customize player settings."
-    else
-        echo "Warning: No config.fds or RenameMe.config.fds found. Bot will use built-in defaults."
-    fi
 fi
 
 # Make sure data and logs directories exist

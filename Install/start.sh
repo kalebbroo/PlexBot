@@ -59,7 +59,7 @@ fi
 
 mkdir -p "$ROOT_DIR/data" "$ROOT_DIR/logs"
 
-# Clone the extensions listed in Install/extensions.txt that are missing, so their config fragments are merged below
+# Clone or rename the extensions listed in Install/extensions.txt, so their config fragments are merged below
 "$SCRIPT_DIR/sync-extensions.sh" clone
 
 # Regenerate the Lavalink config from base + extension fragments (same as linux-install.sh)
