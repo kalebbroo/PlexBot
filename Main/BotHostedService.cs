@@ -230,6 +230,7 @@ public class BotHostedService(DiscordSocketClient client, DiscordEventHandler ev
 
         ulong guildId = textChannel.Guild.Id;
         stateManager.SetChannel(guildId, textChannel);
+        stateManager.SetStaticChannel(textChannel);
 
         // The idle card keeps the buttons it was built with until the next player event, so it is built after the
         // application emoji have synced. A card posted first kept unicode fallbacks for the rest of the session.

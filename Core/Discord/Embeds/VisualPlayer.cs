@@ -52,10 +52,9 @@ public class VisualPlayer(
         {
             CustomLavaLinkPlayer? player = await audioService.Players.GetPlayerAsync(guildId) as CustomLavaLinkPlayer;
             IUserMessage? message = stateManager.GetMessage(guildId);
-            // Decided now, while a lost card still points at the static channel. Once a failed edit clears the message,
-            // GetChannel may already be the channel a /play moved to.
+            // Decided before a failed edit below clears the message, so the recreate goes where the lost card was.
             bool isStatic = stateManager.IsStaticCard(guildId);
-            ITextChannel? staticChannel = isStatic ? (message?.Channel as ITextChannel ?? stateManager.GetChannel(guildId)) : null;
+            ITextChannel? staticChannel = isStatic ? (message?.Channel as ITextChannel ?? stateManager.StaticChannel) : null;
 
             string? statusLine = stateManager.UseProgressBar ? BuildStatusLine(guildId, player) : null;
 

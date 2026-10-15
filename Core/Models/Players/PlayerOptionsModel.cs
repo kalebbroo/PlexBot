@@ -71,6 +71,9 @@ public class VisualPlayerStateManager
     /// <summary>Optional channel ID to use as static player channel</summary>
     public ulong? StaticChannelId { get; set; } = BotConfig.GetULong("visualPlayer.staticChannel.channelId", 0);
 
+    /// <summary>The configured static channel, set once static setup resolves it</summary>
+    public ITextChannel? StaticChannel { get; private set; }
+
     /// <summary>Returns the channel the visual player for a guild is posted in, if any</summary>
     public ITextChannel? GetChannel(ulong guildId) => GetState(guildId).Channel;
 
@@ -85,11 +88,17 @@ public class VisualPlayerStateManager
     public static bool IsStaticCard(bool enabled, ulong? staticChannelId, ulong? cardChannelId) =>
         enabled && staticChannelId is ulong configured && configured != 0 && cardChannelId == configured;
 
+    /// <summary>The channel a guild's card is in: the card message's channel when there is one, otherwise the configured
+    /// static channel if it is in this guild. Null when neither applies.</summary>
+    public static ulong? CardChannelFor(ulong? messageChannelId, ulong? staticGuildId, ulong guildId, ulong? staticChannelId) =>
+        messageChannelId ?? (staticGuildId == guildId && HasStaticChannel(staticChannelId) ? staticChannelId : null);
+
     /// <summary>Whether a guild's card is the static channel's card. The channel the card message is in decides, because a
-    /// /play from another channel moves GetChannel without moving the card. GetChannel covers a guild with no card yet.</summary>
+    /// /play from another channel moves GetChannel without moving the card. With no card message, the static channel stands
+    /// in when it is in this guild.</summary>
     public bool IsStaticCard(ulong guildId)
     {
-        ulong? cardChannelId = GetMessage(guildId)?.Channel.Id ?? GetChannel(guildId)?.Id;
+        ulong? cardChannelId = CardChannelFor(GetMessage(guildId)?.Channel.Id, StaticChannel?.GuildId, guildId, StaticChannelId);
         return IsStaticCard(UseStaticChannel, StaticChannelId, cardChannelId);
     }
 
@@ -107,6 +116,9 @@ public class VisualPlayerStateManager
         GuildPlayerState state = GetState(guildId);
         lock (state) { state.Channel = channel; }
     }
+
+    /// <summary>Sets the configured static channel, once static setup resolves it</summary>
+    public void SetStaticChannel(ITextChannel channel) => StaticChannel = channel;
 
     /// <summary>Sets the visual player message for a guild</summary>
     public void SetMessage(ulong guildId, IUserMessage? message)
