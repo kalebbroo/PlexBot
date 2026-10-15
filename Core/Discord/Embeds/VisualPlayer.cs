@@ -52,6 +52,10 @@ public class VisualPlayer(
         {
             CustomLavaLinkPlayer? player = await audioService.Players.GetPlayerAsync(guildId) as CustomLavaLinkPlayer;
             IUserMessage? message = stateManager.GetMessage(guildId);
+            // Decided now, while a lost card still points at the static channel. Once a failed edit clears the message,
+            // GetChannel may already be the channel a /play moved to.
+            bool isStatic = stateManager.IsStaticCard(guildId);
+            ITextChannel? staticChannel = isStatic ? (message?.Channel as ITextChannel ?? stateManager.GetChannel(guildId)) : null;
 
             string? statusLine = stateManager.UseProgressBar ? BuildStatusLine(guildId, player) : null;
 
@@ -134,10 +138,14 @@ public class VisualPlayer(
                 }
             }
 
-            ITextChannel? channel = stateManager.GetChannel(guildId);
-            if (channel is null)
+            ITextChannel? lastChannel = stateManager.GetChannel(guildId);
+            ulong? targetId = VisualPlayerStateManager.ResolveCardChannel(isStatic, stateManager.StaticChannelId, lastChannel?.Id);
+            ITextChannel? channel = isStatic ? staticChannel : lastChannel;
+            if (channel is null || channel.Id != targetId)
             {
-                Logs.Warning($"[guild {guildId}] No channel known for visual player; skipping message creation");
+                Logs.Warning(isStatic
+                    ? $"[guild {guildId}] Static player channel {stateManager.StaticChannelId} could not be resolved; not posting the card elsewhere"
+                    : $"[guild {guildId}] No channel known for visual player; skipping message creation");
                 return;
             }
 

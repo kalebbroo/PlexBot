@@ -51,4 +51,25 @@ public class StaticCardRuleTests
     {
         Assert.True(VisualPlayerStateManager.HasStaticChannel(100));
     }
+
+    [Fact]
+    public void ResolveCardChannel_IsTheStaticChannelForAStaticCard()
+    {
+        Assert.Equal((ulong?)100, VisualPlayerStateManager.ResolveCardChannel(true, 100, 200));
+    }
+
+    [Fact]
+    public void ResolveCardChannel_IsNullForAStaticCardWithoutAnId()
+    {
+        // A static card never falls back to the channel a /play moved to
+        Assert.Null(VisualPlayerStateManager.ResolveCardChannel(true, 0, 200));
+        Assert.Null(VisualPlayerStateManager.ResolveCardChannel(true, null, 200));
+    }
+
+    [Fact]
+    public void ResolveCardChannel_IsTheLastChannelForACardThatIsNotStatic()
+    {
+        Assert.Equal((ulong?)200, VisualPlayerStateManager.ResolveCardChannel(false, 100, 200));
+        Assert.Null(VisualPlayerStateManager.ResolveCardChannel(false, 100, null));
+    }
 }

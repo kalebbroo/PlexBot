@@ -93,6 +93,14 @@ public class VisualPlayerStateManager
         return IsStaticCard(UseStaticChannel, StaticChannelId, cardChannelId);
     }
 
+    /// <summary>The channel a lost card is recreated in. A static card goes only to the static channel, never to the channel
+    /// a /play moved to. Null means there is no channel to post in.</summary>
+    public static ulong? ResolveCardChannel(bool isStatic, ulong? staticChannelId, ulong? lastChannelId)
+    {
+        if (!isStatic) return lastChannelId;
+        return HasStaticChannel(staticChannelId) ? staticChannelId : null;
+    }
+
     /// <summary>Sets the channel the visual player for a guild is posted in</summary>
     public void SetChannel(ulong guildId, ITextChannel? channel)
     {
