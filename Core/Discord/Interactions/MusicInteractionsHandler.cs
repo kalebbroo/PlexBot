@@ -160,8 +160,9 @@ public class MusicInteractionHandler(IPlayerService playerService,
         }
     }
 
-    /// <summary>"options" creates a new ephemeral panel from the main player; all other actions
-    /// (view, shuffle, clear, pagination) edit that same panel in-place via DEFERRED_UPDATE_MESSAGE</summary>
+    /// <summary>"options" creates a new ephemeral panel from the main player; view, clear and pagination edit that
+    /// same panel in-place via DEFERRED_UPDATE_MESSAGE. Shuffle can come from the player card too, so it answers with
+    /// a followup instead of editing the message its button sits on</summary>
     [ComponentInteraction("queue_options:*:*")]
     public async Task HandleQueueOptionsAsync(string action, string pageStr)
     {
@@ -219,12 +220,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
                     ButtonContext shuffleContext = new() { Player = player, Interaction = interaction };
                     await visualPlayer.AddOrUpdateVisualPlayerAsync(player.GuildId,
                         buttonBuilder.BuildButtons(ButtonFlag.VisualPlayer, shuffleContext), recreateImage: true);
-                    await interaction.ModifyOriginalResponseAsync(msg =>
-                    {
-                        msg.Components = ComponentV2Builder.Success("Queue Shuffled", $"Shuffled {countBefore} tracks.");
-                        msg.Embed = null;
-                        msg.Flags = MessageFlags.ComponentsV2;
-                    });
+                    await FollowupAsync(components: ComponentV2Builder.Success("Queue Shuffled", $"Shuffled {countBefore} tracks."), ephemeral: true);
                     break;
                 case "clear":
                     int cleared = await playerService.ClearQueueAsync(interaction);
