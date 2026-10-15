@@ -72,7 +72,8 @@ When enabled, the player locks to a single channel and updates in place as track
 - The bot creates a placeholder message on startup
 - All player updates go to this channel regardless of where commands are used
 - Commands can still be used from any channel
-- While nothing is playing, the card has **Search** and **Radio** buttons, so playback can start without a slash command
+- While nothing is playing, the card has **Play**, **Search**, **Radio** and **Adventure** buttons, plus a search button for each loaded source such as YouTube, so playback can start without a slash command. Radio and Adventure ask for a track name first.
+- While a track plays, the Play, Search and source buttons sit below the playback controls
 
 Configure in `config.fds`:
 ```yaml

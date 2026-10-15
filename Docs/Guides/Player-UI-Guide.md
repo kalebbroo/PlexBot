@@ -50,7 +50,7 @@ visualPlayer:
 
 ## Static Player Channel
 
-When enabled, the player always appears in the designated channel regardless of where commands are used. The bot creates a placeholder message on startup and updates it as tracks change. While nothing is playing, the card has **Search** and **Radio** buttons, so playback can start without a slash command.
+When enabled, the player always appears in the designated channel regardless of where commands are used. The bot creates a placeholder message on startup and updates it as tracks change. While nothing is playing, the card has **Play**, **Search**, **Radio** and **Adventure** buttons, plus a search button for each loaded source such as YouTube, so playback can start without a slash command. Radio and Adventure ask for a track name first. While a track plays, the Play, Search and source buttons sit below the playback controls.
 
 To set up:
 1. Create a dedicated text channel in your Discord server
