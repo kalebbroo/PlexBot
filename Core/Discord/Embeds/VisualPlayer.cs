@@ -262,7 +262,7 @@ public class VisualPlayer(
                 try
                 {
                     ButtonContext context = new() { Player = player };
-                    ComponentBuilder components = buttonBuilder.BuildButtons(ButtonFlag.VisualPlayer, context);
+                    ComponentBuilder components = buttonBuilder.BuildPlayingButtons(context, stateManager.UseStaticChannel);
                     string statusLine = BuildStatusLine(guildId, player);
 
                     MessageComponent cv2 = stateManager.UseModernPlayer
