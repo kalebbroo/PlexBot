@@ -58,7 +58,7 @@ git clone https://github.com/kalebbroo/PlexBot-YouTube-MusicProvider.git Extensi
 Install/start.sh --build
 ```
 
-`Install/start.sh` also clones each extension listed in [`Install/extensions.txt`](./Install/extensions.txt) whose folder is missing. The YouTube extension is listed there, so the commands above are only the manual route.
+`Install/start.sh` also acts on each extension listed in [`Install/extensions.txt`](./Install/extensions.txt). The YouTube extension has a switch in `config.fds`: `youtube: enabled: true` clones it (or brings back a disabled copy), and `false` renames it to `<name>.disabled` without deleting anything. The template ships with `false`, so set it to `true` before you install YouTube, or the install renames the folder you cloned. See [Configuration](./Docs/Setup/Configuration.md#youtube-extension).
 
 - **[Build your own extension (tutorial)](./Docs/Extensions/Build-Your-First-Extension.md)** is a step-by-step guide that builds a working `/hello` command from nothing.
 - **[Full extension guide](./Docs/Extensions/CreatingExtensions.md)** is the complete reference.
