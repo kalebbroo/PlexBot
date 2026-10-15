@@ -90,7 +90,7 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
                 string friendly = result.Status switch
                 {
                     PlayerRetrieveStatus.UserNotInVoiceChannel => "You are not connected to a voice channel.",
-                    PlayerRetrieveStatus.BotNotConnected => "No active player. Start playback with /play first.",
+                    PlayerRetrieveStatus.BotNotConnected => "No active player. Start playback first.",
                     _ => $"The player is unavailable right now ({result.Status}). Please try again."
                 };
                 return (null, friendly);
@@ -349,7 +349,7 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
                 if (player is CustomLavaLinkPlayer customPlayerRefresh)
                 {
                     ButtonContext ctx = new() { Player = customPlayerRefresh, Interaction = interaction };
-                    ComponentBuilder refreshComponents = buttonBuilder.BuildButtons(ButtonFlag.VisualPlayer, ctx);
+                    ComponentBuilder refreshComponents = buttonBuilder.BuildPlayingButtons(ctx, stateManager.IsStaticCard(guildId));
                     await visualPlayer.AddOrUpdateVisualPlayerAsync(guildId, refreshComponents, recreateImage: true);
                 }
 
@@ -448,7 +448,7 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
                     Player = customPlayer,
                     Interaction = interaction
                 };
-                ComponentBuilder components = buttonBuilder.BuildButtons(ButtonFlag.VisualPlayer, context);
+                ComponentBuilder components = buttonBuilder.BuildPlayingButtons(context, stateManager.IsStaticCard(customPlayer.GuildId));
                 await visualPlayer.AddOrUpdateVisualPlayerAsync(customPlayer.GuildId, components);
             }
             return result;
@@ -501,7 +501,7 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
                     Player = customPlayer,
                     Interaction = interaction
                 };
-                ComponentBuilder components = buttonBuilder.BuildButtons(ButtonFlag.VisualPlayer, context);
+                ComponentBuilder components = buttonBuilder.BuildPlayingButtons(context, stateManager.IsStaticCard(customPlayer.GuildId));
                 await visualPlayer.AddOrUpdateVisualPlayerAsync(customPlayer.GuildId, components, true);
             }
             Logs.Debug($"Repeat mode set to {repeatMode} by {interaction.User.Username}");

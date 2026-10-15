@@ -248,7 +248,7 @@ public static class ComponentV2Builder
             container.WithMediaGallery(new MediaGalleryBuilder().AddItem($"attachment://{BannerFileName}"));
         container
             .WithTextDisplay("## \U0001F3B5 PlexBot Music Player")
-            .WithTextDisplay("No track is currently playing. Use `/play` to start!")
+            .WithTextDisplay("No track is playing. Press **Play** or **Search** to find music, or **Radio** and **Adventure** to start from tracks you name.")
             .WithSeparator(SeparatorSpacingSize.Small, isDivider: true)
             .WithTextDisplay("-# The player will appear here when music begins playing");
         AddActionRows(container, buttons);

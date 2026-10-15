@@ -4,6 +4,7 @@ using PlexBot.Core.Models;
 using PlexBot.Core.Models.Media;
 using PlexBot.Core.Discord.Autocomplete;
 using PlexBot.Core.Discord.Embeds;
+using PlexBot.Core.Discord.Modals;
 using PlexBot.Core.Exceptions;
 using PlexBot.Core.Services.PlexApi;
 using PlexBot.Utils;
@@ -52,19 +53,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
             }
 
             string providerId = normalizedMode == "library" ? "plex" : normalizedMode;
-            IMusicProvider? provider = providerRegistry.GetProvider(providerId);
-            if (provider is null)
-            {
-                await FollowupAsync(components: ComponentV2Builder.Error("Unknown Source", $"Music source '{providerId}' is not available."), ephemeral: true);
-                return;
-            }
-            SearchResults results = await provider.SearchAsync(query);
-            if (!results.HasResults)
-            {
-                await FollowupAsync(components: ComponentV2Builder.Info("No Results", $"No results found for '{query}' in {provider.DisplayName}."), ephemeral: true);
-                return;
-            }
-            await DisplaySearchResults(query, results, provider);
+            await SearchProviderAsync(providerId, query);
         }
         catch (HttpException httpEx) when (httpEx.DiscordCode == DiscordErrorCode.UnknownInteraction)
         {
@@ -77,6 +66,254 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
             try { await FollowupAsync(components: ComponentV2Builder.Error("Search Error", searchError), ephemeral: true); }
             catch { /* interaction may be dead */ }
         }
+    }
+
+    /// <summary>Searches one provider and posts the results as an ephemeral follow-up. The caller has already deferred.</summary>
+    private async Task SearchProviderAsync(string providerId, string query)
+    {
+        IMusicProvider? provider = providerRegistry.GetProvider(providerId);
+        if (provider is null)
+        {
+            await FollowupAsync(components: ComponentV2Builder.Error("Unknown Source", $"Music source '{providerId}' is not available."), ephemeral: true);
+            return;
+        }
+        SearchResults results = await provider.SearchAsync(query);
+        if (!results.HasResults)
+        {
+            await FollowupAsync(components: ComponentV2Builder.Info("No Results", $"No results found for '{query}' in {provider.DisplayName}."), ephemeral: true);
+            return;
+        }
+        await DisplaySearchResults(query, results, provider);
+    }
+
+    /// <summary>The Play button, on the idle card and on a static channel's playing card. Asks for a song, artist, album or
+    /// link, then plays it the way /play does. Voice is checked before the modal opens.</summary>
+    [ComponentInteraction("entry:play")]
+    public async Task OpenEntryPlayAsync()
+    {
+        if (!await RequireVoiceAsync())
+            return;
+        await RespondWithModalAsync<EntryPlayModal>("entry:play_modal");
+    }
+
+    [ModalInteraction("entry:play_modal")]
+    public async Task HandleEntryPlayAsync(EntryPlayModal modal)
+    {
+        try
+        {
+            await DeferAsync(ephemeral: true);
+            await PlayQueryAsync(modal.Query.Trim(), next: false);
+        }
+        catch (HttpException httpEx) when (httpEx.DiscordCode == DiscordErrorCode.UnknownInteraction)
+        {
+            Logs.Warning("Play button hit 10062 (Unknown interaction) — Discord-side timing issue");
+        }
+        catch (Exception ex)
+        {
+            Logs.Error($"Error in play button: {ex}");
+            try { await FollowupAsync(components: ComponentV2Builder.Error("Playback Error", "An error occurred while playing. Please try again later."), ephemeral: true); }
+            catch { /* interaction may be dead */ }
+        }
+    }
+
+    /// <summary>The Search button, on the idle card and on a static channel's playing card. Asks for a query and searches
+    /// the Plex library, so playback can start without a slash command. Voice is checked before the modal opens, so nobody
+    /// types a query that could not play.</summary>
+    [ComponentInteraction("entry:search")]
+    public async Task OpenEntrySearchAsync()
+    {
+        if (!await RequireVoiceAsync())
+            return;
+        await RespondWithModalAsync<SearchQueryModal>("entry:search_modal");
+    }
+
+    [ModalInteraction("entry:search_modal")]
+    public async Task HandleEntrySearchAsync(SearchQueryModal modal)
+    {
+        try
+        {
+            await DeferAsync(ephemeral: true);
+            string query = modal.Query.Trim();
+            if (query.Length == 0)
+            {
+                await FollowupAsync(components: ComponentV2Builder.Error("Invalid Query", "Please type a song, artist or album name."), ephemeral: true);
+                return;
+            }
+            await SearchProviderAsync("plex", query);
+        }
+        catch (HttpException httpEx) when (httpEx.DiscordCode == DiscordErrorCode.UnknownInteraction)
+        {
+            Logs.Warning("Search button hit 10062 (Unknown interaction) — Discord-side timing issue");
+        }
+        catch (Exception ex)
+        {
+            Logs.Error($"Error in search button: {ex}");
+            string searchError = ex is PlexBotException botEx ? botEx.UserFriendlyMessage : "An error occurred while searching. Please try again later.";
+            try { await FollowupAsync(components: ComponentV2Builder.Error("Search Error", searchError), ephemeral: true); }
+            catch { /* interaction may be dead */ }
+        }
+    }
+
+    /// <summary>A provider's search button (one per search provider, on the idle card and on a static channel's playing card).
+    /// Asks for a query in a modal titled with the provider's name, then searches that provider. Voice is checked first.</summary>
+    [ComponentInteraction("provider:search:*")]
+    public async Task OpenProviderSearchAsync(string providerId)
+    {
+        if (!await RequireVoiceAsync())
+            return;
+        IMusicProvider? provider = providerRegistry.GetProvider(providerId);
+        if (provider is null)
+        {
+            await RespondAsync(components: ComponentV2Builder.Error("Unknown Source", $"Music source '{providerId}' is not available."), ephemeral: true);
+            return;
+        }
+        string title = $"Search {provider.DisplayName}";
+        ModalBuilder modal = new ModalBuilder()
+            .WithTitle(title.Length > 45 ? title[..45] : title)
+            .WithCustomId($"provider:search_modal:{providerId}")
+            .AddTextInput(label: SearchQueryModal.QueryLabel, customId: "query", style: TextInputStyle.Short,
+                placeholder: SearchQueryModal.QueryPlaceholder, maxLength: 200);
+        await Context.Interaction.RespondWithModalAsync(modal.Build());
+    }
+
+    [ModalInteraction("provider:search_modal:*")]
+    public async Task HandleProviderSearchAsync(string providerId, SearchQueryModal modal)
+    {
+        try
+        {
+            await DeferAsync(ephemeral: true);
+            string query = modal.Query.Trim();
+            if (query.Length == 0)
+            {
+                await FollowupAsync(components: ComponentV2Builder.Error("Invalid Query", "Please type a song, artist or album name."), ephemeral: true);
+                return;
+            }
+            await SearchProviderAsync(providerId, query);
+        }
+        catch (HttpException httpEx) when (httpEx.DiscordCode == DiscordErrorCode.UnknownInteraction)
+        {
+            Logs.Warning($"Provider search ({providerId}) hit 10062 (Unknown interaction) — Discord-side timing issue");
+        }
+        catch (Exception ex)
+        {
+            Logs.Error($"Error in provider search ({providerId}): {ex}");
+            string searchError = ex is PlexBotException botEx ? botEx.UserFriendlyMessage : "An error occurred while searching. Please try again later.";
+            try { await FollowupAsync(components: ComponentV2Builder.Error("Search Error", searchError), ephemeral: true); }
+            catch { /* interaction may be dead */ }
+        }
+    }
+
+    /// <summary>The idle card's Radio button. Asks for a track to start radio from, then shows the same results as
+    /// /search mode:radio. Queuing a result joins the user's voice channel, so no player has to exist first.</summary>
+    [ComponentInteraction("idle:radio")]
+    public async Task OpenIdleRadioAsync()
+    {
+        if (!await RequireVoiceAsync())
+            return;
+        await RespondWithModalAsync<IdleRadioModal>("idle:radio_modal");
+    }
+
+    [ModalInteraction("idle:radio_modal")]
+    public async Task HandleIdleRadioAsync(IdleRadioModal modal)
+    {
+        try
+        {
+            await DeferAsync(ephemeral: true);
+            await HandleRadioSearchAsync(modal.Query.Trim());
+        }
+        catch (HttpException httpEx) when (httpEx.DiscordCode == DiscordErrorCode.UnknownInteraction)
+        {
+            Logs.Warning("Idle radio hit 10062 (Unknown interaction) — Discord-side timing issue");
+        }
+        catch (Exception ex)
+        {
+            Logs.Error($"Error in idle radio: {ex}");
+            try { await FollowupAsync(components: ComponentV2Builder.Error("Radio Error", "An error occurred while starting radio. Please try again later."), ephemeral: true); }
+            catch { /* interaction may be dead */ }
+        }
+    }
+
+    /// <summary>The idle card's Adventure button. Asks for a start track and a destination, then lists the sonic path between
+    /// them. The same list the playing card's Adventure shows, so picking a track or Play All queues it. Voice is checked first.</summary>
+    [ComponentInteraction("idle:adventure")]
+    public async Task OpenIdleAdventureAsync()
+    {
+        if (!await RequireVoiceAsync())
+            return;
+        await RespondWithModalAsync<IdleAdventureModal>("idle:adventure_modal");
+    }
+
+    [ModalInteraction("idle:adventure_modal")]
+    public async Task HandleIdleAdventureAsync(IdleAdventureModal modal)
+    {
+        try
+        {
+            await DeferAsync(ephemeral: true);
+            string startQuery = modal.Start.Trim();
+            string destinationQuery = modal.Destination.Trim();
+            if (startQuery.Length == 0 || destinationQuery.Length == 0)
+            {
+                await FollowupAsync(components: ComponentV2Builder.Error("Invalid Query", "Please type a start track and a destination."), ephemeral: true);
+                return;
+            }
+
+            Track? start = await FirstPlexTrackAsync(startQuery);
+            if (start is null)
+            {
+                await FollowupAsync(components: ComponentV2Builder.Error("No Results", $"No tracks found for '{startQuery}'."), ephemeral: true);
+                return;
+            }
+            Track? end = await FirstPlexTrackAsync(destinationQuery);
+            if (end is null)
+            {
+                await FollowupAsync(components: ComponentV2Builder.Error("No Results", $"No tracks found for '{destinationQuery}'."), ephemeral: true);
+                return;
+            }
+
+            string startKey = PlexJsonParser.ExtractRatingKey(start.SourceKey);
+            string endKey = PlexJsonParser.ExtractRatingKey(end.SourceKey);
+            if (string.IsNullOrEmpty(startKey) || string.IsNullOrEmpty(endKey))
+            {
+                await FollowupAsync(components: ComponentV2Builder.Error("Error", "Could not identify one of those tracks."), ephemeral: true);
+                return;
+            }
+
+            List<Track> path = await plexSonicService.GetSonicAdventureAsync(startKey, endKey);
+            if (path.Count == 0)
+            {
+                await FollowupAsync(components: ComponentV2Builder.Info("No Path Found", $"Could not find a sonic path from '{start.Title}' to '{end.Title}'."), ephemeral: true);
+                return;
+            }
+
+            await FollowupAsync(components: BuildAdventureResults(start, end, path, emojis.Text("pb_adventure", "\U0001F9ED")), ephemeral: true);
+            Logs.Info($"Idle sonic adventure by {Context.User.Username}: {start.Title} → {end.Title}, {path.Count} tracks");
+        }
+        catch (HttpException httpEx) when (httpEx.DiscordCode == DiscordErrorCode.UnknownInteraction)
+        {
+            Logs.Warning("Idle adventure hit 10062 (Unknown interaction) — Discord-side timing issue");
+        }
+        catch (Exception ex)
+        {
+            Logs.Error($"Error in idle adventure: {ex}");
+            try { await FollowupAsync(components: ComponentV2Builder.Error("Error", "Failed to build sonic adventure path."), ephemeral: true); }
+            catch { /* interaction may be dead */ }
+        }
+    }
+
+    /// <summary>The first track a Plex library search finds, or null when it finds none</summary>
+    private async Task<Track?> FirstPlexTrackAsync(string query)
+    {
+        SearchResults results = await plexMusicService.SearchLibraryAsync(query);
+        return results.Tracks.FirstOrDefault();
+    }
+
+    /// <summary>Replies with an ephemeral error and returns false when the user is not in a voice channel</summary>
+    private async Task<bool> RequireVoiceAsync()
+    {
+        if (Context.User is IGuildUser { VoiceChannel: not null })
+            return true;
+        await RespondAsync(components: ComponentV2Builder.Error("Not In Voice", "Join a voice channel first, then press the button again."), ephemeral: true);
+        return false;
     }
 
     /// <summary>Dispatches non-library search modes to the appropriate sonic handler based on mode string</summary>
@@ -251,6 +488,35 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
             Logs.Error($"Error loading station: {ex.Message}");
             await FollowupAsync(components: ComponentV2Builder.Error("Station Error", "Failed to load radio station tracks."), ephemeral: true);
         }
+    }
+
+    /// <summary>The sonic adventure list: a menu of the path's tracks and a Play All that queues the whole path. The playing
+    /// card's Adventure and the idle card's Adventure both show it, so they list the same thing.</summary>
+    public static MessageComponent BuildAdventureResults(Track start, Track end, IReadOnlyList<Track> path, string emoji)
+    {
+        SelectMenuBuilder selectMenu = new SelectMenuBuilder()
+            .WithCustomId("search:plex:track")
+            .WithPlaceholder("Select a track from the adventure path")
+            .WithMaxValues(1);
+
+        foreach (Track track in path.Take(25))
+        {
+            string label = track.Title?.Length > 100 ? track.Title[..97] + "..." : track.Title ?? "Unknown";
+            string desc = $"{track.Artist} - {track.Album}";
+            if (desc.Length > 100) desc = desc[..97] + "...";
+            selectMenu.AddOption(label, track.SourceKey, desc);
+        }
+
+        string startKey = PlexJsonParser.ExtractRatingKey(start.SourceKey);
+        string endKey = PlexJsonParser.ExtractRatingKey(end.SourceKey);
+        ComponentBuilder components = new();
+        components.WithSelectMenu(selectMenu);
+        components.WithButton("Play All", $"sonic:playall:adventure:{startKey}-{endKey}", ButtonStyle.Success, row: 1);
+
+        return ComponentV2Builder.BuildSonicResults(
+            "Sonic Adventure",
+            $"Path from **{start.Artist}** - {start.Title} to **{end.Artist}** - {end.Title} ({path.Count} tracks)",
+            components, emoji);
     }
 
     /// <summary>Builds a track select menu with optional "Play All" button, reusing the search:plex:track
@@ -470,8 +736,6 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         }
     }
 
-    /// <summary>Attempts URL playback via registered providers first, then Lavalink fallback,
-    /// or searches Plex library and auto-plays the best match (track → album → artist)</summary>
     [SlashCommand("play", "Play a track by URL or search term")]
     public async Task PlayCommand(
         [Summary("query", "The track to play (URL or search term)")]
@@ -480,6 +744,14 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         bool next = false)
     {
         await DeferAsync(ephemeral: true);
+        await PlayQueryAsync(query, next);
+    }
+
+    /// <summary>Attempts URL playback via registered providers first, then Lavalink fallback,
+    /// or searches Plex library and auto-plays the best match (track → album → artist). Shared by /play and the Play
+    /// button, so both follow the same rules. The caller has already deferred the interaction.</summary>
+    private async Task PlayQueryAsync(string query, bool next)
+    {
         try
         {
             Logs.Info($"Play command: {query}");

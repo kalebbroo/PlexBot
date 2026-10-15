@@ -13,6 +13,8 @@ using PlexBot.Core.Discord.Modals;
 using PlexBot.Core.Models;
 using PlexBot.Core.Discord.Events;
 using PlexBot.Core.Discord.Messages;
+using PlexBot.Core.Discord.Commands;
+using PlexBot.Core.Models.Players;
 
 namespace PlexBot.Core.Discord.Interactions;
 
@@ -23,7 +25,8 @@ public class MusicInteractionHandler(IPlayerService playerService,
     VisualPlayer visualPlayer, DiscordButtonBuilder buttonBuilder,
     MusicProviderRegistry providerRegistry, IPlexSonicService plexSonicService,
     RadioSessionManager radioSessionManager, IPlexMusicService plexMusicService,
-    QueueResolveService queueResolver, EmojiRegistry emojis, ResultPageStore<SimilarResults> similarPages) : InteractionModuleBase<SocketInteractionContext>
+    QueueResolveService queueResolver, EmojiRegistry emojis, ResultPageStore<SimilarResults> similarPages,
+    VisualPlayerStateManager stateManager) : InteractionModuleBase<SocketInteractionContext>
 {
 
     // Cooldown tracking to prevent spamming
@@ -216,7 +219,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
                     // The player image shows Next Up, so redraw it with the new order
                     ButtonContext shuffleContext = new() { Player = player, Interaction = interaction };
                     await visualPlayer.AddOrUpdateVisualPlayerAsync(player.GuildId,
-                        buttonBuilder.BuildButtons(ButtonFlag.VisualPlayer, shuffleContext), recreateImage: true);
+                        buttonBuilder.BuildPlayingButtons(shuffleContext, stateManager.IsStaticCard(player.GuildId)), recreateImage: true);
                     await FollowupAsync(components: ComponentV2Builder.Success("Queue Shuffled", $"Shuffled {countBefore} tracks."), ephemeral: true);
                     break;
                 case "clear":
@@ -274,7 +277,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
             Logs.Debug($"Volume set to {newVolume * 100:F0}% by {Context.User.Username}");
 
             ButtonContext context = new() { Player = player, Interaction = Context.Interaction };
-            ComponentBuilder components = buttonBuilder.BuildButtons(ButtonFlag.VisualPlayer, context);
+            ComponentBuilder components = buttonBuilder.BuildPlayingButtons(context, stateManager.IsStaticCard(player.GuildId));
             await visualPlayer.AddOrUpdateVisualPlayerAsync(player.GuildId, components, recreateImage: true);
         }
         catch (Exception ex)
@@ -704,7 +707,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
     }
 
     /// <summary>The "No Player" text shown by the Sonic Adventure button and, if the player has gone, its modal</summary>
-    private const string SonicNoPlayerBody = "No active player found. Start playback with /play first.";
+    private const string SonicNoPlayerBody = "No active player found. Start playback first.";
 
     /// <summary>Visual Player button — opens a modal for the user to enter a destination track name
     /// for a Sonic Adventure path from the currently playing track</summary>
@@ -786,27 +789,8 @@ public class MusicInteractionHandler(IPlayerService playerService,
                 return;
             }
 
-            SelectMenuBuilder selectMenu = new SelectMenuBuilder()
-                .WithCustomId("search:plex:track")
-                .WithPlaceholder("Select a track from the adventure path")
-                .WithMaxValues(1);
-
-            foreach (Track track in adventureTracks.Take(25))
-            {
-                string label = track.Title?.Length > 100 ? track.Title[..97] + "..." : track.Title ?? "Unknown";
-                string desc = $"{track.Artist} - {track.Album}";
-                if (desc.Length > 100) desc = desc[..97] + "...";
-                selectMenu.AddOption(label, track.SourceKey, desc);
-            }
-
-            ComponentBuilder components = new();
-            components.WithSelectMenu(selectMenu);
-            components.WithButton("Play All", $"sonic:playall:adventure:{startRatingKey}-{endRatingKey}", ButtonStyle.Success, row: 1);
-
-            await FollowupAsync(components: ComponentV2Builder.BuildSonicResults(
-                "Sonic Adventure",
-                $"Path from **{currentItem.SourceTrack.Artist}** - {currentItem.SourceTrack.Title} to **{endTrack.Artist}** - {endTrack.Title} ({adventureTracks.Count} tracks)",
-                components, emojis.Text("pb_adventure", "\U0001F9ED")), ephemeral: true);
+            await FollowupAsync(components: MusicCommands.BuildAdventureResults(currentItem.SourceTrack, endTrack, adventureTracks,
+                emojis.Text("pb_adventure", "\U0001F9ED")), ephemeral: true);
 
             Logs.Info($"Sonic adventure by {Context.User.Username}: {currentItem.SourceTrack.Title} → {endTrack.Title}, {adventureTracks.Count} tracks");
         }

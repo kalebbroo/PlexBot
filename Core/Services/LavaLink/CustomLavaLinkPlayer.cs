@@ -52,6 +52,7 @@ public sealed class CustomLavaLinkPlayer(IPlayerProperties<CustomLavaLinkPlayer,
         {
             VisualPlayer visualPlayer = serviceProvider.GetRequiredService<VisualPlayer>();
             DiscordButtonBuilder buttonBuilder = serviceProvider.GetRequiredService<DiscordButtonBuilder>();
+            VisualPlayerStateManager stateManager = serviceProvider.GetRequiredService<VisualPlayerStateManager>();
             await base.NotifyTrackStartedAsync(track, cancellationToken).ConfigureAwait(false);
             if (track is not CustomTrackQueueItem customTrack)
             {
@@ -59,7 +60,7 @@ public sealed class CustomLavaLinkPlayer(IPlayerProperties<CustomLavaLinkPlayer,
                 return;
             }
             ButtonContext context = new() { Player = this };
-            ComponentBuilder components = buttonBuilder.BuildButtons(ButtonFlag.VisualPlayer, context);
+            ComponentBuilder components = buttonBuilder.BuildPlayingButtons(context, stateManager.IsStaticCard(GuildId));
             await visualPlayer.AddOrUpdateVisualPlayerAsync(GuildId, components, recreateImage: true).ConfigureAwait(false);
 
             // The queue moved on, so the resolve-ahead window did too

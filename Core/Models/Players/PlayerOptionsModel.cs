@@ -77,6 +77,19 @@ public class VisualPlayerStateManager
     /// <summary>Returns the visual player message for a guild, if any</summary>
     public IUserMessage? GetMessage(ulong guildId) => GetState(guildId).Message;
 
+    /// <summary>Whether a guild's card is the configured static channel's card. The flag is global and only says that static
+    /// mode is on, so the card's own channel decides. A configured id of 0 is the unset default.</summary>
+    public static bool IsStaticCard(bool enabled, ulong? staticChannelId, ulong? cardChannelId) =>
+        enabled && staticChannelId is ulong configured && configured != 0 && cardChannelId == configured;
+
+    /// <summary>Whether a guild's card is the static channel's card. The channel the card message is in decides, because a
+    /// /play from another channel moves GetChannel without moving the card. GetChannel covers a guild with no card yet.</summary>
+    public bool IsStaticCard(ulong guildId)
+    {
+        ulong? cardChannelId = GetMessage(guildId)?.Channel.Id ?? GetChannel(guildId)?.Id;
+        return IsStaticCard(UseStaticChannel, StaticChannelId, cardChannelId);
+    }
+
     /// <summary>Sets the channel the visual player for a guild is posted in</summary>
     public void SetChannel(ulong guildId, ITextChannel? channel)
     {

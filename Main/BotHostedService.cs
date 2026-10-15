@@ -251,7 +251,7 @@ public class BotHostedService(DiscordSocketClient client, DiscordEventHandler ev
         }
 
         ButtonContext context = new();
-        ComponentBuilder components = buttonBuilder.BuildButtons(ButtonFlag.VisualPlayer, context);
+        ComponentBuilder components = buttonBuilder.BuildButtons(ButtonFlag.Idle, context);
         FileAttachment? banner = VisualPlayer.IdleBanner();
         MessageComponent cv2 = ComponentV2Builder.BuildIdlePlayer(components, banner is not null);
         IUserMessage initPlayer = banner is null

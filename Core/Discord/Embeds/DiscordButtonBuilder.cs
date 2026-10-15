@@ -3,6 +3,7 @@ using Discord;
 using Discord.WebSocket;
 using PlexBot.Core.Discord.Design;
 using PlexBot.Core.Services.LavaLink;
+using PlexBot.Core.Services.Music;
 using PlexBot.Utils;
 using System;
 using System.Collections.Generic;
@@ -27,6 +28,9 @@ namespace PlexBot.Core.Discord.Embeds
         public static readonly ButtonFlag VisualPlayer = new(1L << 0, "VisualPlayer");
         public static readonly ButtonFlag QueueOptions = new(1L << 1, "QueueOptions");
         public static readonly ButtonFlag PlaylistOptions = new(1L << 2, "PlaylistOptions");
+        public static readonly ButtonFlag Idle = new(1L << 3, "Idle");
+        // Play, Search and one search per provider. The idle card and, on a static channel, the playing card show them.
+        public static readonly ButtonFlag Entry = new(1L << 4, "Entry");
 
         // Registry of all flags
         private static readonly Dictionary<string, ButtonFlag> _registry = new()
@@ -34,11 +38,13 @@ namespace PlexBot.Core.Discord.Embeds
             { "None", None },
             { "VisualPlayer", VisualPlayer },
             { "QueueOptions", QueueOptions },
-            { "PlaylistOptions", PlaylistOptions }
+            { "PlaylistOptions", PlaylistOptions },
+            { "Idle", Idle },
+            { "Entry", Entry }
         };
 
         // Bit position tracking for dynamic registration
-        private static int _nextBitPosition = 3; // Start after pre-defined flags
+        private static int _nextBitPosition = 5; // Start after pre-defined flags
 
         /// <summary>Register a new button flag</summary>
         /// <param name="name">Unique name for the flag</param>
@@ -100,10 +106,18 @@ namespace PlexBot.Core.Discord.Embeds
     {
         private readonly ConcurrentDictionary<string, (ButtonFlag Flags, int Priority, ButtonFactory Factory)> _buttonFactories = new();
         private readonly EmojiRegistry _emojis;
+        private readonly MusicProviderRegistry _providers;
 
-        public DiscordButtonBuilder(EmojiRegistry emojis)
+        /// <summary>One button as the layout sees it: which card it belongs to, where it sorts, and how to build it</summary>
+        private readonly record struct ButtonEntry(string Id, ButtonFlag Flags, int Priority, ButtonFactory Factory);
+
+        /// <summary>Priority of the provider search buttons. Providers with equal priority keep the registry's order.</summary>
+        private const int ProviderSearchPriority = 82;
+
+        public DiscordButtonBuilder(EmojiRegistry emojis, MusicProviderRegistry providers)
         {
             _emojis = emojis;
+            _providers = providers;
             RegisterDefaultButtons();
         }
 
@@ -128,11 +142,20 @@ namespace PlexBot.Core.Discord.Embeds
                 .WithCustomId(customId)
                 .WithStyle(style);
 
+        /// <summary>A button with a plain unicode emoji, for buttons that have no application emoji to sync</summary>
+        private static ButtonBuilder UnicodeButton(string label, string emoji, string customId, ButtonStyle style) =>
+            new ButtonBuilder()
+                .WithEmote(new Emoji(emoji))
+                .WithLabel(label)
+                .WithCustomId(customId)
+                .WithStyle(style);
+
         /// <summary>Registers the default set of buttons used by the core application</summary>
         private void RegisterDefaultButtons()
         {
-            // Rows are filled by priority, five buttons to a row:
-            // row 1 playback, row 2 volume and extras, row 3 stop.
+            // Rows are filled by priority, five buttons to a row: row 1 playback, row 2 volume and extras, row 3 stop.
+            // The entry row (Play, Search, providers, priorities 80 to 82) sorts after Stop, so on a static channel it
+            // fills the rest of row 3. Idle Radio and Adventure (90, 91) come after it on the idle card only.
             RegisterButton("previous", ButtonFlag.VisualPlayer, 5, _ =>
                 Button("Back", "pb_previous", "\u23EE\uFE0F", "previous:back", ButtonStyle.Secondary));
             RegisterButton("pause_resume", ButtonFlag.VisualPlayer, 10, context =>
@@ -163,6 +186,16 @@ namespace PlexBot.Core.Discord.Embeds
                 Button("Adventure", "pb_adventure", "\uD83E\uDDED", "sonic:adventure", ButtonStyle.Secondary));
             RegisterButton("kill", ButtonFlag.VisualPlayer, 70, _ =>
                 Button("Stop", "pb_stop", "\u23F9\uFE0F", "kill:kill", ButtonStyle.Danger));
+            // Play and Search work on the idle card and on a static channel's playing card. Radio and Adventure need a
+            // track name when nothing is playing, so they are idle-only. The playing card keeps its own Radio and Adventure.
+            RegisterButton("entry_play", ButtonFlag.Idle | ButtonFlag.Entry, 80, _ =>
+                UnicodeButton("Play", "\U0001F3B5", "entry:play", ButtonStyle.Primary));
+            RegisterButton("entry_search", ButtonFlag.Idle | ButtonFlag.Entry, 81, _ =>
+                Button("Search", "pb_search", "\U0001F50D", "entry:search", ButtonStyle.Primary));
+            RegisterButton("idle_radio", ButtonFlag.Idle, 90, _ =>
+                Button("Radio", "pb_radio", "\U0001F4FB", "idle:radio", ButtonStyle.Secondary));
+            RegisterButton("idle_adventure", ButtonFlag.Idle, 91, _ =>
+                Button("Adventure", "pb_adventure", "\U0001F9ED", "idle:adventure", ButtonStyle.Secondary));
             // Queue Options buttons
             RegisterButton("view_queue", ButtonFlag.QueueOptions, 10, context => {
                 int currentPage = 1;
@@ -234,21 +267,59 @@ namespace PlexBot.Core.Discord.Embeds
         /// <param name="flags">The button flags to include</param>
         /// <param name="context">Context object for button creation</param>
         /// <returns>A ComponentBuilder with all matching buttons arranged in rows</returns>
-        public ComponentBuilder BuildButtons(ButtonFlag flags, ButtonContext context = null)
+        public ComponentBuilder BuildButtons(ButtonFlag flags, ButtonContext context = null) =>
+            Layout(flags.ToString(), entry => entry.Flags.HasFlag(flags), context);
+
+        /// <summary>Builds the buttons that carry any one of the given flags, in a single priority order. BuildButtons
+        /// needs every flag, so it cannot give a card two sets at once; this can.</summary>
+        public ComponentBuilder BuildAnyButtons(ButtonContext context, params ButtonFlag[] anyOf) =>
+            Layout(string.Join("|", anyOf.Select(flag => flag.ToString())),
+                entry => anyOf.Any(flag => entry.Flags.HasFlag(flag)), context);
+
+        /// <summary>The playing card's buttons. A static channel's card also carries the entry row (Play, Search and the
+        /// provider searches) after the playback controls. Every playing card is built here, so the two cannot drift apart.</summary>
+        public ComponentBuilder BuildPlayingButtons(ButtonContext context, bool staticChannel) =>
+            staticChannel
+                ? BuildAnyButtons(context, ButtonFlag.VisualPlayer, ButtonFlag.Entry)
+                : BuildButtons(ButtonFlag.VisualPlayer, context);
+
+        /// <summary>Every registered button, followed by one search button per provider. Provider buttons are made here,
+        /// on each build, so a provider registered after the button builder was created is still shown.</summary>
+        private IEnumerable<ButtonEntry> AllButtons() =>
+            _buttonFactories
+                .Select(kv => new ButtonEntry(kv.Key, kv.Value.Flags, kv.Value.Priority, kv.Value.Factory))
+                .Concat(ProviderSearchButtons());
+
+        /// <summary>One search button per available provider that can search. Plex is left out: its search is the
+        /// Search button. A provider only gets a button when it is registered and available.</summary>
+        private IEnumerable<ButtonEntry> ProviderSearchButtons() =>
+            _providers.GetAvailableProviders()
+                .Where(provider => provider.Capabilities.HasFlag(MusicProviderCapabilities.Search)
+                    && !provider.Id.Equals("plex", StringComparison.OrdinalIgnoreCase))
+                .Select(provider => new ButtonEntry(
+                    $"provider_search:{provider.Id}",
+                    ButtonFlag.Idle | ButtonFlag.Entry,
+                    ProviderSearchPriority,
+                    _ => UnicodeButton(Truncate(provider.DisplayName, 80), "\U0001F3AC",
+                        $"provider:search:{provider.Id}", ButtonStyle.Secondary)));
+
+        private static string Truncate(string text, int maxLength) => text.Length <= maxLength ? text : text[..maxLength];
+
+        /// <summary>Orders the buttons that pass the filter by priority and lays them out five to a row, up to five rows</summary>
+        private ComponentBuilder Layout(string label, Func<ButtonEntry, bool> include, ButtonContext context)
         {
             context ??= new ButtonContext();
             ComponentBuilder components = new();
             try
             {
-                // Get button factories that match the flags
-                var factories = _buttonFactories
-                    .Where(kv => kv.Value.Flags.HasFlag(flags))
-                    .OrderBy(kv => kv.Value.Priority)
+                var entries = AllButtons()
+                    .Where(include)
+                    .OrderBy(entry => entry.Priority)
                     .ToList();
-                Logs.Debug($"Building components with flags {flags}, found {factories.Count} matching buttons");
+                Logs.Debug($"Building components with flags {label}, found {entries.Count} matching buttons");
                 int rowCount = 0;
                 int buttonCount = 0;
-                foreach (var factory in factories)
+                foreach (ButtonEntry entry in entries)
                 {
                     if (buttonCount >= 5)
                     {
@@ -257,19 +328,19 @@ namespace PlexBot.Core.Discord.Embeds
 
                         if (rowCount >= 5)
                         {
-                            Logs.Warning($"Maximum number of button rows reached for flags {flags}. Some buttons will not be displayed.");
+                            Logs.Warning($"Maximum number of button rows reached for flags {label}. Some buttons will not be displayed.");
                             break;
                         }
                     }
                     try
                     {
-                        ButtonBuilder button = factory.Value.Factory(context);
+                        ButtonBuilder button = entry.Factory(context);
                         components.WithButton(button, rowCount);
                         buttonCount++;
                     }
                     catch (Exception ex)
                     {
-                        Logs.Error($"Error creating button {factory.Key}: {ex.Message}");
+                        Logs.Error($"Error creating button {entry.Id}: {ex.Message}");
                     }
                 }
             }
