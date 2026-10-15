@@ -1,4 +1,9 @@
 # Extensions that Install/start.sh clones into Extensions/ when the folder is missing.
-# One per line: <git URL> <folder name>
-# A folder that already exists is left alone. Folders with no remote of their own are not listed here.
-https://github.com/kalebbroo/PlexBot-YouTube-MusicProvider.git PlexBot-YouTube-MusicProvider
+# One per line: <git URL> <folder name> [config key]
+# Without a config key, a missing folder is cloned and an existing one is left alone.
+# Folders with no remote of their own are not listed here.
+# With a config key (for example youtube.enabled), the install follows that setting in config.fds:
+#   true   clone the folder if it is missing, or rename <folder>.disabled back to <folder>
+#   false  rename the folder to <folder>.disabled (nothing is deleted)
+#   unset  leave the folder as it is
+https://github.com/kalebbroo/PlexBot-YouTube-MusicProvider.git PlexBot-YouTube-MusicProvider youtube.enabled

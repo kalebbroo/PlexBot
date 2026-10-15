@@ -122,3 +122,15 @@ logging:
 bot:
     # Environment mode - set to "Development" for guild-scoped slash commands (faster updates)
     environment: 
+
+# ============================================
+# YouTube Extension
+# ============================================
+# Read by the install scripts (linux-install.sh, start.sh, win-install.bat), not by the bot.
+# The extension is listed in Install/extensions.txt. Details: Docs/Setup/Configuration.md
+youtube:
+    # true: clone the YouTube extension if its folder is missing, bring it back if it is disabled,
+    #       and fetch its Lavalink plugin on the next install or start
+    # false: turn it off. The folder is renamed to <name>.disabled. Nothing is deleted
+    # Leave this out and the extension stays exactly as it is
+    enabled: false

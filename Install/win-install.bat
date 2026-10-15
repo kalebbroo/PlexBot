@@ -12,6 +12,7 @@ set "ROOT_DIR=%SCRIPT_DIR%.."
 set "DOCKER_DIR=%SCRIPT_DIR%Docker"
 set "MANIFEST=%SCRIPT_DIR%extensions.txt"
 set "EXTENSIONS_DIR=%ROOT_DIR%\Extensions"
+set "CONFIG_FILE=%ROOT_DIR%\config.fds"
 set "PLUGINS_DIR=%DOCKER_DIR%\plugins"
 set "LAVALINK_CONFIG=%DOCKER_DIR%\lavalink.application.yml"
 set "RELEASES_REPO=https://maven.lavalink.dev/releases"
@@ -44,7 +45,18 @@ echo Using compose command: %COMPOSE%
 REM Create plugins directory if it doesn't exist
 if not exist "%DOCKER_DIR%\plugins" mkdir "%DOCKER_DIR%\plugins"
 
-REM Clone the extensions listed in Install\extensions.txt that are missing, so their config fragments are merged below
+REM Create config.fds from template if it doesn't exist. The clone step reads its YouTube switch, so this must come first
+if not exist "%ROOT_DIR%\config.fds" (
+    if exist "%ROOT_DIR%\RenameMe.config.fds" (
+        echo No config.fds found — creating from template with defaults...
+        copy "%ROOT_DIR%\RenameMe.config.fds" "%ROOT_DIR%\config.fds" >nul
+        echo Edit config.fds to customize player settings.
+    ) else (
+        echo Warning: No config.fds or RenameMe.config.fds found. Bot will use built-in defaults.
+    )
+)
+
+REM Clone or rename the extensions listed in Install\extensions.txt, so their config fragments are merged below
 call :clone_extensions
 
 REM Generate Lavalink config from base template + extension plugin fragments.
@@ -70,17 +82,6 @@ if not exist "%ROOT_DIR%\.env" (
     echo.
     pause
     exit /b 1
-)
-
-REM Create config.fds from template if it doesn't exist
-if not exist "%ROOT_DIR%\config.fds" (
-    if exist "%ROOT_DIR%\RenameMe.config.fds" (
-        echo No config.fds found — creating from template with defaults...
-        copy "%ROOT_DIR%\RenameMe.config.fds" "%ROOT_DIR%\config.fds" >nul
-        echo Edit config.fds to customize player settings.
-    ) else (
-        echo Warning: No config.fds or RenameMe.config.fds found. Bot will use built-in defaults.
-    )
 )
 
 REM Make sure data and logs directories exist
@@ -118,9 +119,10 @@ if not exist "%MANIFEST%" (
     exit /b 0
 )
 if not exist "%EXTENSIONS_DIR%" mkdir "%EXTENSIONS_DIR%"
-for /f "usebackq eol=# tokens=1,2" %%U in ("%MANIFEST%") do (
+for /f "usebackq eol=# tokens=1,2,3" %%U in ("%MANIFEST%") do (
     set "cloneUrl=%%U"
     set "cloneName=%%V"
+    set "cloneKey=%%W"
     call :clone_one
 )
 exit /b 0
@@ -131,6 +133,10 @@ if "%cloneName%"=="" (
     exit /b 0
 )
 set "target=%EXTENSIONS_DIR%\%cloneName%"
+if not "%cloneKey%"=="" (
+    call :apply_switch
+    if not errorlevel 1 exit /b 0
+)
 if exist "%target%" (
     echo [extensions] %cloneName%: already present
     exit /b 0
@@ -145,6 +151,53 @@ if errorlevel 1 (
     exit /b 0
 )
 echo [extensions] %cloneName%: cloned from %cloneUrl%
+exit /b 0
+
+:apply_switch
+set "switchValue="
+if exist "%CONFIG_FILE%" for /f "usebackq delims=" %%S in (`docker run --rm -v "%CONFIG_FILE%:/config.fds:ro" mikefarah/yq:latest ".%cloneKey%" /config.fds 2^>nul`) do set "switchValue=%%S"
+if "%switchValue%"=="true" goto switch_on
+if "%switchValue%"=="false" goto switch_off
+echo [extensions] %cloneName%: %cloneKey% is not set or unreadable in config.fds, left as it is
+exit /b 0
+
+:switch_on
+if exist "%target%" (
+    echo [extensions] %cloneName%: %cloneKey% is true, already present
+    exit /b 0
+)
+if exist "%target%.disabled" (
+    move "%target%.disabled" "%target%" >nul
+    if errorlevel 1 (
+        echo [extensions] WARNING: could not restore %cloneName% from %cloneName%.disabled
+    ) else (
+        echo [extensions] %cloneName%: %cloneKey% is true, restored from %cloneName%.disabled
+    )
+    exit /b 0
+)
+echo [extensions] %cloneName%: %cloneKey% is true, cloning
+exit /b 1
+
+:switch_off
+if not exist "%target%" goto switch_off_missing
+if exist "%target%.disabled" (
+    echo [extensions] WARNING: %cloneName% and %cloneName%.disabled both exist. Left both as they are
+    exit /b 0
+)
+move "%target%" "%target%.disabled" >nul
+if errorlevel 1 (
+    echo [extensions] WARNING: could not rename %cloneName% to %cloneName%.disabled
+    exit /b 0
+)
+echo [extensions] %cloneName%: %cloneKey% is false, renamed to %cloneName%.disabled
+exit /b 0
+
+:switch_off_missing
+if exist "%target%.disabled" (
+    echo [extensions] %cloneName%: %cloneKey% is false, already disabled
+    exit /b 0
+)
+echo [extensions] %cloneName%: %cloneKey% is false, not present
 exit /b 0
 
 :fetch_plugins
