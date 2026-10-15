@@ -38,4 +38,17 @@ public class StaticCardRuleTests
         Assert.False(VisualPlayerStateManager.IsStaticCard(true, 0, 0));
         Assert.False(VisualPlayerStateManager.IsStaticCard(true, null, null));
     }
+
+    [Fact]
+    public void HasStaticChannel_IsFalseWhenTheIdIsNullOrZero()
+    {
+        Assert.False(VisualPlayerStateManager.HasStaticChannel(null));
+        Assert.False(VisualPlayerStateManager.HasStaticChannel(0));
+    }
+
+    [Fact]
+    public void HasStaticChannel_IsTrueForAConfiguredId()
+    {
+        Assert.True(VisualPlayerStateManager.HasStaticChannel(100));
+    }
 }

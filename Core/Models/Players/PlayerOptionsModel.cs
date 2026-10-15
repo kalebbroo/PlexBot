@@ -77,6 +77,9 @@ public class VisualPlayerStateManager
     /// <summary>Returns the visual player message for a guild, if any</summary>
     public IUserMessage? GetMessage(ulong guildId) => GetState(guildId).Message;
 
+    /// <summary>Whether a static channel id is configured. BotConfig.GetULong defaults to 0, which means unset.</summary>
+    public static bool HasStaticChannel(ulong? staticChannelId) => staticChannelId is ulong configured && configured != 0;
+
     /// <summary>Whether a guild's card is the configured static channel's card. The flag is global and only says that static
     /// mode is on, so the card's own channel decides. A configured id of 0 is the unset default.</summary>
     public static bool IsStaticCard(bool enabled, ulong? staticChannelId, ulong? cardChannelId) =>

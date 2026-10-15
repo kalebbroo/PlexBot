@@ -149,9 +149,15 @@ public class BotHostedService(DiscordSocketClient client, DiscordEventHandler ev
     private async Task InitializeStaticPlayerChannelAsync(CancellationToken ct)
     {
         VisualPlayerStateManager stateManager = serviceProvider.GetRequiredService<VisualPlayerStateManager>();
-        if (!stateManager.UseStaticChannel || !stateManager.StaticChannelId.HasValue)
+        if (!stateManager.UseStaticChannel)
         {
-            Logs.Debug("Static player channel is not configured or invalid, skipping initialization");
+            Logs.Debug("Static player channel is disabled, skipping initialization");
+            return;
+        }
+        // The retry loop below only ends on success or shutdown, so an unset id has to be rejected before it starts.
+        if (!VisualPlayerStateManager.HasStaticChannel(stateManager.StaticChannelId))
+        {
+            Logs.Warning("visualPlayer.staticChannel.enabled is true but visualPlayer.staticChannel.channelId is not set; skipping static player channel setup");
             return;
         }
 
