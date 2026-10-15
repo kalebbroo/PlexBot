@@ -499,7 +499,7 @@ Extensions are distributed as **source code**, not pre-compiled DLLs. PlexBot bu
 ### For distribution
 
 1. Share your extension folder (the directory with `.csproj` and source files)
-2. Users place it under their `Extensions/` directory, or list its git URL in `Install/extensions.txt` (one line: `<git URL> <folder name>`). `Install/start.sh` then clones it when the folder is missing.
+2. Users place it under their `Extensions/` directory, or list its git URL in `Install/extensions.txt` (one line: `<git URL> <folder name> [config key]`; the optional key, such as `youtube.enabled`, is a switch in `config.fds`, explained in that file's header). `Install/start.sh` then clones it when the folder is missing.
 3. PlexBot builds and loads it on next startup
 
 ### Lavalink plugins
@@ -513,7 +513,7 @@ Rename the folder with a `.disabled` suffix:
 Extensions/MyExtension.disabled/
 ```
 
-PlexBot skips directories ending in `.disabled` during discovery.
+PlexBot skips directories ending in `.disabled` during discovery. If the extension is listed in `Install/extensions.txt` with a config key, set that key to `false` in `config.fds` instead. While the key is `true`, the install puts a renamed folder back.
 
 ### Build behavior
 

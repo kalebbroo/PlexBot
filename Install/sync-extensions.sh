@@ -1,6 +1,7 @@
 #!/bin/bash
 # Keeps the extensions and the Lavalink plugins they need in place. Install/start.sh runs it twice:
-#   sync-extensions.sh clone     clone each extension in Install/extensions.txt whose folder is missing
+#   sync-extensions.sh clone     clone each extension in Install/extensions.txt whose folder is missing, and apply the
+#                                config.fds switch that a manifest line may name (see Install/extensions.txt)
 #   sync-extensions.sh plugins   download each Lavalink plugin in the generated config that is missing from Install/Docker/plugins
 # Lavalink runs as its own user and cannot write to Install/Docker/plugins, so the jars are fetched here, as you.
 # The environment variables only exist so the script can be tested against other folders.
@@ -10,9 +11,68 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 MANIFEST="${EXTENSIONS_MANIFEST:-$SCRIPT_DIR/extensions.txt}"
 EXTENSIONS_DIR="${EXTENSIONS_DIR:-$ROOT_DIR/Extensions}"
+CONFIG_FILE="${CONFIG_FILE:-$ROOT_DIR/config.fds}"
 LAVALINK_CONFIG="${LAVALINK_CONFIG:-$SCRIPT_DIR/Docker/lavalink.application.yml}"
 PLUGINS_DIR="${PLUGINS_DIR:-$SCRIPT_DIR/Docker/plugins}"
 RELEASES_REPO="https://maven.lavalink.dev/releases"
+
+# Prints true or false for a key in config.fds, or null when the key is not set or the file cannot be read
+read_switch() {
+    local key="$1" value
+    if [ ! -f "$CONFIG_FILE" ]; then
+        echo null
+        return 0
+    fi
+    # </dev/null: this runs inside the manifest loop, and docker must not read the rest of the manifest
+    value="$(docker run --rm -v "$CONFIG_FILE:/config.fds:ro" mikefarah/yq:latest ".$key" /config.fds 2>/dev/null </dev/null)" || value=""
+    case "$value" in
+        true|false) echo "$value" ;;
+        *) echo null ;;
+    esac
+}
+
+# Applies the config.fds switch of one manifest line. Returns 1 when the extension still has to be cloned.
+apply_switch() {
+    local name="$1" key="$2" target state
+    target="$EXTENSIONS_DIR/$name"
+    state="$(read_switch "$key")"
+    case "$state" in
+        true)
+            if [ -e "$target" ]; then
+                echo "[extensions] $name: $key is true, already present"
+            elif [ -e "$target.disabled" ]; then
+                if mv "$target.disabled" "$target"; then
+                    echo "[extensions] $name: $key is true, restored from $name.disabled"
+                else
+                    echo "[extensions] WARNING: could not restore $name from $name.disabled"
+                fi
+            else
+                echo "[extensions] $name: $key is true, cloning"
+                return 1
+            fi
+            ;;
+        false)
+            # mv would move the folder inside an existing $name.disabled, so never rename onto one
+            if [ -e "$target" ] && [ -e "$target.disabled" ]; then
+                echo "[extensions] WARNING: $name and $name.disabled both exist. Left both as they are"
+            elif [ -e "$target" ]; then
+                if mv "$target" "$target.disabled"; then
+                    echo "[extensions] $name: $key is false, renamed to $name.disabled"
+                else
+                    echo "[extensions] WARNING: could not rename $name to $name.disabled"
+                fi
+            elif [ -e "$target.disabled" ]; then
+                echo "[extensions] $name: $key is false, already disabled"
+            else
+                echo "[extensions] $name: $key is false, not present"
+            fi
+            ;;
+        *)
+            echo "[extensions] $name: $key is not set or unreadable in config.fds, left as it is"
+            ;;
+    esac
+    return 0
+}
 
 clone_extensions() {
     if [ ! -f "$MANIFEST" ]; then
@@ -20,7 +80,7 @@ clone_extensions() {
         return 0
     fi
     mkdir -p "$EXTENSIONS_DIR"
-    while read -r url name _; do
+    while read -r url name key _; do
         case "$url" in
             ''|'#'*) continue ;;
         esac
@@ -29,6 +89,9 @@ clone_extensions() {
             continue
         fi
         target="$EXTENSIONS_DIR/$name"
+        if [ -n "${key:-}" ] && apply_switch "$name" "$key"; then
+            continue
+        fi
         if [ -e "$target" ]; then
             echo "[extensions] $name: already present"
         elif [ -e "$target.disabled" ]; then
