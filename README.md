@@ -2,14 +2,29 @@
 
 > **Play your Plex music in Discord with style.** <sup><kbd>Alpha 0.5</kbd></sup>
 
+[![.NET 10.0](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/download/dotnet/10.0) [![Discord.Net 3.20](https://img.shields.io/badge/Discord.Net-3.20-5865F2?logo=discord&logoColor=white)](https://github.com/discord-net/Discord.Net) [![Lavalink4NET](https://img.shields.io/badge/Lavalink4NET-4.2-3D3D8F?logo=java&logoColor=white)](https://www.nuget.org/packages/Lavalink4NET.Discord.NET) [![Plex](https://img.shields.io/badge/Plex-library-E5A00D?logo=plex&logoColor=white)](https://www.plex.tv) [![Docker](https://img.shields.io/badge/Docker-compose-2496ED?logo=docker&logoColor=white)](./Install)
+
 PlexBot streams your Plex music library into Discord voice channels. It has a visual player with album art and labelled
 controls, Plex's sonic features (similar tracks, radio, and sonic adventures), and a help menu with screenshots.
 
+## The player
+
+PlexBot has two player styles, set with `visualPlayer.useModernPlayer` in `config.fds`:
+
+| Modern (default) | Classic |
+|:-:|:-:|
+| ![Modern player: album art, progress bar and labelled controls](./Docs/screenshots/player-modern-star.png) | ![Classic player: now playing with thumbnail and labelled controls](./Docs/screenshots/player-classic.png) |
+
 <div align="center">
 
-![The modern player playing LOONA's "Star (Voice English ver.)"](./Docs/screenshots/player-modern-star.png)
+![The modern player, numbered: track, progress, status line, playback row, second row and last row](./Docs/screenshots/tutorial-player.png)
 
 </div>
+
+Under the progress bar, a status line shows the volume and repeat mode as text, for example `Volume 20% · Repeat off`.
+
+For the full button list and the repeat cycle, see the [Commands guide](./Docs/Guides/Commands.md#player-controls-buttons).
+More on the player is in the [Player UI guide](./Docs/Guides/Player-UI-Guide.md).
 
 ---
 
@@ -21,7 +36,7 @@ controls, Plex's sonic features (similar tracks, radio, and sonic adventures), a
 - **Search by mood, genre, or radio station**, as well as by name.
 - **Queue controls.** Pages of the queue, shuffle, clear, and skip.
 - **Static player channel.** Dedicate one channel to a player that is always there.
-- **Help inside Discord.** `/help` opens a menu of topics, each with a screenshot.
+- **Help inside Discord.** `/help` opens a menu of topics. Each topic has step-by-step pages with screenshots.
 - **Extensions.** Add sources or commands with the [extensions system](./Docs/Extensions/CreatingExtensions.md).
 - **Docker install.** The install script runs PlexBot and Lavalink together.
 
@@ -69,60 +84,40 @@ For YouTube, use the switch rather than renaming the folder by hand. Renaming it
 
 ## Your first five minutes
 
-**1. Start a track.** Type `/play` and a song name. The bot joins your voice channel and posts the player.
+Four steps from the channel to the queue. Type `/play` with a song name to skip the menus.
 
 <div align="center">
 
-![Start playing: the Track Added reply and the player](./Docs/screenshots/help-start.png)
+![Your first five minutes: search, pick a result, use the player, check the queue](./Docs/screenshots/tutorial-first-five-minutes.png)
 
 </div>
 
-**2. Use the player.** Each button is labelled. Pause, skip, repeat, shuffle and the queue are on the first row.
-
-<div align="center">
-
-![The player's controls, labelled](./Docs/screenshots/player-controls.png)
-
-</div>
-
-**3. Find music.** `/search` looks by name, mood, genre or radio station. Pick a result from the menu.
-
-<div align="center">
-
-![Search results for "queen" with artist, album and track menus](./Docs/screenshots/help-search.png)
-
-</div>
-
-**4. Check the queue.** Press **Queue** on the player. Pages of ten tracks; ⏳ marks a track still loading from Plex.
-
-<div align="center">
-
-![The current music queue](./Docs/screenshots/help-queue.png)
-
-</div>
-
-**5. Ask for help.** `/help` opens a menu with a **Show me** button for each topic. Each page has the steps, a screenshot, and Previous and Next buttons to move through the topics.
-
-<div align="center">
-
-![The help hub](./Docs/screenshots/help-hub.png)
-
-</div>
-
+1. **Search.** Type `/search`, pick **Plex Library**, then type a name, artist or album.
+2. **Pick a result.** Choose an artist, then an album. An album queues all its tracks and starts playback.
+3. **Use the player.** Its buttons control playback, volume and the queue. See [The player](#the-player).
+4. **Check the queue.** Press **Queue**. ⏳ marks a track still loading from Plex.
+5. **Ask for help.** `/help` opens a menu with a **Show me** button for each topic. Each page has the steps, a screenshot, and Previous and Next buttons.
 ---
 
-## The player
+## Search and queue
 
-PlexBot has two player styles, set with `visualPlayer.useModernPlayer` in `config.fds`:
+<div align="center">
 
-| Modern (default) | Classic |
-|:-:|:-:|
-| ![Modern player: album art, progress bar and labelled controls](./Docs/screenshots/player-modern-star.png) | ![Classic player: now playing with thumbnail and labelled controls](./Docs/screenshots/player-classic.png) |
+![Search: the Plex Library mode, and the artist and album menus](./Docs/screenshots/tutorial-search.png)
 
-Under the progress bar, a status line shows the volume and repeat mode as text, for example `Volume 20% · Repeat off`.
+</div>
 
-For the full button list and the repeat cycle, see the [Commands guide](./Docs/Guides/Commands.md#player-controls-buttons).
-More on the player is in the [Player UI guide](./Docs/Guides/Player-UI-Guide.md).
+**Search modes.** Plex Library searches your library by name. Find by Mood and Find by Genre use Plex's sonic tags and need sonic analysis on the server. Radio Station builds stations from a track. YouTube appears when its extension is loaded. Results over 25 page with Previous and Next.
+
+**Albums queue tracks.** Picking an album from the album menu queues every track on it and starts playback.
+
+<div align="center">
+
+![Queue: now playing, the track list, the loading icon and the page footer](./Docs/screenshots/tutorial-queue.png)
+
+</div>
+
+Press **Queue** on the player to see what's coming up, ten tracks a page. **Shuffle** and **Clear** are on the Queue Options message. Shuffle's result stays private, and Clear leaves the track that's playing.
 
 ---
 
@@ -133,7 +128,7 @@ appears in it. Only the server that owns that channel gets this card. Players el
 
 <div align="center">
 
-![Static channel: idle card with banner and controls](./Docs/screenshots/static-channel-idle.png)
+![Static player channel: the idle card, the playing card, and how to turn it on](./Docs/screenshots/tutorial-static-channel.png)
 
 </div>
 
@@ -151,7 +146,7 @@ appears in it. Only the server that owns that channel gets this card. Players el
    visualPlayer:
      staticChannel:
        enabled: true
-       channelId: 1360639203829879097   # your channel's ID
+       channelId: 123456789012345678   # your channel's ID
    ```
 
 4. Restart the bot. If `enabled` is `true` but `channelId` is not set, the bot skips static setup and logs a warning.
@@ -163,7 +158,7 @@ appears in it. Only the server that owns that channel gets this card. Players el
 
 ## Sonic features
 
-These need a Plex track playing and sonic analysis enabled on your Plex server. The buttons are on the second row of the player.
+These need a Plex track playing and sonic analysis enabled on your Plex server. Radio and Similar are on the player's second row, and Adventure is on the last row.
 
 | Button | What it does |
 |---|---|
@@ -173,13 +168,7 @@ These need a Plex track playing and sonic analysis enabled on your Plex server. 
 
 <div align="center">
 
-![Similar tracks, page 2 of 4](./Docs/screenshots/similar-paging.png)
-
-</div>
-
-<div align="center">
-
-![Radio and sonic topic card](./Docs/screenshots/help-sonic.png)
+![Sonic features: the Radio and Similar buttons, the similar-tracks list and the radio menu](./Docs/screenshots/tutorial-sonic.png)
 
 </div>
 
@@ -320,7 +309,7 @@ it has already queued are not queued again, and each refill continues from the l
 
 ## Custom emoji
 
-The player and its panels use 22 emoji. The bot uploads them to its own Discord application on first start, so they
+The player and its panels use 23 emoji. The bot uploads them to its own Discord application on first start, so they
 work in every server the bot is in and use no emoji slots.
 
 <div align="center">
