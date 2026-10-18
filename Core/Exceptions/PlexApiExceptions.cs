@@ -1,8 +1,14 @@
+using PlexBot.Core.Discord.Messages;
+
 namespace PlexBot.Core.Exceptions;
 
 /// <summary>Specialized exception for Plex API communication failures that provides rich diagnostic information to help pinpoint server connectivity issues</summary>
 public class PlexApiException : PlexBotException
 {
+    /// <summary>Markdown link to the Plex section of the troubleshooting guide, for user messages that name a Plex failure</summary>
+    public const string PlexHelp = "[Plex help](" + DocsLinks.PlexServer + ")";
+    private const string Unreachable = "There was a problem communicating with your Plex server. Please check your server connection. " + PlexHelp;
+
     /// <summary>The HTTP status code returned by the Plex server, crucial for diagnosing whether the issue is authentication, permissions, or server availability</summary>
     public HttpStatusCode? StatusCode { get; }
 
@@ -15,7 +21,15 @@ public class PlexApiException : PlexBotException
     /// <summary>Creates a basic API exception for general communication errors when specific HTTP details aren't available</summary>
     /// <param name="message">Technical error message detailing what went wrong with the API call</param>
     public PlexApiException(string message)
-        : base(message, "There was a problem communicating with your Plex server. Please check your server connection.")
+        : base(message, Unreachable)
+    {
+    }
+
+    /// <summary>Creates an API exception whose user message is written for the specific failure at the throw site</summary>
+    /// <param name="message">Technical error message for logs</param>
+    /// <param name="userFriendlyMessage">What the user sees. It should say what failed, in plain words.</param>
+    public PlexApiException(string message, string userFriendlyMessage)
+        : base(message, userFriendlyMessage)
     {
     }
 
@@ -45,7 +59,7 @@ public class PlexApiException : PlexBotException
     /// <param name="message">Explanation of what API operation was being attempted when the error occurred</param>
     /// <param name="innerException">The original exception (like network failures or timeouts) that triggered this API exception</param>
     public PlexApiException(string message, Exception innerException)
-        : base(message, "There was a problem communicating with your Plex server. Please check your server connection.", innerException)
+        : base(message, Unreachable, innerException)
     {
     }
 
@@ -56,15 +70,15 @@ public class PlexApiException : PlexBotException
     {
         return statusCode switch
         {
-            HttpStatusCode.Unauthorized => "Authentication failed with your Plex server. Please check your Plex token.",
+            HttpStatusCode.Unauthorized => "Authentication failed with your Plex server. Please check your Plex token. " + PlexHelp,
             HttpStatusCode.Forbidden => "You don't have permission to access this resource on your Plex server.",
             HttpStatusCode.NotFound => "The requested media could not be found on your Plex server.",
-            HttpStatusCode.RequestTimeout => "The connection to your Plex server timed out. Please check your network connection.",
-            HttpStatusCode.InternalServerError => "Your Plex server encountered an internal error. Please check your server logs.",
-            HttpStatusCode.BadGateway => "There was a connection issue between PlexBot and your Plex server.",
-            HttpStatusCode.ServiceUnavailable => "Your Plex server is currently unavailable. Please check if it's running.",
-            HttpStatusCode.GatewayTimeout => "The connection to your Plex server timed out. Please check your server.",
-            _ => "There was a problem communicating with your Plex server. Please check your server connection."
+            HttpStatusCode.RequestTimeout => "The connection to your Plex server timed out. Please check your network connection. " + PlexHelp,
+            HttpStatusCode.InternalServerError => "Your Plex server encountered an internal error. Check the Plex server log, then try again.",
+            HttpStatusCode.BadGateway => "There was a connection issue between PlexBot and your Plex server. " + PlexHelp,
+            HttpStatusCode.ServiceUnavailable => "Your Plex server is currently unavailable. Check that it is running. " + PlexHelp,
+            HttpStatusCode.GatewayTimeout => "The connection to your Plex server timed out. Check that it is running. " + PlexHelp,
+            _ => Unreachable
         };
     }
 }

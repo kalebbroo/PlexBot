@@ -328,7 +328,7 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
                     return;
 
                 var errorComponents = result.Error.HasValue
-                    ? ComponentV2Builder.CommandError(result.Error.Value, result.ErrorReason)
+                    ? ComponentV2Builder.CommandError(result.Error.Value, result.ErrorReason, DescribeInteraction(interaction), ThrownBy(result))
                     : ComponentV2Builder.Error("Command Error", result.ErrorReason);
                 await SendFallbackAsync(interaction, errorComponents);
             }
@@ -343,7 +343,7 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
 
             Logs.Error($"[{InstanceId}] Error handling interaction: {ex.Message}");
             await SendFallbackAsync(interaction,
-                ComponentV2Builder.Error("Command Error", "An unexpected error occurred while processing your command. Please try again later."));
+                ComponentV2Builder.Error("Command Error", ex, $"{DescribeInteraction(interaction)} failed to run. Check the bot log for details."));
         }
     }
 
@@ -361,10 +361,23 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
             return;
 
         MessageComponent components = result.Error.HasValue
-            ? ComponentV2Builder.CommandError(result.Error.Value, reason)
-            : ComponentV2Builder.Error("Command Error", "Something went wrong running that command. Please try again.");
+            ? ComponentV2Builder.CommandError(result.Error.Value, reason, DescribeInteraction(interaction), ThrownBy(result))
+            : ComponentV2Builder.Error("Command Error", $"{DescribeInteraction(interaction)} failed without a reason. Check the bot log for details.");
         await SendFallbackAsync(interaction, components);
     }
+
+    /// <summary>The exception a command threw, when the result carries one. Discord.Net reports it only on ExecuteResult.</summary>
+    private static Exception? ThrownBy(IResult result) => result is ExecuteResult executed ? executed.Exception : null;
+
+    /// <summary>Names the interaction that failed, as the start of a sentence: "/search", "This button", "This menu", "This form"</summary>
+    private static string DescribeInteraction(SocketInteraction interaction) => interaction switch
+    {
+        SocketSlashCommand slash => $"/{slash.Data.Name}",
+        SocketModal => "This form",
+        SocketMessageComponent { Data.Type: ComponentType.SelectMenu } => "This menu",
+        SocketMessageComponent => "This button",
+        _ => "This action",
+    };
 
     /// <summary>Sends an ephemeral error. Follows up if the interaction was acknowledged, otherwise responds.
     /// A failure here is logged, never rethrown: the interaction may already have expired.</summary>

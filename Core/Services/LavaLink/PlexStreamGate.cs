@@ -1,3 +1,5 @@
+using PlexBot.Core.Discord.Messages;
+
 namespace PlexBot.Core.Services.LavaLink;
 
 /// <summary>Process-wide limit on Lavalink loads of Plex file URLs, shared by every guild. Plex drops parallel file
@@ -84,8 +86,8 @@ public sealed record TrackResolution(LavalinkTrack? Track, LoadOutcome Outcome)
 
     /// <summary>Why the track could not be played, worded for the notice posted in the channel</summary>
     public string FailureReason => Outcome == LoadOutcome.NotFound
-        ? "Plex couldn't find a playable file for it."
-        : "Plex didn't return the file after several tries.";
+        ? "Plex couldn't find a playable file for it. [Track loading help](" + DocsLinks.TrackLoadFailures + ")"
+        : "Plex didn't return the file after several tries. [Track loading help](" + DocsLinks.TrackSkipped + ")";
 }
 
 /// <summary>Retry schedule and failure classification for Plex loads. Kept free of I/O so it can be unit tested.</summary>
