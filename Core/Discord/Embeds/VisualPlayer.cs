@@ -55,7 +55,7 @@ public class VisualPlayer(
             IUserMessage? message = stateManager.GetMessage(guildId);
             // Decided before a failed edit below clears the message, so the recreate goes where the lost card was.
             bool isStatic = stateManager.IsStaticCard(guildId);
-            ITextChannel? staticChannel = isStatic ? (message?.Channel as ITextChannel ?? stateManager.StaticChannel) : null;
+            ITextChannel? staticChannel = isStatic ? (message?.Channel as ITextChannel ?? stateManager.GetStaticChannel(guildId)) : null;
 
             string? statusLine = stateManager.UseProgressBar ? BuildStatusLine(guildId, player) : null;
 
@@ -139,12 +139,13 @@ public class VisualPlayer(
             }
 
             ITextChannel? lastChannel = stateManager.GetChannel(guildId);
-            ulong? targetId = VisualPlayerStateManager.ResolveCardChannel(isStatic, stateManager.StaticChannelId, lastChannel?.Id);
+            ulong? staticChannelId = stateManager.StaticChannelIdFor(guildId);
+            ulong? targetId = VisualPlayerStateManager.ResolveCardChannel(isStatic, staticChannelId, lastChannel?.Id);
             ITextChannel? channel = isStatic ? staticChannel : lastChannel;
             if (channel is null || channel.Id != targetId)
             {
                 Logs.Warning(isStatic
-                    ? $"[guild {guildId}] Static player channel {stateManager.StaticChannelId} could not be resolved; not posting the card elsewhere"
+                    ? $"[guild {guildId}] Static player channel {staticChannelId} could not be resolved; not posting the card elsewhere"
                     : $"[guild {guildId}] No channel known for visual player; skipping message creation");
                 return;
             }

@@ -154,10 +154,10 @@ public class BotHostedService(DiscordSocketClient client, DiscordEventHandler ev
             Logs.Debug("Static player channel is disabled, skipping initialization");
             return;
         }
-        // The retry loop below only ends on success or shutdown, so an unset id has to be rejected before it starts.
-        if (!VisualPlayerStateManager.HasStaticChannel(stateManager.StaticChannelId))
+        // The retry loops below only end on success or shutdown, so an empty list has to be rejected before they start.
+        if (stateManager.StaticChannelIds.Count == 0)
         {
-            Logs.Warning("visualPlayer.staticChannel.enabled is true but visualPlayer.staticChannel.channelId is not set; skipping static player channel setup");
+            Logs.Warning("visualPlayer.staticChannel.enabled is true but no channel is set in visualPlayer.staticChannel.channelId or channelIds; skipping static player channel setup");
             return;
         }
 
@@ -170,12 +170,18 @@ public class BotHostedService(DiscordSocketClient client, DiscordEventHandler ev
             return;
         }
 
+        // One loop per channel, so a channel that is slow to appear does not hold up the others
+        await Task.WhenAll(stateManager.StaticChannelIds.Select(channelId => SetupStaticChannelWithRetryAsync(stateManager, channelId, ct)));
+    }
+
+    private async Task SetupStaticChannelWithRetryAsync(VisualPlayerStateManager stateManager, ulong staticChannelId, CancellationToken ct)
+    {
         TimeSpan delay = TimeSpan.FromSeconds(5);
         while (!ct.IsCancellationRequested)
         {
             try
             {
-                if (await TrySetupStaticChannelAsync(stateManager, ct))
+                if (await TrySetupStaticChannelAsync(stateManager, staticChannelId, ct))
                     return;
             }
             catch (OperationCanceledException)
@@ -184,10 +190,10 @@ public class BotHostedService(DiscordSocketClient client, DiscordEventHandler ev
             }
             catch (Exception ex)
             {
-                Logs.Error($"Failed to initialize static player channel: {ex.Message}");
+                Logs.Error($"Failed to initialize static player channel {staticChannelId}: {ex.Message}");
             }
 
-            Logs.Warning($"Static player channel not ready; retrying in {delay.TotalSeconds:N0}s");
+            Logs.Warning($"Static player channel {staticChannelId} not ready; retrying in {delay.TotalSeconds:N0}s");
             try
             {
                 await Task.Delay(delay, ct);
@@ -202,9 +208,8 @@ public class BotHostedService(DiscordSocketClient client, DiscordEventHandler ev
 
     /// <summary>One attempt at static channel setup. Returns false if the channel is not in the cache yet or the bot
     /// lacks permissions there, so the caller can retry.</summary>
-    private async Task<bool> TrySetupStaticChannelAsync(VisualPlayerStateManager stateManager, CancellationToken ct)
+    private async Task<bool> TrySetupStaticChannelAsync(VisualPlayerStateManager stateManager, ulong staticChannelId, CancellationToken ct)
     {
-        ulong staticChannelId = stateManager.StaticChannelId!.Value;
         Logs.Init($"Initializing static player channel ({staticChannelId})...");
 
         // Guild data can arrive after Ready; poll the cache for up to 60 seconds per attempt
@@ -229,6 +234,11 @@ public class BotHostedService(DiscordSocketClient client, DiscordEventHandler ev
         }
 
         ulong guildId = textChannel.Guild.Id;
+        if (!stateManager.TryClaimStaticChannel(guildId, staticChannelId))
+        {
+            Logs.Warning($"Static player channel {staticChannelId} is not used: server {guildId} already has another static player channel. Use one per server.");
+            return true;
+        }
         stateManager.SetChannel(guildId, textChannel);
 
         // The idle card keeps the buttons it was built with until the next player event, so it is built after the

@@ -68,11 +68,48 @@ public class VisualPlayerStateManager
     /// <summary>Controls whether to use a dedicated channel for player messages</summary>
     public bool UseStaticChannel { get; set; } = BotConfig.GetBool("visualPlayer.staticChannel.enabled", false);
 
-    /// <summary>Optional channel ID to use as static player channel</summary>
-    public ulong? StaticChannelId { get; set; } = BotConfig.GetULong("visualPlayer.staticChannel.channelId", 0);
+    /// <summary>Static channel ids from config, one per server. Empty when static mode has no channel set.</summary>
+    public IReadOnlyList<ulong> StaticChannelIds { get; } = ParseStaticChannelIds(
+        BotConfig.GetULong("visualPlayer.staticChannel.channelId", 0),
+        BotConfig.GetString("visualPlayer.staticChannel.channelIds"));
 
-    /// <summary>The configured static channel, set once static setup resolves it</summary>
-    public ITextChannel? StaticChannel { get; private set; }
+    /// <summary>The static channel each server resolved to, set once static setup finds it</summary>
+    private readonly ConcurrentDictionary<ulong, ITextChannel> _staticChannels = new();
+
+    /// <summary>The static channel id each server has claimed. Set before setup posts anything, so a second configured
+    /// channel in the same server is refused rather than racing the first.</summary>
+    private readonly ConcurrentDictionary<ulong, ulong> _claimedStaticChannels = new();
+
+    /// <summary>Parses static channel ids: the single <c>channelId</c> first, then the comma-separated <c>channelIds</c>.
+    /// Zero, duplicate and non-numeric entries are skipped, and non-numeric ones are logged.</summary>
+    public static IReadOnlyList<ulong> ParseStaticChannelIds(ulong singleId, string commaSeparated)
+    {
+        List<ulong> ids = new();
+        if (singleId != 0) ids.Add(singleId);
+        foreach (string entry in commaSeparated.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (!ulong.TryParse(entry, out ulong id))
+            {
+                Logs.Warning($"visualPlayer.staticChannel.channelIds has an entry that is not a channel ID: '{entry}'");
+                continue;
+            }
+            if (id != 0 && !ids.Contains(id)) ids.Add(id);
+        }
+        return ids;
+    }
+
+    /// <summary>Claims a server's static channel for one configured id. Returns false when the server already claimed a
+    /// different channel. Claiming the same channel again succeeds, so a retried setup is not refused by its own claim.</summary>
+    public bool TryClaimStaticChannel(ulong guildId, ulong channelId) => _claimedStaticChannels.GetOrAdd(guildId, channelId) == channelId;
+
+    /// <summary>The static channel id for a server, once its static channel has been set up. Null before that, so a card
+    /// is not treated as static while the setup is still posting it.</summary>
+    public ulong? StaticChannelIdFor(ulong guildId) =>
+        _staticChannels.TryGetValue(guildId, out ITextChannel? channel) ? channel.Id : null;
+
+    /// <summary>The static channel for a server, or null when the server has none set up</summary>
+    public ITextChannel? GetStaticChannel(ulong guildId) =>
+        _staticChannels.TryGetValue(guildId, out ITextChannel? channel) ? channel : null;
 
     /// <summary>Returns the channel the visual player for a guild is posted in, if any</summary>
     public ITextChannel? GetChannel(ulong guildId) => GetState(guildId).Channel;
@@ -90,16 +127,17 @@ public class VisualPlayerStateManager
 
     /// <summary>The channel a guild's card is in: the card message's channel when there is one, otherwise the configured
     /// static channel if it is in this guild. Null when neither applies.</summary>
-    public static ulong? CardChannelFor(ulong? messageChannelId, ulong? staticGuildId, ulong guildId, ulong? staticChannelId) =>
-        messageChannelId ?? (staticGuildId == guildId && HasStaticChannel(staticChannelId) ? staticChannelId : null);
+    public static ulong? CardChannelFor(ulong? messageChannelId, ulong? staticChannelId) =>
+        messageChannelId ?? (HasStaticChannel(staticChannelId) ? staticChannelId : null);
 
-    /// <summary>Whether a guild's card is the static channel's card. The channel the card message is in decides, because a
-    /// /play from another channel moves GetChannel without moving the card. With no card message, the static channel stands
-    /// in when it is in this guild.</summary>
+    /// <summary>Whether a guild's card is that guild's static channel card. The channel the card message is in decides,
+    /// because a /play from another channel moves GetChannel without moving the card. With no card message, the server's
+    /// static channel stands in.</summary>
     public bool IsStaticCard(ulong guildId)
     {
-        ulong? cardChannelId = CardChannelFor(GetMessage(guildId)?.Channel.Id, StaticChannel?.GuildId, guildId, StaticChannelId);
-        return IsStaticCard(UseStaticChannel, StaticChannelId, cardChannelId);
+        ulong? staticChannelId = StaticChannelIdFor(guildId);
+        ulong? cardChannelId = CardChannelFor(GetMessage(guildId)?.Channel.Id, staticChannelId);
+        return IsStaticCard(UseStaticChannel, staticChannelId, cardChannelId);
     }
 
     /// <summary>The channel a lost card is recreated in. A static card goes only to the static channel, never to the channel
@@ -117,8 +155,8 @@ public class VisualPlayerStateManager
         lock (state) { state.Channel = channel; }
     }
 
-    /// <summary>Sets the configured static channel, once static setup resolves it</summary>
-    public void SetStaticChannel(ITextChannel channel) => StaticChannel = channel;
+    /// <summary>Sets a server's static channel, once static setup has posted its card</summary>
+    public void SetStaticChannel(ITextChannel channel) => _staticChannels[channel.GuildId] = channel;
 
     /// <summary>Sets the visual player message for a guild</summary>
     public void SetMessage(ulong guildId, IUserMessage? message)

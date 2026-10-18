@@ -26,6 +26,9 @@ visualPlayer:
         enabled: false
         # Paste the Discord channel ID here (right-click channel > Copy Channel ID)
         channelId: 0
+        # One channel per server, comma-separated (e.g. 123456789012345678, 234567890123456789).
+        # Each channel's server gets its own static player. Only one channel per server is used.
+        channelIds:
         
     # Progress bar - shows a live-updating bar on the visual player (updates every second)
     # Disable to reduce Discord API calls

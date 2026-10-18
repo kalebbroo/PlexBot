@@ -76,34 +76,40 @@ public class StaticCardRuleTests
     [Fact]
     public void CardChannelFor_IsTheMessageChannelWhenThereIsOne()
     {
-        Assert.Equal((ulong?)300, VisualPlayerStateManager.CardChannelFor(300, 1, 1, 100));
-        Assert.Equal((ulong?)200, VisualPlayerStateManager.CardChannelFor(200, 1, 2, null));
+        Assert.Equal((ulong?)300, VisualPlayerStateManager.CardChannelFor(300, 100));
+        Assert.Equal((ulong?)200, VisualPlayerStateManager.CardChannelFor(200, null));
     }
 
     [Fact]
-    public void CardChannelFor_IsTheStaticChannelForANullMessageOnTheStaticGuild()
+    public void CardChannelFor_IsTheStaticChannelForANullMessage()
     {
         // A lost card is recreated in the static channel, not in the channel a /play moved GetChannel to
-        Assert.Equal((ulong?)100, VisualPlayerStateManager.CardChannelFor(null, 1, 1, 100));
+        Assert.Equal((ulong?)100, VisualPlayerStateManager.CardChannelFor(null, 100));
     }
 
     [Fact]
-    public void CardChannelFor_IsNullForANullMessageOnAnotherGuild()
+    public void CardChannelFor_IsNullForANullMessageWithoutAStaticChannel()
     {
-        Assert.Null(VisualPlayerStateManager.CardChannelFor(null, 1, 2, 100));
-        Assert.Null(VisualPlayerStateManager.CardChannelFor(null, null, 2, 100));
-    }
-
-    [Fact]
-    public void CardChannelFor_IsNullWhenTheStaticChannelIdIsNull()
-    {
-        Assert.Null(VisualPlayerStateManager.CardChannelFor(null, 1, 1, null));
-    }
-
-    [Fact]
-    public void CardChannelFor_IsNullWhenTheConfiguredIdIsZero()
-    {
+        Assert.Null(VisualPlayerStateManager.CardChannelFor(null, null));
         // BotConfig.GetULong defaults to 0, so an unset id arrives as 0 rather than null
-        Assert.Null(VisualPlayerStateManager.CardChannelFor(null, 1, 1, 0));
+        Assert.Null(VisualPlayerStateManager.CardChannelFor(null, 0));
+    }
+
+    [Fact]
+    public void ParseStaticChannelIds_ReadsTheSingleIdThenTheList()
+    {
+        Assert.Equal(new ulong[] { 100, 200, 300 }, VisualPlayerStateManager.ParseStaticChannelIds(100, "200, 300"));
+    }
+
+    [Fact]
+    public void ParseStaticChannelIds_IsEmptyWhenNothingIsSet()
+    {
+        Assert.Empty(VisualPlayerStateManager.ParseStaticChannelIds(0, ""));
+    }
+
+    [Fact]
+    public void ParseStaticChannelIds_SkipsZeroDuplicateAndNonNumericEntries()
+    {
+        Assert.Equal(new ulong[] { 100, 200 }, VisualPlayerStateManager.ParseStaticChannelIds(100, "0, 100, abc, 200,"));
     }
 }
