@@ -2,14 +2,23 @@
 
 > **Play your Plex music in Discord with style.** <sup><kbd>Alpha 0.5</kbd></sup>
 
+[![.NET 10.0](https://img.shields.io/badge/.NET-10.0-512BD4?logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/download/dotnet/10.0) [![Discord.Net 3.20](https://img.shields.io/badge/Discord.Net-3.20-5865F2?logo=discord&logoColor=white)](https://github.com/discord-net/Discord.Net) [![Lavalink4NET](https://img.shields.io/badge/Lavalink4NET-4.2-3D3D8F?logo=java&logoColor=white)](https://www.nuget.org/packages/Lavalink4NET.Discord.NET) [![Plex](https://img.shields.io/badge/Plex-library-E5A00D?logo=plex&logoColor=white)](https://www.plex.tv) [![Docker](https://img.shields.io/badge/Docker-compose-2496ED?logo=docker&logoColor=white)](./Install)
+
 PlexBot streams your Plex music library into Discord voice channels. It has a visual player with album art and labelled
 controls, Plex's sonic features (similar tracks, radio, and sonic adventures), and a help menu with screenshots.
 
-<div align="center">
+## The player
 
-![The modern player playing LOONA's "Star (Voice English ver.)"](./Docs/screenshots/player-modern-star.png)
+PlexBot has two player styles, set with `visualPlayer.useModernPlayer` in `config.fds`:
 
-</div>
+| Modern (default) | Classic |
+|:-:|:-:|
+| ![Modern player: album art, progress bar and labelled controls](./Docs/screenshots/player-modern-star.png) | ![Classic player: now playing with thumbnail and labelled controls](./Docs/screenshots/player-classic.png) |
+
+Under the progress bar, a status line shows the volume and repeat mode as text, for example `Volume 20% · Repeat off`.
+
+For the full button list and the repeat cycle, see the [Commands guide](./Docs/Guides/Commands.md#player-controls-buttons).
+More on the player is in the [Player UI guide](./Docs/Guides/Player-UI-Guide.md).
 
 ---
 
@@ -108,21 +117,6 @@ For YouTube, use the switch rather than renaming the folder by hand. Renaming it
 ![The help hub](./Docs/screenshots/help-hub.png)
 
 </div>
-
----
-
-## The player
-
-PlexBot has two player styles, set with `visualPlayer.useModernPlayer` in `config.fds`:
-
-| Modern (default) | Classic |
-|:-:|:-:|
-| ![Modern player: album art, progress bar and labelled controls](./Docs/screenshots/player-modern-star.png) | ![Classic player: now playing with thumbnail and labelled controls](./Docs/screenshots/player-classic.png) |
-
-Under the progress bar, a status line shows the volume and repeat mode as text, for example `Volume 20% · Repeat off`.
-
-For the full button list and the repeat cycle, see the [Commands guide](./Docs/Guides/Commands.md#player-controls-buttons).
-More on the player is in the [Player UI guide](./Docs/Guides/Player-UI-Guide.md).
 
 ---
 
