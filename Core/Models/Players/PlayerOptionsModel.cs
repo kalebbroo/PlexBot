@@ -158,6 +158,14 @@ public class VisualPlayerStateManager
     /// <summary>Sets a server's static channel, once static setup has posted its card</summary>
     public void SetStaticChannel(ITextChannel channel) => _staticChannels[channel.GuildId] = channel;
 
+    /// <summary>Drops everything kept for a server the bot has left, so a later rejoin sets up from scratch</summary>
+    public void ForgetGuild(ulong guildId)
+    {
+        _guilds.TryRemove(guildId, out _);
+        _staticChannels.TryRemove(guildId, out _);
+        _claimedStaticChannels.TryRemove(guildId, out _);
+    }
+
     /// <summary>Sets the visual player message for a guild</summary>
     public void SetMessage(ulong guildId, IUserMessage? message)
     {

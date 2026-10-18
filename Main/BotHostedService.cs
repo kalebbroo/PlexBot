@@ -26,9 +26,6 @@ public class BotHostedService(DiscordSocketClient client, DiscordEventHandler ev
 
     private readonly TaskCompletionSource _gatewayReady = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    // Longest the idle card waits for the application emoji sync. Past this it posts with unicode fallbacks and says so.
-    private static readonly TimeSpan EmojiSyncWait = TimeSpan.FromSeconds(60);
-
     private CancellationTokenSource? _connectCts;
     private Task? _connectTask;
 
@@ -68,7 +65,8 @@ public class BotHostedService(DiscordSocketClient client, DiscordEventHandler ev
             _ = _connectTask.ContinueWith(t => Logs.Error($"Discord connect loop ended: {t.Exception?.GetBaseException().Message}"),
                 TaskContinuationOptions.OnlyOnFaulted);
 
-            _ = Task.Run(() => InitializeStaticPlayerChannelAsync(_connectCts.Token));
+            StaticChannelSetup staticChannels = serviceProvider.GetRequiredService<StaticChannelSetup>();
+            _ = Task.Run(() => staticChannels.RunAtStartupAsync(_gatewayReady.Task, _connectCts.Token));
         }
         catch (Exception ex)
         {
@@ -139,145 +137,6 @@ public class BotHostedService(DiscordSocketClient client, DiscordEventHandler ev
                 delay = TimeSpan.FromSeconds(Math.Min(delay.TotalSeconds * 2, 30));
             }
         }
-    }
-
-    /// <summary>Sets up the static player channel once the gateway is ready. Waits for the gateway (not a fixed delay),
-    /// then waits for the channel to appear in the cache, since guilds arrive after Ready.</summary>
-    /// <summary>Sets up the static player channel. Waits for the gateway without a deadline, then retries the setup
-    /// step with capped backoff until it succeeds or shutdown begins. A fixed wait used to end this for good when
-    /// Discord was slow to connect, so the channel was never set up for the rest of the process.</summary>
-    private async Task InitializeStaticPlayerChannelAsync(CancellationToken ct)
-    {
-        VisualPlayerStateManager stateManager = serviceProvider.GetRequiredService<VisualPlayerStateManager>();
-        if (!stateManager.UseStaticChannel)
-        {
-            Logs.Debug("Static player channel is disabled, skipping initialization");
-            return;
-        }
-        // The retry loops below only end on success or shutdown, so an empty list has to be rejected before they start.
-        if (stateManager.StaticChannelIds.Count == 0)
-        {
-            Logs.Warning("visualPlayer.staticChannel.enabled is true but no channel is set in visualPlayer.staticChannel.channelId or channelIds; skipping static player channel setup");
-            return;
-        }
-
-        try
-        {
-            await _gatewayReady.Task.WaitAsync(ct);
-        }
-        catch (OperationCanceledException)
-        {
-            return;
-        }
-
-        // One loop per channel, so a channel that is slow to appear does not hold up the others
-        await Task.WhenAll(stateManager.StaticChannelIds.Select(channelId => SetupStaticChannelWithRetryAsync(stateManager, channelId, ct)));
-    }
-
-    private async Task SetupStaticChannelWithRetryAsync(VisualPlayerStateManager stateManager, ulong staticChannelId, CancellationToken ct)
-    {
-        TimeSpan delay = TimeSpan.FromSeconds(5);
-        while (!ct.IsCancellationRequested)
-        {
-            try
-            {
-                if (await TrySetupStaticChannelAsync(stateManager, staticChannelId, ct))
-                    return;
-            }
-            catch (OperationCanceledException)
-            {
-                return;
-            }
-            catch (Exception ex)
-            {
-                Logs.Error($"Failed to initialize static player channel {staticChannelId}: {ex.Message}");
-            }
-
-            Logs.Warning($"Static player channel {staticChannelId} not ready; retrying in {delay.TotalSeconds:N0}s");
-            try
-            {
-                await Task.Delay(delay, ct);
-            }
-            catch (OperationCanceledException)
-            {
-                return;
-            }
-            delay = TimeSpan.FromSeconds(Math.Min(delay.TotalSeconds * 2, 300));
-        }
-    }
-
-    /// <summary>One attempt at static channel setup. Returns false if the channel is not in the cache yet or the bot
-    /// lacks permissions there, so the caller can retry.</summary>
-    private async Task<bool> TrySetupStaticChannelAsync(VisualPlayerStateManager stateManager, ulong staticChannelId, CancellationToken ct)
-    {
-        Logs.Init($"Initializing static player channel ({staticChannelId})...");
-
-        // Guild data can arrive after Ready; poll the cache for up to 60 seconds per attempt
-        ITextChannel? textChannel = null;
-        for (int i = 0; i < 60 && textChannel is null && !ct.IsCancellationRequested; i++)
-        {
-            textChannel = client.GetChannel(staticChannelId) as ITextChannel;
-            if (textChannel is null) await Task.Delay(1000, ct);
-        }
-        if (textChannel is null)
-        {
-            Logs.Warning($"Static player channel {staticChannelId} not found in the cache or is not a text channel");
-            return false;
-        }
-
-        IGuildUser currentUser = await textChannel.Guild.GetCurrentUserAsync();
-        ChannelPermissions permissions = currentUser.GetPermissions(textChannel);
-        if (!permissions.SendMessages || !permissions.EmbedLinks || !permissions.AttachFiles)
-        {
-            Logs.Warning($"Bot lacks required permissions in static player channel {staticChannelId}");
-            return false;
-        }
-
-        ulong guildId = textChannel.Guild.Id;
-        if (!stateManager.TryClaimStaticChannel(guildId, staticChannelId))
-        {
-            Logs.Warning($"Static player channel {staticChannelId} is not used: server {guildId} already has another static player channel. Use one per server.");
-            return true;
-        }
-        stateManager.SetChannel(guildId, textChannel);
-
-        // The idle card keeps the buttons it was built with until the next player event, so it is built after the
-        // application emoji have synced. A card posted first kept unicode fallbacks for the rest of the session.
-        EmojiRegistry emojis = serviceProvider.GetRequiredService<EmojiRegistry>();
-        if (!await emojis.WaitForSyncAsync(EmojiSyncWait, ct))
-        {
-            Logs.Warning($"Application emoji still syncing after {EmojiSyncWait.TotalSeconds:N0}s; the idle card uses unicode fallbacks until its next update");
-        }
-
-        Logs.Info("Cleaning up static player channel...");
-        var messages = await textChannel.GetMessagesAsync(50).FlattenAsync();
-        List<IMessage> botMessages = messages.Where(m => m.Author.Id == client.CurrentUser.Id).ToList();
-        foreach (IMessage message in botMessages)
-        {
-            try
-            {
-                await message.DeleteAsync();
-                Logs.Debug($"Deleted message: {message.Id}");
-                await Task.Delay(100, ct);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                Logs.Warning($"Failed to delete message: {ex.Message}");
-            }
-        }
-
-        ButtonContext context = new();
-        ComponentBuilder components = buttonBuilder.BuildButtons(ButtonFlag.Idle, context);
-        FileAttachment? banner = VisualPlayer.IdleBanner();
-        MessageComponent cv2 = ComponentV2Builder.BuildIdlePlayer(components, banner is not null);
-        IUserMessage initPlayer = banner is null
-            ? await textChannel.SendMessageAsync(components: cv2)
-            : await textChannel.SendFileAsync(banner.Value, components: cv2);
-        stateManager.SetMessage(guildId, initPlayer);
-        // Published once the card exists, so a concurrent update cannot post into the static channel before it
-        stateManager.SetStaticChannel(textChannel);
-        Logs.Init($"Static player channel initialized successfully (message {initPlayer.Id})");
-        return true;
     }
 
     /// <summary>Gracefully shuts down the bot by disconnecting from Discord, unloading extensions, and releasing resources to prevent any data corruption</summary>

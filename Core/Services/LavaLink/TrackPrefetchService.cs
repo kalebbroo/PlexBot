@@ -10,8 +10,9 @@ public class TrackPrefetchService(IHttpClientFactory httpClientFactory) : ITrack
     private readonly ConcurrentDictionary<string, (byte[] Bytes, long Ticks)> _artworkCache = new();
     private const int MaxArtworkCacheEntries = 10;
 
-    // Track the URL currently being prefetched to avoid duplicate work
-    private volatile string? _currentlyPrefetching;
+    // The URL each server is prefetching now. One slot for every server would let one server's download hide another's,
+    // and a finishing download would clear a slot it no longer owns.
+    private readonly ConcurrentDictionary<ulong, string> _prefetching = new();
 
     /// <inheritdoc />
     public async Task PrefetchNextAsync(QueuedLavalinkPlayer player, CancellationToken cancellationToken = default)
@@ -27,11 +28,12 @@ public class TrackPrefetchService(IHttpClientFactory httpClientFactory) : ITrack
             string? artworkUrl = nextTrack.Artwork;
             if (string.IsNullOrEmpty(artworkUrl) || artworkUrl == "N/A") return;
 
-            // Skip if we're already prefetching this URL or it's already cached
-            if (_currentlyPrefetching == artworkUrl || _artworkCache.ContainsKey(artworkUrl))
+            // Skip if this server is already prefetching this URL or it's already cached
+            if ((_prefetching.TryGetValue(player.GuildId, out string? inFlight) && inFlight == artworkUrl)
+                || _artworkCache.ContainsKey(artworkUrl))
                 return;
 
-            _currentlyPrefetching = artworkUrl;
+            _prefetching[player.GuildId] = artworkUrl;
 
             // Pre-download artwork in background
             try
@@ -54,7 +56,7 @@ public class TrackPrefetchService(IHttpClientFactory httpClientFactory) : ITrack
             }
             finally
             {
-                _currentlyPrefetching = null;
+                _prefetching.TryRemove(new KeyValuePair<ulong, string>(player.GuildId, artworkUrl));
             }
         }
         catch (OperationCanceledException)
@@ -64,7 +66,6 @@ public class TrackPrefetchService(IHttpClientFactory httpClientFactory) : ITrack
         catch (Exception ex)
         {
             Logs.Debug($"Prefetch failed (non-critical): {ex.Message}");
-            _currentlyPrefetching = null;
         }
     }
 
