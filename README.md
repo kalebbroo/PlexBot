@@ -5,7 +5,7 @@
 PlexBot streams your Plex music library into Discord voice channels. It has a visual player with album art and labelled
 controls, Plex's sonic features (similar tracks, radio, and sonic adventures), and a help menu with screenshots.
 
-![The player in a dedicated channel, playing a track](./Docs/screenshots/static-channel-playing.png)
+![The modern player playing LOONA's "Star (Voice English ver.)"](./Docs/screenshots/player-modern-star.png)
 
 ---
 
@@ -93,7 +93,7 @@ PlexBot has two player styles, set with `visualPlayer.useModernPlayer` in `confi
 
 | Modern (default) | Classic |
 |:-:|:-:|
-| ![Modern player: album art, progress bar and labelled controls](./Docs/screenshots/player-controls.png) | ![Classic player: now playing with thumbnail and labelled controls](./Docs/screenshots/player-classic.png) |
+| ![Modern player: album art, progress bar and labelled controls](./Docs/screenshots/player-modern-star.png) | ![Classic player: now playing with thumbnail and labelled controls](./Docs/screenshots/player-classic.png) |
 
 Under the progress bar, a status line shows the volume and repeat mode as text, for example `Volume 20% · Repeat off`.
 
