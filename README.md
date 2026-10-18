@@ -128,7 +128,7 @@ appears in it. Only the server that owns that channel gets this card. Players el
 
 <div align="center">
 
-![Static channel: idle card with banner and controls](./Docs/screenshots/static-channel-idle.png)
+![Static player channel: the idle card, the playing card, and how to turn it on](./Docs/screenshots/tutorial-static-channel.png)
 
 </div>
 
@@ -146,7 +146,7 @@ appears in it. Only the server that owns that channel gets this card. Players el
    visualPlayer:
      staticChannel:
        enabled: true
-       channelId: 1360639203829879097   # your channel's ID
+       channelId: 123456789012345678   # your channel's ID
    ```
 
 4. Restart the bot. If `enabled` is `true` but `channelId` is not set, the bot skips static setup and logs a warning.
