@@ -11,10 +11,10 @@ namespace PlexBot.Core.Discord.Embeds;
 public static class ComponentV2Builder
 {
 
-    private const string SuccessEmoji = "\u2705";
-    private const string ErrorEmoji = "\u274C";
-    private const string InfoEmoji = "\u2139\uFE0F";
-    private const string WarningEmoji = "\u26A0\uFE0F";
+    private static string SuccessEmoji => EmojiRegistry.Icon("pb_success", "\u2705");
+    private static string ErrorEmoji => EmojiRegistry.Icon("pb_error", "\u274C");
+    private static string InfoEmoji => EmojiRegistry.Icon("pb_info", "\u2139\uFE0F");
+    private static string WarningEmoji => EmojiRegistry.Icon("pb_warning", "\u26A0\uFE0F");
 
     /// <summary>Creates a success status message</summary>
     public static MessageComponent Success(string title, string description)
@@ -141,7 +141,7 @@ public static class ComponentV2Builder
     /// <summary>Builds search results layout with select menus inside the container</summary>
     public static MessageComponent BuildSearchResults(string query, string summary, ComponentBuilder selectMenus, string? emoji = null)
     {
-        string icon = emoji ?? "\U0001F50D";
+        string icon = emoji ?? EmojiRegistry.Icon("pb_search", "\U0001F50D");
         var container = new ContainerBuilder()
             .WithAccentColor(DesignTokens.Info)
             .WithTextDisplay($"## {icon} Search Results for: {query}")
@@ -155,11 +155,11 @@ public static class ComponentV2Builder
     public static MessageComponent BuildQueueOptions(
         string nowPlaying, int queueCount, ComponentBuilder actionButtons, string? emoji = null)
     {
-        string icon = emoji ?? "\U0001F4CB";
+        string icon = emoji ?? EmojiRegistry.Icon("pb_queue", "\U0001F4CB");
         var container = new ContainerBuilder()
             .WithAccentColor(DesignTokens.Music)
             .WithTextDisplay($"## {icon} Queue Options")
-            .WithTextDisplay($"\u25B6\uFE0F **Now Playing:** {nowPlaying}")
+            .WithTextDisplay($"{EmojiRegistry.Icon("pb_play", "\u25B6\uFE0F")} **Now Playing:** {nowPlaying}")
             .WithTextDisplay($"{queueCount} tracks in queue")
             .WithSeparator(SeparatorSpacingSize.Small, isDivider: true);
         AddActionRows(container, actionButtons);
@@ -170,7 +170,7 @@ public static class ComponentV2Builder
     public static MessageComponent BuildQueueDisplay(
         string? nowPlayingLine, string queueText, string footerLine, ComponentBuilder paginationButtons, string? emoji = null)
     {
-        string icon = emoji ?? "\U0001F4CB";
+        string icon = emoji ?? EmojiRegistry.Icon("pb_queue", "\U0001F4CB");
         var container = new ContainerBuilder()
             .WithAccentColor(DesignTokens.Music)
             .WithTextDisplay($"## {icon} Current Music Queue");
@@ -246,7 +246,7 @@ public static class ComponentV2Builder
         return new ComponentBuilderV2()
             .WithContainer(new ContainerBuilder()
                 .WithAccentColor(DesignTokens.Info)
-                .WithTextDisplay("## ⏹️ Playback stopped")
+                .WithTextDisplay($"## {EmojiRegistry.Icon("pb_stop", "⏹️")} Playback stopped")
                 .WithTextDisplay("Use `/play` or `/playlist` to start music again.")
             ).Build();
     }
@@ -260,7 +260,7 @@ public static class ComponentV2Builder
         if (withBanner)
             container.WithMediaGallery(new MediaGalleryBuilder().AddItem($"attachment://{BannerFileName}"));
         container
-            .WithTextDisplay("## \U0001F3B5 PlexBot Music Player")
+            .WithTextDisplay($"## {EmojiRegistry.Icon("pb_music", "\U0001F3B5")} PlexBot Music Player")
             .WithTextDisplay("No track is playing. Press **Play** or **Search** to find music, or **Radio** and **Adventure** to start from tracks you name.")
             .WithSeparator(SeparatorSpacingSize.Small, isDivider: true)
             .WithTextDisplay("-# The player will appear here when music begins playing");

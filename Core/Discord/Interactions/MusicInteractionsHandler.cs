@@ -919,7 +919,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
             page = Math.Clamp(page, 1, totalPages);
 
             string? nowPlayingLine = (page == 1 && currentTrack is not null)
-                ? $"**\u25B6\uFE0F Now Playing:** {currentTrack.Title} - {currentTrack.Artist} ({currentTrack.Duration})"
+                ? $"**{EmojiRegistry.Icon("pb_play", "\u25B6\uFE0F")} Now Playing:** {currentTrack.Title} - {currentTrack.Artist} ({currentTrack.Duration})"
                 : null;
 
             int startIndex = (page - 1) * itemsPerPage;

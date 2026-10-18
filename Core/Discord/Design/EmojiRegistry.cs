@@ -41,6 +41,14 @@ public sealed class EmojiRegistry
     /// <summary>Number of application emoji known to the registry</summary>
     public int Count => ByName.Count;
 
+    /// <summary>The registry the bot created, for builders that are static and have no injected registry</summary>
+    public static EmojiRegistry? Shared { get; private set; }
+
+    public EmojiRegistry() => Shared = this;
+
+    /// <summary>The synced emoji text for a name, or the unicode fallback when no registry exists yet</summary>
+    public static string Icon(string name, string unicodeFallback) => Shared?.Text(name, unicodeFallback) ?? unicodeFallback;
+
     // Completes when a sync has finished, whether or not it worked. Cards built before then can't use the synced emoji.
     private readonly TaskCompletionSource _syncFinished = new(TaskCreationOptions.RunContinuationsAsynchronously);
 

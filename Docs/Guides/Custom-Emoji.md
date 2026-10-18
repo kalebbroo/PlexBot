@@ -1,6 +1,6 @@
 # Custom emoji
 
-PlexBot ships with 22 emoji drawn for the player and its panels. They are uploaded to your bot's application
+PlexBot ships with 24 emoji drawn for the player and its panels. They are uploaded to your bot's application
 automatically the first time it starts. You don't upload anything by hand.
 
 The player buttons use these emoji, with a text label beside each one. If an emoji is missing, the button shows its
@@ -8,12 +8,13 @@ plain unicode symbol instead.
 
 ## What you get
 
-![The 22 emoji as a contact sheet at 44px and 22px](images/emoji-contact-sheet.png)
+![The 24 emoji as a contact sheet at 44px and 22px](images/emoji-contact-sheet.png)
 
 | Group | Names |
 |---|---|
 | Player controls | `pb_play`, `pb_pause`, `pb_skip`, `pb_stop`, `pb_repeat`, `pb_repeat_track`, `pb_shuffle`, `pb_volume_up`, `pb_volume_down`, `pb_volume_mute` |
 | Features | `pb_radio`, `pb_similar`, `pb_adventure`, `pb_search`, `pb_queue`, `pb_playlist`, `pb_plex` |
+| Sources and titles | `pb_music` (the Play button and card titles, PlexBot's orange-to-gold gradient), `pb_youtube` (the YouTube button, YouTube red) |
 | Status | `pb_success`, `pb_error`, `pb_info`, `pb_warning`, `pb_loading` |
 
 They are **application emoji**. Discord stores them against the bot's application, not against a server. That
