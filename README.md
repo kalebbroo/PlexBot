@@ -15,6 +15,12 @@ PlexBot has two player styles, set with `visualPlayer.useModernPlayer` in `confi
 |:-:|:-:|
 | ![Modern player: album art, progress bar and labelled controls](./Docs/screenshots/player-modern-star.png) | ![Classic player: now playing with thumbnail and labelled controls](./Docs/screenshots/player-classic.png) |
 
+<div align="center">
+
+![The modern player, numbered: track, progress, status line, playback row, second row and last row](./Docs/screenshots/tutorial-player.png)
+
+</div>
+
 Under the progress bar, a status line shows the volume and repeat mode as text, for example `Volume 20% · Repeat off`.
 
 For the full button list and the repeat cycle, see the [Commands guide](./Docs/Guides/Commands.md#player-controls-buttons).
@@ -78,45 +84,40 @@ For YouTube, use the switch rather than renaming the folder by hand. Renaming it
 
 ## Your first five minutes
 
-**1. Start a track.** Type `/play` and a song name. The bot joins your voice channel and posts the player.
+Four steps from the channel to the queue. Type `/play` with a song name to skip the menus.
 
 <div align="center">
 
-![Start playing: the Track Added reply and the player](./Docs/screenshots/help-start.png)
+![Your first five minutes: search, pick a result, use the player, check the queue](./Docs/screenshots/tutorial-first-five-minutes.png)
 
 </div>
 
-**2. Use the player.** Each button is labelled. Pause, skip, repeat, shuffle and the queue are on the first row.
+1. **Search.** Type `/search`, pick **Plex Library**, then type a name, artist or album.
+2. **Pick a result.** Choose an artist, then an album. An album queues all its tracks and starts playback.
+3. **Use the player.** Its buttons control playback, volume and the queue. See [The player](#the-player).
+4. **Check the queue.** Press **Queue**. ⏳ marks a track still loading from Plex.
+5. **Ask for help.** `/help` opens a menu with a **Show me** button for each topic. Each page has the steps, a screenshot, and Previous and Next buttons.
+---
+
+## Search and queue
 
 <div align="center">
 
-![The player's controls, labelled](./Docs/screenshots/player-controls.png)
+![Search: the Plex Library mode, and the artist and album menus](./Docs/screenshots/tutorial-search.png)
 
 </div>
 
-**3. Find music.** `/search` looks by name, mood, genre or radio station. Pick a result from the menu.
+**Search modes.** Plex Library searches your library by name. Find by Mood and Find by Genre use Plex's sonic tags and need sonic analysis on the server. Radio Station builds stations from a track. YouTube appears when its extension is loaded. Results over 25 page with Previous and Next.
+
+**Albums queue tracks.** Picking an album from the album menu queues every track on it and starts playback.
 
 <div align="center">
 
-![Search results for "queen" with artist, album and track menus](./Docs/screenshots/help-search.png)
+![Queue: now playing, the track list, the loading icon and the page footer](./Docs/screenshots/tutorial-queue.png)
 
 </div>
 
-**4. Check the queue.** Press **Queue** on the player. Pages of ten tracks; ⏳ marks a track still loading from Plex.
-
-<div align="center">
-
-![The current music queue](./Docs/screenshots/help-queue.png)
-
-</div>
-
-**5. Ask for help.** `/help` opens a menu with a **Show me** button for each topic. Each page has the steps, a screenshot, and Previous and Next buttons to move through the topics.
-
-<div align="center">
-
-![The help hub](./Docs/screenshots/help-hub.png)
-
-</div>
+Press **Queue** on the player to see what's coming up, ten tracks a page. **Shuffle** and **Clear** are on the Queue Options message. Shuffle's result stays private, and Clear leaves the track that's playing.
 
 ---
 
