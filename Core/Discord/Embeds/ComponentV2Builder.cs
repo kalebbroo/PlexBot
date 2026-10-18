@@ -188,44 +188,57 @@ public static class ComponentV2Builder
         return new ComponentBuilderV2().WithContainer(container).Build();
     }
 
-    /// <summary>The help hub: an introduction and a menu of topics. Each topic opens its own card.</summary>
-    public static MessageComponent BuildHelp()
+    /// <summary>The help menu: an introduction and one row per page, each with a Show me button that opens the page</summary>
+    public static MessageComponent BuildHelp(EmojiRegistry emojis)
     {
-        ComponentBuilder topics = new();
-        SelectMenuBuilder topicMenu = new SelectMenuBuilder()
-            .WithCustomId("help:select")
-            .WithPlaceholder("Choose a topic")
-            .WithMaxValues(1);
-        foreach (HelpTopic topic in HelpTopics.All)
-            topicMenu.AddOption(topic.Label, topic.Key, topic.Summary, emote: new Emoji(topic.Emoji));
-        topics.WithSelectMenu(topicMenu);
-
         var container = new ContainerBuilder()
             .WithAccentColor(DesignTokens.Music)
-            .WithTextDisplay("## \U0001F4FB PlexBot Music Player")
-            .WithTextDisplay("Play music from your Plex library in voice channels. Pick a topic to see how it works.")
-            .WithSeparator(SeparatorSpacingSize.Small, isDivider: true);
-        AddActionRows(container, topics);
+            .WithTextDisplay($"## {emojis.Text("pb_plex", "\U0001F4FB")} PlexBot Music Player")
+            .WithTextDisplay("Play music from your Plex library in voice channels. Pick a topic to see how it works, one step at a time.");
+        foreach (HelpTopic topic in HelpTopics.All)
+        {
+            container.WithSeparator(SeparatorSpacingSize.Small, isDivider: true);
+            container.AddComponent(new SectionBuilder()
+                .AddComponent(new TextDisplayBuilder($"**{emojis.Text(topic.EmojiName, topic.FallbackEmoji)} {topic.Label}**\n{topic.Summary}"))
+                .WithAccessory(new ButtonBuilder()
+                    .WithLabel("Show me")
+                    .WithCustomId(HelpTopics.PageId(topic.Key))
+                    .WithStyle(ButtonStyle.Primary)));
+        }
         return new ComponentBuilderV2().WithContainer(container).Build();
     }
 
-    /// <summary>One help topic: its title, its screenshot when there is one, the text, and a way back to the hub</summary>
-    public static MessageComponent BuildHelpTopic(HelpTopic topic, bool hasImage)
+    /// <summary>One help page: its title, its screenshot when there is one, the steps, and buttons to the previous page,
+    /// the menu and the next page. The first and last pages leave out the button that has nowhere to go.</summary>
+    public static MessageComponent BuildHelpTopic(HelpTopic topic, EmojiRegistry emojis, bool hasImage)
     {
-        ComponentBuilder back = new();
-        back.WithButton("Back to topics", "help:hub", ButtonStyle.Secondary);
-
         var container = new ContainerBuilder()
             .WithAccentColor(DesignTokens.Info)
-            .WithTextDisplay($"## {topic.Emoji} {topic.Title}");
+            .WithTextDisplay($"## {emojis.Text(topic.EmojiName, topic.FallbackEmoji)} {topic.Title}")
+            .WithTextDisplay($"-# Page {HelpTopics.PositionOf(topic)} of {HelpTopics.All.Count}");
         if (hasImage && topic.ImageFile is not null)
             container.WithMediaGallery(new MediaGalleryBuilder().AddItem($"attachment://{topic.ImageFile}"));
         container
             .WithTextDisplay(topic.Body)
             .WithSeparator(SeparatorSpacingSize.Small, isDivider: true);
-        AddActionRows(container, back);
+
+        var nav = new ActionRowBuilder();
+        HelpTopic? previous = HelpTopics.Previous(topic);
+        if (previous is not null)
+            nav.WithButton(NavButton($"Previous: {previous.Label}", HelpTopics.PageId(previous.Key), emojis.Resolve("pb_previous", "⬅️")));
+        nav.WithButton(NavButton("Topics", HelpTopics.HubId, emojis.Resolve("pb_plex", "\U0001F4FB")));
+        HelpTopic? next = HelpTopics.Next(topic);
+        if (next is not null)
+            nav.WithButton(NavButton($"Next: {next.Label}", HelpTopics.PageId(next.Key), emojis.Resolve("pb_skip", "⏭️")));
+        container.AddComponent(nav);
         return new ComponentBuilderV2().WithContainer(container).Build();
     }
+
+    private static ButtonBuilder NavButton(string label, string customId, IEmote emote) => new ButtonBuilder()
+        .WithLabel(label)
+        .WithCustomId(customId)
+        .WithStyle(ButtonStyle.Secondary)
+        .WithEmote(emote);
 
     /// <summary>Replaces a player message after its player disconnects. It has no controls, so an old player can't be used.</summary>
     public static MessageComponent BuildStoppedPlayer()

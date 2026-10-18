@@ -863,7 +863,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
     {
         try
         {
-            await RespondAsync(components: ComponentV2Builder.BuildHelp(), ephemeral: true);
+            await RespondAsync(components: ComponentV2Builder.BuildHelp(emojis), ephemeral: true);
         }
         catch (Exception ex)
         {
