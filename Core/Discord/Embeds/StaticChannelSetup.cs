@@ -19,10 +19,11 @@ public sealed class StaticChannelSetup(DiscordSocketClient client, VisualPlayerS
     // Channels with a setup loop running, so a join and the startup pass never post into the same channel twice
     private readonly ConcurrentDictionary<ulong, byte> _inFlight = new();
 
-    /// <summary>Sets up every configured static channel once the gateway is ready. Each channel has its own retry loop, so
-    /// a channel that is slow to appear does not hold up the others.</summary>
+    /// <summary>Sets up every configured static channel once the gateway is ready. A channel starts as soon as its server
+    /// is in the cache, and one channel per server is picked in configuration order. A channel whose server is still
+    /// unknown after a minute gets its own retry loop.</summary>
     /// <param name="gatewayReady">Completes when the gateway is ready</param>
-    /// <param name="ct">Token that ends the retry loops on shutdown</param>
+    /// <param name="ct">Token that ends the setup on shutdown</param>
     public async Task RunAtStartupAsync(Task gatewayReady, CancellationToken ct)
     {
         if (!stateManager.UseStaticChannel)
@@ -40,55 +41,71 @@ public sealed class StaticChannelSetup(DiscordSocketClient client, VisualPlayerS
         try
         {
             await gatewayReady.WaitAsync(ct);
-            // Let the guild cache fill, so each configured channel's server is known before one channel per server is picked
-            await WaitForChannelsAsync(stateManager.StaticChannelIds, TimeSpan.FromSeconds(60), ct);
         }
         catch (OperationCanceledException)
         {
             return;
         }
 
-        List<(ulong ChannelId, ulong? GuildId)> resolved = stateManager.StaticChannelIds
-            .Select(id => (id, (client.GetChannel(id) as ITextChannel)?.GuildId))
-            .ToList();
-        IReadOnlyList<ulong> chosen = FirstPerServer(resolved);
-        foreach ((ulong channelId, ulong? guildId) in resolved)
+        List<ulong> pending = stateManager.StaticChannelIds.ToList();
+        HashSet<ulong> servers = new();
+        List<Task> setups = new();
+        for (int pass = 0; ; pass++)
         {
-            if (guildId is not null && !chosen.Contains(channelId))
-                Logs.Warning($"Static player channel {channelId} is skipped: server {guildId} already has a configured static channel earlier in the list");
+            // Channels whose server is in the cache now. Each server arrives whole, so its channels are known together.
+            List<(ulong ChannelId, ulong GuildId)> known = pending
+                .Select(id => (ChannelId: id, GuildId: (client.GetChannel(id) as ITextChannel)?.GuildId))
+                .Where(c => c.GuildId is not null)
+                .Select(c => (c.ChannelId, GuildId: c.GuildId!.Value))
+                .ToList();
+
+            // Servers already given a channel in an earlier pass are not picked again
+            IReadOnlyList<ulong> chosen = FirstPerServer(known.Where(c => !servers.Contains(c.GuildId)));
+            foreach ((ulong channelId, ulong guildId) in known)
+            {
+                if (chosen.Contains(channelId))
+                {
+                    servers.Add(guildId);
+                    setups.Add(SetupWithRetryAsync(channelId, ct));
+                }
+                else
+                {
+                    Logs.Warning($"Static player channel {channelId} is skipped: server {guildId} already has a configured static channel earlier in the list");
+                }
+            }
+            pending.RemoveAll(id => known.Any(c => c.ChannelId == id));
+
+            if (pending.Count == 0 || pass >= 60)
+                break;
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(1), ct);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
         }
 
-        await Task.WhenAll(chosen.Select(channelId => SetupWithRetryAsync(channelId, ct)));
+        // Still unknown after a minute: its own loop picks it up when its server arrives
+        setups.AddRange(pending.Select(channelId => SetupWithRetryAsync(channelId, ct)));
+        await Task.WhenAll(setups);
     }
 
-    /// <summary>Picks one channel per server: the first in configuration order. A channel whose server is not known yet is
-    /// kept, so its own setup can wait for it.</summary>
-    /// <param name="channels">Configured channel ids in order, with their server id, or null while the server is unknown</param>
+    /// <summary>Picks one channel per server, the first in configuration order. Input is the channels whose server is known,
+    /// already in configuration order.</summary>
+    /// <param name="channels">Configured channel ids with their server id</param>
     /// <returns>The channel ids to set up</returns>
-    public static IReadOnlyList<ulong> FirstPerServer(IEnumerable<(ulong ChannelId, ulong? GuildId)> channels)
+    public static IReadOnlyList<ulong> FirstPerServer(IEnumerable<(ulong ChannelId, ulong GuildId)> channels)
     {
         HashSet<ulong> servers = new();
         List<ulong> chosen = new();
-        foreach ((ulong channelId, ulong? guildId) in channels)
+        foreach ((ulong channelId, ulong guildId) in channels)
         {
-            if (guildId is null)
-                chosen.Add(channelId);
-            else if (servers.Add(guildId.Value))
+            if (servers.Add(guildId))
                 chosen.Add(channelId);
         }
         return chosen;
-    }
-
-    /// <summary>Waits until every configured channel is in the cache, or the timeout passes. Whatever is still missing is
-    /// left to its own retry loop.</summary>
-    private async Task WaitForChannelsAsync(IReadOnlyList<ulong> channelIds, TimeSpan timeout, CancellationToken ct)
-    {
-        for (int waited = 0; waited < timeout.TotalSeconds; waited++)
-        {
-            if (channelIds.All(id => client.GetChannel(id) is ITextChannel))
-                return;
-            await Task.Delay(TimeSpan.FromSeconds(1), ct);
-        }
     }
 
     /// <summary>Sets up a configured static channel in a server the bot has just joined, so it works without a restart.
