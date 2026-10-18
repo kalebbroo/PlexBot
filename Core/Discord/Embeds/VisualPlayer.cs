@@ -171,9 +171,9 @@ public class VisualPlayer(
     }
 
     /// <summary>Draws the progress bar full when a track finishes on its own. The timer draws every few seconds, so the
-    /// last frame before the end can be almost one interval short. Does nothing if a track has started since, because
-    /// that track's card replaces this one.</summary>
-    public async Task ShowTrackFinishedAsync(ulong guildId, CustomTrackQueueItem finished, TimeSpan length)
+    /// last frame before the end can be almost one interval short. Does nothing if any track has started or ended since
+    /// <paramref name="endedEpoch"/> was taken, because the newer track's card replaces this one.</summary>
+    public async Task ShowTrackFinishedAsync(ulong guildId, CustomTrackQueueItem finished, TimeSpan length, long endedEpoch)
     {
         if (!stateManager.UseProgressBar || length.TotalSeconds < 1) return;
 
@@ -184,7 +184,9 @@ public class VisualPlayer(
         {
             CustomLavaLinkPlayer? player = await audioService.Players.GetPlayerAsync(guildId) as CustomLavaLinkPlayer;
             IUserMessage? message = stateManager.GetMessage(guildId);
-            if (player is null || message is null || player.State != PlayerState.NotPlaying) return;
+            // Checked under the lock: this update can wait behind another, and a track may have started and finished meanwhile
+            if (player is null || message is null || player.State != PlayerState.NotPlaying || player.PlaybackEpoch != endedEpoch)
+                return;
 
             StopProgressTimer(guildId);
             ButtonContext context = new() { Player = player };

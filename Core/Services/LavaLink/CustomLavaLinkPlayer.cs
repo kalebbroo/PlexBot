@@ -147,6 +147,7 @@ public sealed class CustomLavaLinkPlayer(IPlayerProperties<CustomLavaLinkPlayer,
         cancellationToken.ThrowIfCancellationRequested();
         ArgumentNullException.ThrowIfNull(queueItem);
         Interlocked.Increment(ref _playbackEpoch);
+        long endedEpoch = PlaybackEpoch;
 
         string trackTitle = (queueItem as CustomTrackQueueItem)?.Title ?? queueItem.Track?.Title ?? "Unknown Track";
         CustomTrackQueueItem? endedItem = queueItem as CustomTrackQueueItem;
@@ -177,7 +178,7 @@ public sealed class CustomLavaLinkPlayer(IPlayerProperties<CustomLavaLinkPlayer,
 
         // Only a track that played to the end gets a full bar: a skip or a stop is the user's doing, not the track's
         if (endReason == TrackEndReason.Finished && endedItem is not null && queueItem.Track?.Duration is { } length)
-            _ = serviceProvider.GetRequiredService<VisualPlayer>().ShowTrackFinishedAsync(GuildId, endedItem, length);
+            _ = serviceProvider.GetRequiredService<VisualPlayer>().ShowTrackFinishedAsync(GuildId, endedItem, length, endedEpoch);
 
         // Publish track ended event for extensions
         try
