@@ -116,6 +116,15 @@ Dictionary<string, Action<SKCanvas>> glyphs = new()
         Fill(g, dark, Circle(64, 94, 8));
     }),
     ["loading"] = c => Stroke(c, 12, white, ArcPoints(64, 64, 38, 0, 300)),
+    // Music note in PlexBot's orange-to-gold gradient, the play button's icon and the track title's
+    ["music"] = c => FillGradient(c, new SKColor(255, 122, 24), new SKColor(255, 201, 60),
+        Circle(48, 94, 18), RoundRect(60, 30, 11, 66, 4), Poly(P(71, 30), P(100, 40), P(100, 60), P(71, 50))),
+    // YouTube's red rounded button with a white play triangle
+    ["youtube"] = c =>
+    {
+        Fill(c, new SKColor(255, 0, 0), RoundRect(12, 30, 104, 70, 20));
+        Fill(c, white, Poly(P(52, 48), P(52, 80), P(84, 64)));
+    },
 };
 
 foreach ((string name, Action<SKCanvas> draw) in glyphs)
@@ -185,6 +194,18 @@ static SKPoint[] ArcPoints(float cx, float cy, float radius, float startDeg, flo
         points[i] = P(cx + radius * MathF.Cos(a), cy + radius * MathF.Sin(a));
     }
     return points;
+}
+
+/// <summary>Fills paths with a diagonal gradient, anti-aliased. Takes ownership of the paths and disposes them.</summary>
+static void FillGradient(SKCanvas c, SKColor from, SKColor to, params SKPath[] paths)
+{
+    using SKShader shader = SKShader.CreateLinearGradient(P(24, 20), P(104, 108), new[] { from, to }, null, SKShaderTileMode.Clamp);
+    using SKPaint paint = new() { Shader = shader, IsAntialias = true, Style = SKPaintStyle.Fill };
+    foreach (SKPath path in paths)
+    {
+        c.DrawPath(path, paint);
+        path.Dispose();
+    }
 }
 
 /// <summary>Fills a path, anti-aliased. Takes ownership of the path and disposes it.</summary>

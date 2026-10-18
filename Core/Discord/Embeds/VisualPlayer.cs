@@ -1,4 +1,5 @@
-﻿using System.Collections.Concurrent;
+﻿using PlexBot.Core.Discord.Design;
+using System.Collections.Concurrent;
 using PlexBot.Core.Models.Players;
 using PlexBot.Core.Services.LavaLink;
 using PlexBot.Utils;
@@ -353,7 +354,7 @@ public class VisualPlayer(
     {
         CustomTrackQueueItem? currentTrack = player?.CurrentItem as CustomTrackQueueItem;
         string trackInfo = currentTrack != null
-            ? $"**▶️ Now Playing**\n{currentTrack.Artist ?? "Unknown Artist"} - {currentTrack.Title ?? "Unknown Title"}\n" +
+            ? $"**{EmojiRegistry.Icon("pb_play", "▶️")} Now Playing**\n{currentTrack.Artist ?? "Unknown Artist"} - {currentTrack.Title ?? "Unknown Title"}\n" +
               $"{currentTrack.Album ?? "Unknown Album"} | {currentTrack.Duration ?? "0:00"}"
             : "**No track playing**";
         return ComponentV2Builder.BuildClassicPlayer(trackInfo, currentTrack?.Artwork, statusLine, buttons);

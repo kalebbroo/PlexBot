@@ -189,7 +189,7 @@ namespace PlexBot.Core.Discord.Embeds
             // Play and Search work on the idle card and on a static channel's playing card. Radio and Adventure need a
             // track name when nothing is playing, so they are idle-only. The playing card keeps its own Radio and Adventure.
             RegisterButton("entry_play", ButtonFlag.Idle | ButtonFlag.Entry, 80, _ =>
-                UnicodeButton("Play", "\U0001F3B5", "entry:play", ButtonStyle.Primary));
+                Button("Play", "pb_music", "\U0001F3B5", "entry:play", ButtonStyle.Primary));
             RegisterButton("entry_search", ButtonFlag.Idle | ButtonFlag.Entry, 81, _ =>
                 Button("Search", "pb_search", "\U0001F50D", "entry:search", ButtonStyle.Primary));
             RegisterButton("idle_radio", ButtonFlag.Idle, 90, _ =>
@@ -300,8 +300,15 @@ namespace PlexBot.Core.Discord.Embeds
                     $"provider_search:{provider.Id}",
                     ButtonFlag.Idle | ButtonFlag.Entry,
                     ProviderSearchPriority,
-                    _ => UnicodeButton(Truncate(provider.DisplayName, 80), "\U0001F3AC",
-                        $"provider:search:{provider.Id}", ButtonStyle.Secondary)));
+                    _ => ProviderButton(provider)));
+
+        /// <summary>A source's search button: YouTube's own icon, and the search icon for any other source</summary>
+        private ButtonBuilder ProviderButton(IMusicProvider provider)
+        {
+            bool youtube = provider.Id.Equals("youtube", StringComparison.OrdinalIgnoreCase);
+            return Button(Truncate(provider.DisplayName, 80), youtube ? "pb_youtube" : "pb_search",
+                youtube ? "\U0001F3AC" : "\U0001F50D", $"provider:search:{provider.Id}", ButtonStyle.Secondary);
+        }
 
         private static string Truncate(string text, int maxLength) => text.Length <= maxLength ? text : text[..maxLength];
 
