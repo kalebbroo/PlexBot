@@ -2,6 +2,7 @@ using PlexBot.Core.Services.Music;
 ﻿using PlexBot.Utils;
 using Discord.WebSocket;
 using PlexBot.Core.Discord.Embeds;
+using PlexBot.Core.Discord.Messages;
 using PlexBot.Core.Events;
 using PlexBot.Core.Models.Players;
 
@@ -286,7 +287,7 @@ public sealed class CustomLavaLinkPlayer(IPlayerProperties<CustomLavaLinkPlayer,
         && PlaybackEpoch == epoch
         && PlayerService.CurrentGeneration(GuildId) == generation;
 
-    /// <summary>Posts a short notice in the player's channel, deleted after 30 seconds. Shown as a warning when warning is true</summary>
+    /// <summary>Posts a short notice in the player's channel, deleted after the transient message lifetime. Shown as a warning when warning is true</summary>
     public async Task NotifyChannelAsync(string title, string description, bool warning = false)
     {
         try
@@ -298,12 +299,7 @@ public sealed class CustomLavaLinkPlayer(IPlayerProperties<CustomLavaLinkPlayer,
                 : Discord.Embeds.ComponentV2Builder.Info(title, description);
             IUserMessage message = await channel.SendMessageAsync(components: content,
                 flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
-            _ = Task.Run(async () =>
-            {
-                await Task.Delay(TimeSpan.FromSeconds(30)).ConfigureAwait(false);
-                try { await message.DeleteAsync().ConfigureAwait(false); }
-                catch (Exception ex) { Logs.Debug($"[guild {GuildId}] Could not delete channel notice: {ex.Message}"); }
-            });
+            TransientMessages.DeleteLater(message);
         }
         catch (Exception ex)
         {

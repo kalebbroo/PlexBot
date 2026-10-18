@@ -13,6 +13,7 @@ using PlexBot.Core.Models.Players;
 using PlexBot.Core.Services;
 using PlexBot.Core.Services.LavaLink;
 using PlexBot.Core.Services.Music;
+using PlexBot.Core.Discord.Messages;
 
 namespace PlexBot.Core.Discord.Commands;
 
@@ -42,7 +43,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
             // Ignore hint placeholder values from autocomplete
             if (query.StartsWith("hint_", StringComparison.Ordinal))
             {
-                await FollowupAsync(components: ComponentV2Builder.Error("Invalid Query", "Please type your search — don't select the hint text."), ephemeral: true);
+                TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Invalid Query", "Please type your search — don't select the hint text."), ephemeral: true));
                 return;
             }
 
@@ -74,13 +75,13 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         IMusicProvider? provider = providerRegistry.GetProvider(providerId);
         if (provider is null)
         {
-            await FollowupAsync(components: ComponentV2Builder.Error("Unknown Source", $"Music source '{providerId}' is not available."), ephemeral: true);
+            TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Unknown Source", $"Music source '{providerId}' is not available."), ephemeral: true));
             return;
         }
         SearchResults results = await provider.SearchAsync(query);
         if (!results.HasResults)
         {
-            await FollowupAsync(components: ComponentV2Builder.Info("No Results", $"No results found for '{query}' in {provider.DisplayName}."), ephemeral: true);
+            TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Info("No Results", $"No results found for '{query}' in {provider.DisplayName}."), ephemeral: true));
             return;
         }
         await DisplaySearchResults(query, results, provider);
@@ -136,7 +137,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
             string query = modal.Query.Trim();
             if (query.Length == 0)
             {
-                await FollowupAsync(components: ComponentV2Builder.Error("Invalid Query", "Please type a song, artist or album name."), ephemeral: true);
+                TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Invalid Query", "Please type a song, artist or album name."), ephemeral: true));
                 return;
             }
             await SearchProviderAsync("plex", query);
@@ -185,7 +186,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
             string query = modal.Query.Trim();
             if (query.Length == 0)
             {
-                await FollowupAsync(components: ComponentV2Builder.Error("Invalid Query", "Please type a song, artist or album name."), ephemeral: true);
+                TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Invalid Query", "Please type a song, artist or album name."), ephemeral: true));
                 return;
             }
             await SearchProviderAsync(providerId, query);
@@ -253,20 +254,20 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
             string destinationQuery = modal.Destination.Trim();
             if (startQuery.Length == 0 || destinationQuery.Length == 0)
             {
-                await FollowupAsync(components: ComponentV2Builder.Error("Invalid Query", "Please type a start track and a destination."), ephemeral: true);
+                TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Invalid Query", "Please type a start track and a destination."), ephemeral: true));
                 return;
             }
 
             Track? start = await FirstPlexTrackAsync(startQuery);
             if (start is null)
             {
-                await FollowupAsync(components: ComponentV2Builder.Error("No Results", $"No tracks found for '{startQuery}'."), ephemeral: true);
+                TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("No Results", $"No tracks found for '{startQuery}'."), ephemeral: true));
                 return;
             }
             Track? end = await FirstPlexTrackAsync(destinationQuery);
             if (end is null)
             {
-                await FollowupAsync(components: ComponentV2Builder.Error("No Results", $"No tracks found for '{destinationQuery}'."), ephemeral: true);
+                TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("No Results", $"No tracks found for '{destinationQuery}'."), ephemeral: true));
                 return;
             }
 
@@ -274,14 +275,14 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
             string endKey = PlexJsonParser.ExtractRatingKey(end.SourceKey);
             if (string.IsNullOrEmpty(startKey) || string.IsNullOrEmpty(endKey))
             {
-                await FollowupAsync(components: ComponentV2Builder.Error("Error", "Could not identify one of those tracks."), ephemeral: true);
+                TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Error", "Could not identify one of those tracks."), ephemeral: true));
                 return;
             }
 
             List<Track> path = await plexSonicService.GetSonicAdventureAsync(startKey, endKey);
             if (path.Count == 0)
             {
-                await FollowupAsync(components: ComponentV2Builder.Info("No Path Found", $"Could not find a sonic path from '{start.Title}' to '{end.Title}'."), ephemeral: true);
+                TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Info("No Path Found", $"Could not find a sonic path from '{start.Title}' to '{end.Title}'."), ephemeral: true));
                 return;
             }
 
@@ -313,6 +314,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         if (Context.User is IGuildUser { VoiceChannel: not null })
             return true;
         await RespondAsync(components: ComponentV2Builder.Error("Not In Voice", "Join a voice channel first, then press the button again."), ephemeral: true);
+        await TransientMessages.DeleteOriginalLaterAsync(Context.Interaction);
         return false;
     }
 
@@ -331,7 +333,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
                 await HandleRadioSearchAsync(query);
                 break;
             default:
-                await FollowupAsync(components: ComponentV2Builder.Error("Unknown Mode", $"Search mode '{mode}' is not recognized."), ephemeral: true);
+                TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Unknown Mode", $"Search mode '{mode}' is not recognized."), ephemeral: true));
                 break;
         }
     }
@@ -343,7 +345,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         List<MoodTag> moods = await plexSonicService.GetAvailableMoodsAsync();
         if (moods.Count == 0)
         {
-            await FollowupAsync(components: ComponentV2Builder.Info("No Moods", "No mood tags found. Sonic analysis may not be enabled on your Plex server."), ephemeral: true);
+            TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Info("No Moods", "No mood tags found. Sonic analysis may not be enabled on your Plex server."), ephemeral: true));
             return;
         }
 
@@ -355,14 +357,14 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         if (matched is null)
         {
             string suggestions = string.Join(", ", moods.Take(20).Select(m => m.Name));
-            await FollowupAsync(components: ComponentV2Builder.Error("Mood Not Found", $"No mood matching '{query}'. Try: {suggestions}"), ephemeral: true);
+            TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Mood Not Found", $"No mood matching '{query}'. Try: {suggestions}"), ephemeral: true));
             return;
         }
 
         List<Track> tracks = await plexSonicService.GetMoodTracksAsync(matched.Id);
         if (tracks.Count == 0)
         {
-            await FollowupAsync(components: ComponentV2Builder.Info("No Tracks", $"No tracks found for mood '{matched.Name}'."), ephemeral: true);
+            TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Info("No Tracks", $"No tracks found for mood '{matched.Name}'."), ephemeral: true));
             return;
         }
 
@@ -376,7 +378,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         List<GenreTag> genres = await plexSonicService.GetAvailableGenresAsync();
         if (genres.Count == 0)
         {
-            await FollowupAsync(components: ComponentV2Builder.Info("No Genres", "No genre tags found in your library."), ephemeral: true);
+            TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Info("No Genres", "No genre tags found in your library."), ephemeral: true));
             return;
         }
 
@@ -388,14 +390,14 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         if (matched is null)
         {
             string suggestions = string.Join(", ", genres.Take(20).Select(g => g.Name));
-            await FollowupAsync(components: ComponentV2Builder.Error("Genre Not Found", $"No genre matching '{query}'. Try: {suggestions}"), ephemeral: true);
+            TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Genre Not Found", $"No genre matching '{query}'. Try: {suggestions}"), ephemeral: true));
             return;
         }
 
         List<Track> tracks = await plexSonicService.GetGenreTracksAsync(matched.Id);
         if (tracks.Count == 0)
         {
-            await FollowupAsync(components: ComponentV2Builder.Info("No Tracks", $"No tracks found for genre '{matched.Name}'."), ephemeral: true);
+            TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Info("No Tracks", $"No tracks found for genre '{matched.Name}'."), ephemeral: true));
             return;
         }
 
@@ -411,7 +413,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
             List<RadioStation> stations = await plexSonicService.GetRadioStationsAsync();
             if (stations.Count == 0)
             {
-                await FollowupAsync(components: ComponentV2Builder.Info("No Stations", "No radio stations found. Enter a track name to start radio from a specific track."), ephemeral: true);
+                TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Info("No Stations", "No radio stations found. Enter a track name to start radio from a specific track."), ephemeral: true));
                 return;
             }
             await DisplayRadioStations(stations);
@@ -429,7 +431,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         SearchResults searchResults = await plexMusicService.SearchLibraryAsync(query);
         if (searchResults.Tracks.Count == 0)
         {
-            await FollowupAsync(components: ComponentV2Builder.Error("No Results", $"No tracks found for '{query}'. Try a different search term."), ephemeral: true);
+            TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("No Results", $"No tracks found for '{query}'. Try a different search term."), ephemeral: true));
             return;
         }
 
@@ -437,14 +439,14 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         string ratingKey = PlexJsonParser.ExtractRatingKey(seedTrack.SourceKey);
         if (string.IsNullOrEmpty(ratingKey))
         {
-            await FollowupAsync(components: ComponentV2Builder.Error("Error", "Could not extract track identifier."), ephemeral: true);
+            TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Error", "Could not extract track identifier."), ephemeral: true));
             return;
         }
 
         List<Track> radioTracks = await plexSonicService.GetRadioTracksAsync(ratingKey);
         if (radioTracks.Count == 0)
         {
-            await FollowupAsync(components: ComponentV2Builder.Info("Radio Unavailable", $"Could not generate radio from '{seedTrack.Title}'. Sonic analysis may not be enabled."), ephemeral: true);
+            TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Info("Radio Unavailable", $"Could not generate radio from '{seedTrack.Title}'. Sonic analysis may not be enabled."), ephemeral: true));
             return;
         }
 
@@ -467,14 +469,14 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
             string response = await plexSonicService.GetStationTracksAsync(stationKey);
             if (string.IsNullOrEmpty(response))
             {
-                await FollowupAsync(components: ComponentV2Builder.Info("No Tracks", $"Could not load tracks from '{stationName}'."), ephemeral: true);
+                TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Info("No Tracks", $"Could not load tracks from '{stationName}'."), ephemeral: true));
                 return;
             }
 
             List<Track> tracks = plexSonicService.ParseTracksFromResponse(response);
             if (tracks.Count == 0)
             {
-                await FollowupAsync(components: ComponentV2Builder.Info("No Tracks", $"No tracks available from '{stationName}'."), ephemeral: true);
+                TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Info("No Tracks", $"No tracks available from '{stationName}'."), ephemeral: true));
                 return;
             }
 
@@ -486,7 +488,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         catch (Exception ex)
         {
             Logs.Error($"Error loading station: {ex.Message}");
-            await FollowupAsync(components: ComponentV2Builder.Error("Station Error", "Failed to load radio station tracks."), ephemeral: true);
+            TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Station Error", "Failed to load radio station tracks."), ephemeral: true));
         }
     }
 
@@ -757,7 +759,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
             Logs.Info($"Play command: {query}");
             if (string.IsNullOrWhiteSpace(query))
             {
-                await FollowupAsync(components: ComponentV2Builder.Error("Invalid Query", "Please enter a URL or search term."), ephemeral: true);
+                TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Invalid Query", "Please enter a URL or search term."), ephemeral: true));
                 return;
             }
             if (Uri.TryCreate(query, UriKind.Absolute, out Uri? parsedUri) &&
@@ -769,7 +771,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
             SearchResults results = await plexMusicService.SearchLibraryAsync(query);
             if (!results.HasResults)
             {
-                await FollowupAsync(components: ComponentV2Builder.Error("No Results", $"No results found for '{query}'."), ephemeral: true);
+                TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("No Results", $"No results found for '{query}'."), ephemeral: true));
                 return;
             }
             if (results.Tracks.Count != 0)
@@ -798,12 +800,12 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
                     return;
                 }
             }
-            await FollowupAsync(components: ComponentV2Builder.Error("Playback Error", "Found results, but couldn't play any tracks."), ephemeral: true);
+            TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Playback Error", "Found results, but couldn't play any tracks."), ephemeral: true));
         }
         catch (Exception ex)
         {
             Logs.Error($"Error in play command: {ex.Message}");
-            await FollowupAsync(components: ComponentV2Builder.Error("Playback Error", "An error occurred while playing. Please try again later."), ephemeral: true);
+            TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Playback Error", "An error occurred while playing. Please try again later."), ephemeral: true));
         }
     }
 
@@ -854,7 +856,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         {
             Logs.Error($"Error playing URL: {ex.Message}");
             string urlError = ex is PlexBotException botEx ? botEx.UserFriendlyMessage : "An error occurred while loading this URL. Please try again.";
-            await FollowupAsync(components: ComponentV2Builder.Error("Playback Error", urlError), ephemeral: true);
+            TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Playback Error", urlError), ephemeral: true));
         }
     }
 
