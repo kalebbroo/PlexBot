@@ -51,10 +51,10 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
         // Commands run in async mode (off the gateway thread), so their failures never come back through
         // HandleInteractionAsync. These events are the central fallback: they send the user one response
         // when a handler threw before acknowledging, instead of Discord showing "application did not respond".
-        // Ready only covers the servers present at startup. These handlers run on their own task, so a slow registration
-        // retry does not hold up the gateway.
-        client.JoinedGuild += guild => Task.Run(() => OnJoinedGuildAsync(guild));
-        client.LeftGuild += guild => Task.Run(() => OnLeftGuildAsync(guild.Id, guild.Name));
+        // Ready only covers the servers present at startup. The work is started and not awaited: returning its task would
+        // hold the gateway for as long as a slow registration or channel setup retries.
+        client.JoinedGuild += guild => { _ = OnJoinedGuildAsync(guild); return Task.CompletedTask; };
+        client.LeftGuild += guild => { _ = OnLeftGuildAsync(guild.Id, guild.Name); return Task.CompletedTask; };
 
         interactions.SlashCommandExecuted += OnCommandExecutedAsync;
         interactions.ComponentCommandExecuted += OnCommandExecutedAsync;

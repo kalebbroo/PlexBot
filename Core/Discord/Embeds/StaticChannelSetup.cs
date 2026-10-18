@@ -40,13 +40,55 @@ public sealed class StaticChannelSetup(DiscordSocketClient client, VisualPlayerS
         try
         {
             await gatewayReady.WaitAsync(ct);
+            // Let the guild cache fill, so each configured channel's server is known before one channel per server is picked
+            await WaitForChannelsAsync(stateManager.StaticChannelIds, TimeSpan.FromSeconds(60), ct);
         }
         catch (OperationCanceledException)
         {
             return;
         }
 
-        await Task.WhenAll(stateManager.StaticChannelIds.Select(channelId => SetupWithRetryAsync(channelId, ct)));
+        List<(ulong ChannelId, ulong? GuildId)> resolved = stateManager.StaticChannelIds
+            .Select(id => (id, (client.GetChannel(id) as ITextChannel)?.GuildId))
+            .ToList();
+        IReadOnlyList<ulong> chosen = FirstPerServer(resolved);
+        foreach ((ulong channelId, ulong? guildId) in resolved)
+        {
+            if (guildId is not null && !chosen.Contains(channelId))
+                Logs.Warning($"Static player channel {channelId} is skipped: server {guildId} already has a configured static channel earlier in the list");
+        }
+
+        await Task.WhenAll(chosen.Select(channelId => SetupWithRetryAsync(channelId, ct)));
+    }
+
+    /// <summary>Picks one channel per server: the first in configuration order. A channel whose server is not known yet is
+    /// kept, so its own setup can wait for it.</summary>
+    /// <param name="channels">Configured channel ids in order, with their server id, or null while the server is unknown</param>
+    /// <returns>The channel ids to set up</returns>
+    public static IReadOnlyList<ulong> FirstPerServer(IEnumerable<(ulong ChannelId, ulong? GuildId)> channels)
+    {
+        HashSet<ulong> servers = new();
+        List<ulong> chosen = new();
+        foreach ((ulong channelId, ulong? guildId) in channels)
+        {
+            if (guildId is null)
+                chosen.Add(channelId);
+            else if (servers.Add(guildId.Value))
+                chosen.Add(channelId);
+        }
+        return chosen;
+    }
+
+    /// <summary>Waits until every configured channel is in the cache, or the timeout passes. Whatever is still missing is
+    /// left to its own retry loop.</summary>
+    private async Task WaitForChannelsAsync(IReadOnlyList<ulong> channelIds, TimeSpan timeout, CancellationToken ct)
+    {
+        for (int waited = 0; waited < timeout.TotalSeconds; waited++)
+        {
+            if (channelIds.All(id => client.GetChannel(id) is ITextChannel))
+                return;
+            await Task.Delay(TimeSpan.FromSeconds(1), ct);
+        }
     }
 
     /// <summary>Sets up a configured static channel in a server the bot has just joined, so it works without a restart.
@@ -57,7 +99,11 @@ public sealed class StaticChannelSetup(DiscordSocketClient client, VisualPlayerS
         if (!stateManager.UseStaticChannel || stateManager.StaticChannelIdFor(guild.Id) is not null)
             return Task.CompletedTask;
 
-        IEnumerable<ulong> channelIds = stateManager.StaticChannelIds.Where(id => guild.GetTextChannel(id) is not null);
+        // The first configured channel that is in this server, in configuration order, so a second one in the same
+        // server is never set up alongside it
+        IEnumerable<ulong> channelIds = stateManager.StaticChannelIds
+            .Where(id => guild.GetTextChannel(id) is not null)
+            .Take(1);
         return Task.WhenAll(channelIds.Select(channelId => SetupWithRetryAsync(channelId, CancellationToken.None)));
     }
 
