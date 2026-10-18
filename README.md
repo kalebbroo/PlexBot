@@ -5,11 +5,11 @@
 PlexBot streams your Plex music library into Discord voice channels. It has a visual player with album art and labelled
 controls, Plex's sonic features (similar tracks, radio, and sonic adventures), and a help menu with screenshots.
 
-<p align="center">
+<div align="center">
 
 ![The modern player playing LOONA's "Star (Voice English ver.)"](./Docs/screenshots/player-modern-star.png)
 
-</p>
+</div>
 
 ---
 
@@ -71,43 +71,43 @@ For YouTube, use the switch rather than renaming the folder by hand. Renaming it
 
 **1. Start a track.** Type `/play` and a song name. The bot joins your voice channel and posts the player.
 
-<p align="center">
+<div align="center">
 
 ![Start playing: the Track Added reply and the player](./Docs/screenshots/help-start.png)
 
-</p>
+</div>
 
 **2. Use the player.** Each button is labelled. Pause, skip, repeat, shuffle and the queue are on the first row.
 
-<p align="center">
+<div align="center">
 
 ![The player's controls, labelled](./Docs/screenshots/player-controls.png)
 
-</p>
+</div>
 
 **3. Find music.** `/search` looks by name, mood, genre or radio station. Pick a result from the menu.
 
-<p align="center">
+<div align="center">
 
 ![Search results for "queen" with artist, album and track menus](./Docs/screenshots/help-search.png)
 
-</p>
+</div>
 
 **4. Check the queue.** Press **Queue** on the player. Pages of ten tracks; ⏳ marks a track still loading from Plex.
 
-<p align="center">
+<div align="center">
 
 ![The current music queue](./Docs/screenshots/help-queue.png)
 
-</p>
+</div>
 
 **5. Ask for help.** `/help` opens a menu. Each topic has its own card and screenshot.
 
-<p align="center">
+<div align="center">
 
 ![The help hub](./Docs/screenshots/help-hub.png)
 
-</p>
+</div>
 
 ---
 
@@ -131,11 +131,11 @@ More on the player is in the [Player UI guide](./Docs/Guides/Player-UI-Guide.md)
 A static channel keeps one player in one channel. The player is always there, and playback started from any channel
 appears in it. Only the server that owns that channel gets this card. Players elsewhere are unchanged.
 
-<p align="center">
+<div align="center">
 
 ![Static channel: idle card with banner and controls](./Docs/screenshots/static-channel-idle.png)
 
-</p>
+</div>
 
 **Idle card** (nothing playing): the banner, then **Play** (a song, artist, album or link), **Search** (your Plex library), one button for each loaded search source (YouTube when its extension is loaded), **Radio** and **Adventure**. Radio and Adventure ask for a track first.
 
@@ -171,17 +171,17 @@ These need a Plex track playing and sonic analysis enabled on your Plex server. 
 | **Similar** | Show sonically similar tracks. The list pages 25 at a time, with Previous and Next. |
 | **Adventure** | Ask where the path should end, then build a path from the current track to that one |
 
-<p align="center">
+<div align="center">
 
 ![Similar tracks, page 2 of 4](./Docs/screenshots/similar-paging.png)
 
-</p>
+</div>
 
-<p align="center">
+<div align="center">
 
 ![Radio and sonic topic card](./Docs/screenshots/help-sonic.png)
 
-</p>
+</div>
 
 ---
 
@@ -323,11 +323,11 @@ it has already queued are not queued again, and each refill continues from the l
 The player and its panels use 22 emoji. The bot uploads them to its own Discord application on first start, so they
 work in every server the bot is in and use no emoji slots.
 
-<p align="center">
+<div align="center">
 
 ![The emoji listed on the developer portal](./Docs/Guides/images/emoji-developer-portal.jpg)
 
-</p>
+</div>
 
 If an emoji can't be used, the bot shows a plain unicode symbol instead, and everything still works. To change the
 art, edit the PNG in `Images/Emoji` and restart. See the [Custom Emoji guide](./Docs/Guides/Custom-Emoji.md) for
