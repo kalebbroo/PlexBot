@@ -175,6 +175,10 @@ public sealed class CustomLavaLinkPlayer(IPlayerProperties<CustomLavaLinkPlayer,
             await base.NotifyTrackEndedAsync(queueItem, endReason, cancellationToken).ConfigureAwait(false);
         Logs.Debug($"Track ended: {trackTitle}, Reason: {endReason}");
 
+        // Only a track that played to the end gets a full bar: a skip or a stop is the user's doing, not the track's
+        if (endReason == TrackEndReason.Finished && endedItem is not null && queueItem.Track?.Duration is { } length)
+            _ = serviceProvider.GetRequiredService<VisualPlayer>().ShowTrackFinishedAsync(GuildId, endedItem, length);
+
         // Publish track ended event for extensions
         try
         {

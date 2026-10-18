@@ -170,6 +170,48 @@ public class VisualPlayer(
         }
     }
 
+    /// <summary>Draws the progress bar full when a track finishes on its own. The timer draws every few seconds, so the
+    /// last frame before the end can be almost one interval short. Does nothing if a track has started since, because
+    /// that track's card replaces this one.</summary>
+    public async Task ShowTrackFinishedAsync(ulong guildId, CustomTrackQueueItem finished, TimeSpan length)
+    {
+        if (!stateManager.UseProgressBar || length.TotalSeconds < 1) return;
+
+        SemaphoreSlim updateLock = _updateLocks.GetOrAdd(guildId, _ => new SemaphoreSlim(1, 1));
+        if (!await updateLock.WaitAsync(UpdateLockWait).ConfigureAwait(false))
+            return;
+        try
+        {
+            CustomLavaLinkPlayer? player = await audioService.Players.GetPlayerAsync(guildId) as CustomLavaLinkPlayer;
+            IUserMessage? message = stateManager.GetMessage(guildId);
+            if (player is null || message is null || player.State != PlayerState.NotPlaying) return;
+
+            StopProgressTimer(guildId);
+            ButtonContext context = new() { Player = player };
+            ComponentBuilder components = buttonBuilder.BuildPlayingButtons(context, stateManager.IsStaticCard(guildId));
+            string statusLine = ComponentV2Builder.BuildPlayerStatusLine(PlayerState.NotPlaying, length, length,
+                (int)Math.Round(player.Volume * 100), player.RepeatMode);
+
+            MessageComponent cv2 = stateManager.UseModernPlayer
+                ? ComponentV2Builder.BuildModernPlayer(statusLine, components)
+                : BuildClassicCV2(finished, statusLine, components);
+            await message.ModifyAsync(msg =>
+            {
+                msg.Components = cv2;
+                msg.Embed = null;
+                msg.Flags = MessageFlags.ComponentsV2;
+            }).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            Logs.Debug($"[guild {guildId}] Could not draw the finished progress bar: {ex.Message}");
+        }
+        finally
+        {
+            updateLock.Release();
+        }
+    }
+
     /// <summary>Called when a guild's player disconnects (Kill button or inactivity timeout). Replaces the player message so
     /// its controls can't be clicked against a player that no longer exists. With a static channel the idle card returns
     /// in place; otherwise the message becomes a stopped card and the next /play posts a fresh player.</summary>
@@ -269,8 +311,15 @@ public class VisualPlayer(
                 // Skip update if paused (position isn't moving)
                 if (player.State == PlayerState.Paused) continue;
 
+                // Shares the lock with the other card updates, so this frame cannot land after the finished frame
+                // or a new track's card. Checked under the lock, because a finish stops this loop while it waits.
+                SemaphoreSlim updateLock = _updateLocks.GetOrAdd(guildId, _ => new SemaphoreSlim(1, 1));
+                await updateLock.WaitAsync(ct).ConfigureAwait(false);
                 try
                 {
+                    IUserMessage? current = stateManager.GetMessage(guildId);
+                    if (ct.IsCancellationRequested || current == null) continue;
+
                     ButtonContext context = new() { Player = player };
                     ComponentBuilder components = buttonBuilder.BuildPlayingButtons(context, stateManager.IsStaticCard(guildId));
                     string statusLine = BuildStatusLine(guildId, player);
@@ -279,7 +328,7 @@ public class VisualPlayer(
                         ? ComponentV2Builder.BuildModernPlayer(statusLine, components)
                         : BuildClassicCV2(player, statusLine, components);
 
-                    await message.ModifyAsync(msg =>
+                    await current.ModifyAsync(msg =>
                     {
                         msg.Components = cv2;
                         msg.Embed = null;
@@ -289,6 +338,10 @@ public class VisualPlayer(
                 catch (Exception ex)
                 {
                     Logs.Debug($"[guild {guildId}] Progress update skipped: {ex.Message}");
+                }
+                finally
+                {
+                    updateLock.Release();
                 }
             }
         }
@@ -352,8 +405,10 @@ public class VisualPlayer(
     }
 
     private static MessageComponent BuildClassicCV2(CustomLavaLinkPlayer? player, string? statusLine, ComponentBuilder buttons)
+        => BuildClassicCV2(player?.CurrentItem as CustomTrackQueueItem, statusLine, buttons);
+
+    private static MessageComponent BuildClassicCV2(CustomTrackQueueItem? currentTrack, string? statusLine, ComponentBuilder buttons)
     {
-        CustomTrackQueueItem? currentTrack = player?.CurrentItem as CustomTrackQueueItem;
         string trackInfo = currentTrack != null
             ? $"**{EmojiRegistry.Icon("pb_play", "▶️")} Now Playing**\n{currentTrack.Artist ?? "Unknown Artist"} - {currentTrack.Title ?? "Unknown Title"}\n" +
               $"{currentTrack.Album ?? "Unknown Album"} | {currentTrack.Duration ?? "0:00"}"
