@@ -84,7 +84,10 @@ Supported path placeholders: `[year]`, `[month]`, `[day]`, `[hour]`, `[minute]`,
 ```yaml
 bot:
     environment:                 # Set to "Development" for guild-scoped commands (faster updates)
+    transientMessageSeconds: 30  # Seconds before status messages (Track Added, No Results, Track Skipped) remove themselves. 0 keeps them.
 ```
+
+`transientMessageSeconds` sets how long status replies stay before the bot deletes them. The default is 30. Set it to `0` to keep every message. Search results, queue pages and other messages you act on are never removed.
 
 ### YouTube Extension
 

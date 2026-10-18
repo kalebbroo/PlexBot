@@ -122,6 +122,8 @@ logging:
 bot:
     # Environment mode - set to "Development" for guild-scoped slash commands (faster updates)
     environment: 
+    # Seconds before status replies (Track Added, No Results, Track Skipped) remove themselves. 0 keeps them.
+    transientMessageSeconds: 30
 
 # ============================================
 # YouTube Extension

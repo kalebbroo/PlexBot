@@ -298,6 +298,7 @@ it has already queued are not queued again, and each refill continues from the l
 | `logging.saveToFile` | `true` | Write log files (every level) |
 | `logging.path` | `logs/plex-bot-[year]-[month]-[day].log` | Log file path |
 | `bot.environment` | _(empty)_ | `Development` registers slash commands per server, which updates faster |
+| `bot.transientMessageSeconds` | `30` | Seconds before status messages (Track Added, No Results, Track Skipped) remove themselves. `0` keeps them. |
 
 **YouTube extension** (read by the install scripts, not the bot)
 
