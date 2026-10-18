@@ -158,7 +158,7 @@ appears in it. Only the server that owns that channel gets this card. Players el
 
 ## Sonic features
 
-These need a Plex track playing and sonic analysis enabled on your Plex server. The buttons are on the second row of the player.
+These need a Plex track playing and sonic analysis enabled on your Plex server. Radio and Similar are on the player's second row, and Adventure is on the last row.
 
 | Button | What it does |
 |---|---|
@@ -168,13 +168,7 @@ These need a Plex track playing and sonic analysis enabled on your Plex server. 
 
 <div align="center">
 
-![Similar tracks, page 2 of 4](./Docs/screenshots/similar-paging.png)
-
-</div>
-
-<div align="center">
-
-![Radio and sonic topic card](./Docs/screenshots/help-sonic.png)
+![Sonic features: the Radio and Similar buttons, the similar-tracks list and the radio menu](./Docs/screenshots/tutorial-sonic.png)
 
 </div>
 
