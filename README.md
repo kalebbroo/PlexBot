@@ -36,7 +36,7 @@ More on the player is in the [Player UI guide](./Docs/Guides/Player-UI-Guide.md)
 - **Search by mood, genre, or radio station**, as well as by name.
 - **Queue controls.** Pages of the queue, shuffle, clear, and skip.
 - **Static player channel.** Dedicate one channel to a player that is always there.
-- **Help inside Discord.** `/help` opens a menu of topics, each with a screenshot.
+- **Help inside Discord.** `/help` opens a menu of topics. Each topic has step-by-step pages with screenshots.
 - **Extensions.** Add sources or commands with the [extensions system](./Docs/Extensions/CreatingExtensions.md).
 - **Docker install.** The install script runs PlexBot and Lavalink together.
 
@@ -309,7 +309,7 @@ it has already queued are not queued again, and each refill continues from the l
 
 ## Custom emoji
 
-The player and its panels use 22 emoji. The bot uploads them to its own Discord application on first start, so they
+The player and its panels use 23 emoji. The bot uploads them to its own Discord application on first start, so they
 work in every server the bot is in and use no emoji slots.
 
 <div align="center">
