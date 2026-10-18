@@ -35,8 +35,9 @@ visualPlayer:
     inactivityTimeout: 2.0       # Minutes before auto-disconnect from voice
     buttonCooldownSeconds: 2.0   # Seconds between presses of the same button by one person (0 = off)
     staticChannel:
-        enabled: false           # Lock the player to one specific channel
-        channelId: 0             # Discord channel ID (right-click channel > Copy Channel ID)
+        enabled: false           # Lock the player to one channel in each server
+        channelId: 0             # Discord channel ID for one server (right-click channel > Copy Channel ID)
+        channelIds:              # Comma-separated channel IDs, one per server
     progressBar:
         enabled: true            # Show live progress bar (updates every second)
         size: medium             # small (mobile), medium (default), large (wide displays)
@@ -64,7 +65,7 @@ plex:
 
 Infinite radio runs until the player is stopped, killed, or the bot leaves voice. Tracks already queued in a session are not queued again.
 
-**Static player channel.** Set `visualPlayer.staticChannel.enabled: true` and `channelId` to keep one player in one channel. When the bot starts it deletes its own old messages in that channel and posts the idle card, so use a channel for the player only.
+**Static player channel.** Set `visualPlayer.staticChannel.enabled: true` and list the channel IDs in `channelIds`, one per server the bot is in, e.g. `channelIds: 123456789012345678, 234567890123456789`. Each server gets its own static player, and servers without a listed channel keep the normal behavior. `channelId` still works for a single channel. When the bot starts it deletes its own old messages in each channel and posts the idle card, so use those channels for the player only. A server can have only one static channel. If two are listed for the same server, the first is used and the other is skipped with a warning. A server the bot joins later is set up without a restart, and a server it leaves is forgotten, so a rejoin starts fresh.
 
 Large playlists are queued straight away. Only the next few tracks (`resolveAhead`) are loaded through Lavalink, as they come up, so Plex sees requests only for tracks that are about to play. Plex drops file requests when too many run at once, which Lavalink reports as "Could not read the file for detecting file type" or "Premature end of Content-Length delimited message body". The bot retries those with the delays above. A track that still fails is removed from the queue with a short notice in the channel.
 

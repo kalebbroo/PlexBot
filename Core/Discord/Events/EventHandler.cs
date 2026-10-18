@@ -1,4 +1,11 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
+using Discord.WebSocket;
+using Lavalink4NET;
+using Lavalink4NET.Players.Queued;
+using PlexBot.Core.Models.Players;
+using PlexBot.Core.Services.LavaLink;
+using PlexBot.Core.Services.Music;
 using PlexBot.Utils;
 using PlexBot.Core.Discord.Design;
 using PlexBot.Core.Discord.Embeds;
@@ -23,7 +30,8 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
     // Assemblies whose modules are already registered. Only failed loads are retried, so a retry never adds a
     // module definition twice (Discord.Net keeps earlier definitions when more are added).
     private readonly HashSet<Assembly> _loadedAssemblies = new();
-    private readonly HashSet<ulong> _registeredGuilds = new();
+    // Servers whose slash commands are registered. Guilds joined after startup are added from a join event on another task.
+    private readonly ConcurrentDictionary<ulong, byte> _registeredGuilds = new();
     private bool _globalCleared;
     private bool _commandsRegistered;
     private bool _subscribed;
@@ -43,6 +51,11 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
         // Commands run in async mode (off the gateway thread), so their failures never come back through
         // HandleInteractionAsync. These events are the central fallback: they send the user one response
         // when a handler threw before acknowledging, instead of Discord showing "application did not respond".
+        // Ready only covers the servers present at startup. The work is started and not awaited: returning its task would
+        // hold the gateway for as long as a slow registration or channel setup retries.
+        client.JoinedGuild += guild => { _ = OnJoinedGuildAsync(guild); return Task.CompletedTask; };
+        client.LeftGuild += guild => { _ = OnLeftGuildAsync(guild.Id, guild.Name); return Task.CompletedTask; };
+
         interactions.SlashCommandExecuted += OnCommandExecutedAsync;
         interactions.ComponentCommandExecuted += OnCommandExecutedAsync;
         interactions.ModalCommandExecuted += OnCommandExecutedAsync;
@@ -193,10 +206,10 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
             {
                 // Guilds that already registered are skipped on later setup retries, so one failing guild does not
                 // re-overwrite the commands of every other guild
-                if (_registeredGuilds.Contains(guild.Id))
+                if (_registeredGuilds.ContainsKey(guild.Id))
                     continue;
                 bool ok = await RetryAsync($"guild {guild.Name} ({guild.Id})", () => interactions.RegisterCommandsToGuildAsync(guild.Id));
-                if (ok) _registeredGuilds.Add(guild.Id);
+                if (ok) _registeredGuilds.TryAdd(guild.Id, 0);
                 allRegistered &= ok;
             }
 
@@ -221,6 +234,50 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
             allRegistered = await RetryAsync("global", () => interactions.RegisterCommandsGloballyAsync());
         }
         return allRegistered;
+    }
+
+    /// <summary>Sets up a server the bot has just joined: its slash commands (Development uses guild commands) and its
+    /// static player channel, so neither needs a restart.</summary>
+    private async Task OnJoinedGuildAsync(SocketGuild guild)
+    {
+        try
+        {
+            if (BotConfig.GetString("bot.environment") == "Development" && !_registeredGuilds.ContainsKey(guild.Id))
+            {
+                if (await RetryAsync($"guild {guild.Name} ({guild.Id})", () => interactions.RegisterCommandsToGuildAsync(guild.Id)))
+                    _registeredGuilds.TryAdd(guild.Id, 0);
+            }
+
+            await services.GetRequiredService<StaticChannelSetup>().SetupGuildAsync(guild);
+        }
+        catch (Exception ex)
+        {
+            Logs.Error($"Setup for joined server {guild.Name} ({guild.Id}) failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>Clears everything kept for a server the bot has left: its player, radio session, progress card and
+    /// static channel claim. Without this, a rejoin would keep the old claim and skip static setup.</summary>
+    private async Task OnLeftGuildAsync(ulong guildId, string guildName)
+    {
+        _registeredGuilds.TryRemove(guildId, out _);
+        try
+        {
+            services.GetRequiredService<RadioSessionManager>().StopSession(guildId);
+            services.GetRequiredService<VisualPlayer>().StopProgressTimer(guildId);
+            services.GetRequiredService<VisualPlayerStateManager>().ForgetGuild(guildId);
+
+            if (await services.GetRequiredService<IAudioService>().Players.GetPlayerAsync(guildId) is QueuedLavalinkPlayer player)
+            {
+                await player.StopAsync();
+                await player.DisconnectAsync();
+            }
+            Logs.Info($"Left server {guildName} ({guildId}); cleared its player and static channel state");
+        }
+        catch (Exception ex)
+        {
+            Logs.Error($"Cleanup after leaving server {guildName} ({guildId}) failed: {ex.Message}");
+        }
     }
 
     /// <summary>Runs one registration with up to five attempts and exponential backoff. Gives up on this target only.</summary>

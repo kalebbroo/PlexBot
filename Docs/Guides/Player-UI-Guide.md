@@ -35,7 +35,8 @@ visualPlayer:
     inactivityTimeout: 2.0      # Minutes of silence before auto-disconnect
     staticChannel:
         enabled: false          # Lock player to one channel
-        channelId: 0            # Discord channel ID
+        channelId: 0            # Discord channel ID (one server)
+        channelIds:             # Comma-separated channel IDs, one per server
     progressBar:
         enabled: true           # Show live progress bar (updates every second)
         size: medium            # small / medium / large
@@ -46,22 +47,24 @@ visualPlayer:
 | `visualPlayer.useModernPlayer` | `true` | `true` = modern image player, `false` = classic embed |
 | `visualPlayer.inactivityTimeout` | `2.0` | Minutes of silence before the bot auto-disconnects |
 | `visualPlayer.staticChannel.enabled` | `false` | Lock the player to a single channel |
-| `visualPlayer.staticChannel.channelId` | `0` | The Discord channel ID for the static player |
+| `visualPlayer.staticChannel.channelId` | `0` | The Discord channel ID for the static player in one server |
+| `visualPlayer.staticChannel.channelIds` | _(empty)_ | Comma-separated channel IDs, one static player per server |
 
 ## Static Player Channel
 
 When enabled, the player always appears in the designated channel regardless of where commands are used. The bot creates a placeholder message on startup and updates it as tracks change. While nothing is playing, the card has **Play**, **Search**, **Radio** and **Adventure** buttons, plus a search button for each loaded source such as YouTube, so playback can start without a slash command. Radio and Adventure ask for a track name first. While a track plays, the Play, Search and source buttons sit below the playback controls.
 
 To set up:
-1. Create a dedicated text channel in your Discord server
-2. Right-click the channel and select **Copy Channel ID** (requires Developer Mode in Discord settings)
-3. Set the values in `config.fds`:
+1. Create a dedicated text channel in each Discord server the bot is in
+2. Right-click each channel and select **Copy Channel ID** (requires Developer Mode in Discord settings)
+3. Set the values in `config.fds`, one ID per server:
    ```yaml
    visualPlayer:
        staticChannel:
            enabled: true
-           channelId: 123456789012345678
+           channelIds: 123456789012345678, 234567890123456789
    ```
+   A server without a listed channel uses the normal player. Only one channel per server is used.
 
 ## Progress Bar
 
@@ -113,7 +116,7 @@ Volume and repeat are also shown as text under the progress bar.
 - The Dockerfile installs DejaVu, Liberation, Noto (including CJK and emoji) fonts automatically
 
 ### Static Player Not Appearing
-- Verify the channel ID is correct (must be the numeric ID, not the channel name)
+- Verify the channel ID is correct (must be the numeric ID, not the channel name), and that the channel is in the server you are testing
 - Ensure the bot has **Send Messages** and **Attach Files** permissions in the channel
 - Check that `staticChannel.enabled` is `true` in `config.fds`
 

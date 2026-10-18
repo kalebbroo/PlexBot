@@ -124,7 +124,7 @@ Press **Queue** on the player to see what's coming up, ten tracks a page. **Shuf
 ## Static player channel
 
 A static channel keeps one player in one channel. The player is always there, and playback started from any channel
-appears in it. Only the server that owns that channel gets this card. Players elsewhere are unchanged.
+appears in it. Each server can have its own static channel, listed under `channelIds`. Servers without one keep the normal player.
 
 <div align="center">
 
@@ -140,16 +140,16 @@ appears in it. Only the server that owns that channel gets this card. Players el
 
 1. Create or pick a text channel for the player.
 2. Right-click the channel and choose **Copy Channel ID**. You may need Developer Mode in Discord's Advanced settings.
-3. In `config.fds`, set:
+3. Repeat for each server the bot is in. In `config.fds`, list the channel IDs, comma-separated:
 
    ```yaml
    visualPlayer:
      staticChannel:
        enabled: true
-       channelId: 123456789012345678   # your channel's ID
+       channelIds: 123456789012345678, 234567890123456789   # one channel per server
    ```
 
-4. Restart the bot. If `enabled` is `true` but `channelId` is not set, the bot skips static setup and logs a warning.
+4. Restart the bot. If `enabled` is `true` but no channel is listed, the bot skips static setup and logs a warning. A server with no listed channel uses the normal player.
 
 > **Heads up:** when the bot starts, it deletes its own old messages in the static channel, then posts the idle card.
 > Use a channel for the player only.
@@ -269,7 +269,8 @@ Uses [Frenetic Data Syntax](https://github.com/FreneticLLC/FreneticUtilities), a
 | `visualPlayer.inactivityTimeout` | `2.0` | Minutes of inactivity before the bot leaves voice |
 | `visualPlayer.buttonCooldownSeconds` | `2.0` | Seconds a person must wait between presses of the same button. `0` turns it off. |
 | `visualPlayer.staticChannel.enabled` | `false` | Keep the player in one channel (see [Static player channel](#static-player-channel)) |
-| `visualPlayer.staticChannel.channelId` | `0` | The channel's ID |
+| `visualPlayer.staticChannel.channelId` | `0` | One channel's ID (a single server) |
+| `visualPlayer.staticChannel.channelIds` | _(empty)_ | Comma-separated channel IDs, one per server |
 | `visualPlayer.progressBar.enabled` | `true` | Live progress bar. Turn off to make fewer Discord edits. |
 | `visualPlayer.progressBar.size` | `medium` | `small`, `medium` or `large` |
 | `visualPlayer.progressBar.emoji.*` | _(empty)_ | Optional IDs for the 30-piece smooth progress bar. Empty uses `▓░`. See [Custom emoji](#custom-emoji). |

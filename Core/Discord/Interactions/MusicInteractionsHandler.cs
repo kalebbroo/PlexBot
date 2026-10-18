@@ -30,8 +30,8 @@ public class MusicInteractionHandler(IPlayerService playerService,
 {
 
     // Cooldown tracking to prevent spamming
-    private static readonly ConcurrentDictionary<(ulong UserId, string CommandId), DateTime> _lastInteracted = new();
-    // Per user and per action. visualPlayer.buttonCooldownSeconds sets it; 0 turns it off.
+    private static readonly ConcurrentDictionary<(ulong GuildId, ulong UserId, string CommandId), DateTime> _lastInteracted = new();
+    // Per server, user and action, so one server's press never blocks the same user in another. visualPlayer.buttonCooldownSeconds sets it; 0 turns it off.
     private static readonly TimeSpan _cooldownPeriod = TimeSpan.FromSeconds(Math.Max(0, BotConfig.GetDouble("visualPlayer.buttonCooldownSeconds", 2.0)));
 
     /// <summary>Routes select menu choices to the correct handler by decoding the provider ID and content type
@@ -42,7 +42,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
         try
         {
             await DeferAsync(ephemeral: true);
-            if (IsOnCooldown(Context.User.Id, $"search:{providerId}:{type}"))
+            if (IsOnCooldown(Context.Guild?.Id ?? 0, Context.User.Id, $"search:{providerId}:{type}"))
             {
                 TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Cooldown", "Please wait a moment before selecting another item."), ephemeral: true));
                 return;
@@ -100,7 +100,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
     public async Task HandlePauseResumeAsync(string action)
     {
         await DeferAsync();
-        if (IsOnCooldown(Context.User.Id, "pause_resume"))
+        if (IsOnCooldown(Context.Guild?.Id ?? 0, Context.User.Id, "pause_resume"))
         {
             TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error(Notices.Cooldown), ephemeral: true));
             return;
@@ -122,7 +122,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
     public async Task HandleSkipAsync()
     {
         await DeferAsync();
-        if (IsOnCooldown(Context.User.Id, "skip"))
+        if (IsOnCooldown(Context.Guild?.Id ?? 0, Context.User.Id, "skip"))
         {
             TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error(Notices.Cooldown), ephemeral: true));
             return;
@@ -144,7 +144,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
     public async Task HandlePreviousAsync()
     {
         await DeferAsync();
-        if (IsOnCooldown(Context.User.Id, "previous"))
+        if (IsOnCooldown(Context.Guild?.Id ?? 0, Context.User.Id, "previous"))
         {
             TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error(Notices.Cooldown), ephemeral: true));
             return;
@@ -177,7 +177,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
         else
             await DeferAsync(); // DEFERRED_UPDATE_MESSAGE — edits the ephemeral panel
 
-        if (IsOnCooldown(Context.User.Id, $"queue_options:{action}"))
+        if (IsOnCooldown(Context.Guild?.Id ?? 0, Context.User.Id, $"queue_options:{action}"))
         {
             if (isInitialOpen)
                 TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error(Notices.Cooldown), ephemeral: true));
@@ -256,7 +256,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
     public async Task HandleVolumeAsync(string direction)
     {
         await DeferAsync();
-        if (IsOnCooldown(Context.User.Id, "volume"))
+        if (IsOnCooldown(Context.Guild?.Id ?? 0, Context.User.Id, "volume"))
         {
             TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error(Notices.Cooldown), ephemeral: true));
             return;
@@ -294,7 +294,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
     public async Task HandleRepeatAsync()
     {
         await DeferAsync();
-        if (IsOnCooldown(Context.User.Id, "repeat"))
+        if (IsOnCooldown(Context.Guild?.Id ?? 0, Context.User.Id, "repeat"))
         {
             TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error(Notices.Cooldown), ephemeral: true));
             return;
@@ -328,7 +328,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
     public async Task HandleKillAsync()
     {
         await DeferAsync();
-        if (IsOnCooldown(Context.User.Id, "kill"))
+        if (IsOnCooldown(Context.Guild?.Id ?? 0, Context.User.Id, "kill"))
         {
             TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error(Notices.Cooldown), ephemeral: true));
             return;
@@ -372,7 +372,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
             Logs.Warning($"[{DiscordEventHandler.InstanceId}] Radio start skipped for user {Context.User.Id}: interaction already acknowledged or expired ({ex.DiscordCode})");
             return;
         }
-        if (IsOnCooldown(Context.User.Id, "radio:start"))
+        if (IsOnCooldown(Context.Guild?.Id ?? 0, Context.User.Id, "radio:start"))
         {
             TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error(Notices.Cooldown), ephemeral: true));
             return;
@@ -593,7 +593,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
     public async Task HandleSonicSimilarButtonAsync()
     {
         await DeferAsync(ephemeral: true);
-        if (IsOnCooldown(Context.User.Id, "sonic:similar"))
+        if (IsOnCooldown(Context.Guild?.Id ?? 0, Context.User.Id, "sonic:similar"))
         {
             TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error(Notices.Cooldown), ephemeral: true));
             return;
@@ -978,17 +978,17 @@ public class MusicInteractionHandler(IPlayerService playerService,
 
     /// <summary>Returns true if the user has interacted with this command within the cooldown window,
     /// auto-pruning stale entries when the dictionary exceeds 100 items to prevent unbounded growth</summary>
-    public static bool IsOnCooldown(ulong userId, string commandId)
+    public static bool IsOnCooldown(ulong guildId, ulong userId, string commandId)
     {
         if (_cooldownPeriod <= TimeSpan.Zero)
             return false;
 
-        (ulong, string) key = (userId, commandId);
+        (ulong, ulong, string) key = (guildId, userId, commandId);
         DateTime now = DateTime.UtcNow;
 
         if (_lastInteracted.Count > 100)
         {
-            foreach ((ulong, string) staleKey in _lastInteracted
+            foreach ((ulong, ulong, string) staleKey in _lastInteracted
                 .Where(kvp => now - kvp.Value > TimeSpan.FromMinutes(5))
                 .Select(kvp => kvp.Key)
                 .ToList())

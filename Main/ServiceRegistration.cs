@@ -83,6 +83,7 @@ namespace PlexBot.Main
                 }));
             services.AddSingleton<DiscordEventHandler>();
             services.AddSingleton<VisualPlayer>();
+            services.AddSingleton<StaticChannelSetup>();
             services.AddSingleton<EmojiRegistry>();
             services.AddSingleton(new ResultPageStore<SimilarResults>(TimeProvider.System, TimeSpan.FromHours(1)));
             services.AddSingleton<DiscordButtonBuilder>();
