@@ -19,6 +19,15 @@ public class StatusLineTests
         Assert.EndsWith("-# Volume 45% · Repeat all", line);
     }
 
+    [Fact]
+    public void StatusLine_FinishedTrackShowsDurationAsPosition()
+    {
+        TimeSpan length = TimeSpan.FromMinutes(3);
+        string line = ComponentV2Builder.BuildPlayerStatusLine(PlayerState.NotPlaying, length, length);
+        Assert.StartsWith("` 3:00 `", line);
+        Assert.EndsWith("` 3:00 `", line);
+    }
+
 }
 
 public class CornerMaskTests

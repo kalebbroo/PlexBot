@@ -38,48 +38,56 @@ public static class ComponentV2Builder
     /// <summary>Creates an error status message from a shared notice</summary>
     public static MessageComponent Error(Notice notice) => Error(notice.Title, notice.Body);
 
+    /// <summary>Creates an error status message for a failure that was caught. The body is the exception's own user message
+    /// when it is a PlexBot exception that has one; otherwise it is the fallback, which should say what failed and where to look.</summary>
+    public static MessageComponent Error(string title, Exception? ex, string fallback)
+        => Error(title, ErrorText.BodyFor(ex, fallback));
+
     /// <summary>Creates an info status message from a shared notice</summary>
     public static MessageComponent Info(Notice notice) => Info(notice.Title, notice.Body);
 
     /// <summary>Creates a warning status message from a shared notice</summary>
     public static MessageComponent Warning(Notice notice) => Warning(notice.Title, notice.Body);
 
-    /// <summary>Creates a command error message matching the existing error type handling</summary>
-    public static MessageComponent CommandError(InteractionCommandError? errorType, string errorReason)
+    /// <summary>Creates a command error message that says what kind of failure it was</summary>
+    /// <param name="subject">What failed, as a sentence start: "/search", "This button", "This menu", "This form"</param>
+    /// <param name="exception">The exception the command threw, when there was one. A PlexBot exception's own message is shown.</param>
+    public static MessageComponent CommandError(InteractionCommandError? errorType, string errorReason, string subject, Exception? exception = null)
     {
+        string failed = $"{subject} failed to run. Check the bot log for details.";
         string title;
         string description;
-        if (errorType.HasValue)
+        switch (errorType)
         {
-            switch (errorType.Value)
-            {
-                case InteractionCommandError.UnmetPrecondition:
-                    title = "Permission Denied";
-                    description = $"You don't have permission to use this command: {errorReason}";
-                    break;
-                case InteractionCommandError.UnknownCommand:
-                    title = "Unknown Command";
-                    description = "This command is not recognized. It may have been removed or updated.";
-                    break;
-                case InteractionCommandError.BadArgs:
-                    title = "Invalid Arguments";
-                    description = "The command arguments were invalid. Please check your input and try again.";
-                    break;
-                case InteractionCommandError.Exception:
-                    title = "Command Error";
-                    description = "An error occurred while processing your command. Please try again later.";
-                    Logs.Error($"Command exception: {errorReason}");
-                    break;
-                default:
-                    title = "Unknown Error";
-                    description = "An unknown error occurred. Please try again later.";
-                    break;
-            }
-        }
-        else
-        {
-            title = "Unknown Error";
-            description = "An unknown error occurred. Please try again later.";
+            case InteractionCommandError.UnmetPrecondition:
+                title = "Permission Denied";
+                description = $"You don't have permission to use this command: {errorReason}";
+                break;
+            case InteractionCommandError.UnknownCommand:
+                title = "Unknown Command";
+                description = "This command is not recognized. It may have been removed or updated.";
+                break;
+            case InteractionCommandError.BadArgs:
+                title = "Invalid Arguments";
+                description = "The command arguments were invalid. Please check your input and try again.";
+                break;
+            case InteractionCommandError.ConvertFailed or InteractionCommandError.ParseFailed:
+                title = "Invalid Input";
+                description = $"{subject} could not read one of the values sent with it. Check that value and try again.";
+                break;
+            case InteractionCommandError.Exception:
+                title = "Command Error";
+                description = ErrorText.BodyFor(exception, failed);
+                Logs.Error($"Command exception: {errorReason}");
+                break;
+            case InteractionCommandError.Unsuccessful:
+                title = "Command Error";
+                description = failed;
+                break;
+            default:
+                title = "Unknown Error";
+                description = $"{subject} failed with an error that has no known type. Check the bot log for details.";
+                break;
         }
         return Error(title, description);
     }

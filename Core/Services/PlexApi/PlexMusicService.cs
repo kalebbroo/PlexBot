@@ -240,13 +240,15 @@ public class PlexMusicService(IPlexApiService plexApiService, IMemoryCache cache
             if (mediaContainer == null)
             {
                 Logs.Warning("MediaContainer is null in the playlist details response");
-                throw new PlexApiException("Invalid playlist details response");
+                throw new PlexApiException("Invalid playlist details response",
+                    "Plex sent back playlist details that PlexBot could not read. Check the bot log for details.");
             }
             JToken? metadata = mediaContainer["Metadata"];
             if (metadata == null || !metadata.Any())
             {
                 Logs.Warning("No metadata found in playlist details response");
-                throw new PlexApiException("Invalid playlist details response");
+                throw new PlexApiException("Invalid playlist details response",
+                    "Plex sent back playlist details that PlexBot could not read. Check the bot log for details.");
             }
             // Playlist details come from MediaContainer level, not individual Metadata items
             Playlist playlist = new()
@@ -406,7 +408,8 @@ public class PlexMusicService(IPlexApiService plexApiService, IMemoryCache cache
             JToken? mediaContainer = PlexJsonParser.ParseMediaContainer(response);
 
             if (mediaContainer == null)
-                throw new PlexApiException("Invalid response when creating playlist");
+                throw new PlexApiException("Invalid response when creating playlist",
+                    "Plex did not confirm that the playlist was created. Check the bot log for details.");
 
             JToken? metadata = mediaContainer["Metadata"];
             if (metadata != null && metadata.Any())

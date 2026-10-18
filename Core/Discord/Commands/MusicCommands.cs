@@ -5,7 +5,6 @@ using PlexBot.Core.Models.Media;
 using PlexBot.Core.Discord.Autocomplete;
 using PlexBot.Core.Discord.Embeds;
 using PlexBot.Core.Discord.Modals;
-using PlexBot.Core.Exceptions;
 using PlexBot.Core.Services.PlexApi;
 using PlexBot.Utils;
 
@@ -63,8 +62,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         catch (Exception ex)
         {
             Logs.Error($"Error in search command: {ex}");
-            string searchError = ex is PlexBotException botEx ? botEx.UserFriendlyMessage : "An error occurred while searching. Please try again later.";
-            try { await FollowupAsync(components: ComponentV2Builder.Error("Search Error", searchError), ephemeral: true); }
+            try { await FollowupAsync(components: ComponentV2Builder.Error("Search Error", ex, "Search failed. Check the bot log for details."), ephemeral: true); }
             catch { /* interaction may be dead */ }
         }
     }
@@ -112,7 +110,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         catch (Exception ex)
         {
             Logs.Error($"Error in play button: {ex}");
-            try { await FollowupAsync(components: ComponentV2Builder.Error("Playback Error", "An error occurred while playing. Please try again later."), ephemeral: true); }
+            try { await FollowupAsync(components: ComponentV2Builder.Error("Playback Error", ex, "Playback failed. Check the bot log for details."), ephemeral: true); }
             catch { /* interaction may be dead */ }
         }
     }
@@ -149,8 +147,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         catch (Exception ex)
         {
             Logs.Error($"Error in search button: {ex}");
-            string searchError = ex is PlexBotException botEx ? botEx.UserFriendlyMessage : "An error occurred while searching. Please try again later.";
-            try { await FollowupAsync(components: ComponentV2Builder.Error("Search Error", searchError), ephemeral: true); }
+            try { await FollowupAsync(components: ComponentV2Builder.Error("Search Error", ex, "Search failed. Check the bot log for details."), ephemeral: true); }
             catch { /* interaction may be dead */ }
         }
     }
@@ -198,8 +195,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         catch (Exception ex)
         {
             Logs.Error($"Error in provider search ({providerId}): {ex}");
-            string searchError = ex is PlexBotException botEx ? botEx.UserFriendlyMessage : "An error occurred while searching. Please try again later.";
-            try { await FollowupAsync(components: ComponentV2Builder.Error("Search Error", searchError), ephemeral: true); }
+            try { await FollowupAsync(components: ComponentV2Builder.Error("Search Error", ex, "Search failed. Check the bot log for details."), ephemeral: true); }
             catch { /* interaction may be dead */ }
         }
     }
@@ -229,7 +225,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         catch (Exception ex)
         {
             Logs.Error($"Error in idle radio: {ex}");
-            try { await FollowupAsync(components: ComponentV2Builder.Error("Radio Error", "An error occurred while starting radio. Please try again later."), ephemeral: true); }
+            try { await FollowupAsync(components: ComponentV2Builder.Error("Radio Error", ex, "Could not start radio. Check the bot log for details."), ephemeral: true); }
             catch { /* interaction may be dead */ }
         }
     }
@@ -275,7 +271,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
             string endKey = PlexJsonParser.ExtractRatingKey(end.SourceKey);
             if (string.IsNullOrEmpty(startKey) || string.IsNullOrEmpty(endKey))
             {
-                TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Error", "Could not identify one of those tracks."), ephemeral: true));
+                TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Adventure Error", "Could not read the Plex ID of one of those tracks, so the path cannot be built."), ephemeral: true));
                 return;
             }
 
@@ -296,7 +292,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         catch (Exception ex)
         {
             Logs.Error($"Error in idle adventure: {ex}");
-            try { await FollowupAsync(components: ComponentV2Builder.Error("Error", "Failed to build sonic adventure path."), ephemeral: true); }
+            try { await FollowupAsync(components: ComponentV2Builder.Error("Adventure Error", ex, "Could not build the sonic adventure path. Check the bot log for details."), ephemeral: true); }
             catch { /* interaction may be dead */ }
         }
     }
@@ -313,7 +309,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
     {
         if (Context.User is IGuildUser { VoiceChannel: not null })
             return true;
-        await RespondAsync(components: ComponentV2Builder.Error("Not In Voice", "Join a voice channel first, then press the button again."), ephemeral: true);
+        await RespondAsync(components: ComponentV2Builder.Error(Notices.NotInVoice), ephemeral: true);
         await TransientMessages.DeleteOriginalLaterAsync(Context.Interaction);
         return false;
     }
@@ -439,7 +435,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         string ratingKey = PlexJsonParser.ExtractRatingKey(seedTrack.SourceKey);
         if (string.IsNullOrEmpty(ratingKey))
         {
-            TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Error", "Could not extract track identifier."), ephemeral: true));
+            TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Radio Error", "Could not read the Plex ID of that track, so radio cannot start from it."), ephemeral: true));
             return;
         }
 
@@ -488,7 +484,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         catch (Exception ex)
         {
             Logs.Error($"Error loading station: {ex.Message}");
-            TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Station Error", "Failed to load radio station tracks."), ephemeral: true));
+            TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Station Error", ex, "Could not load tracks from this radio station. Check the bot log for details."), ephemeral: true));
         }
     }
 
@@ -665,7 +661,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         await RespondAsync(components: ComponentV2Builder.Info("Loading", "Loading playlist..."), ephemeral: true);
         // Set once a final card has gone out. The finally replaces the loading card if none did.
         bool cardFinal = false;
-        const string genericPlaylistError = "An error occurred while loading the playlist. Please try again later.";
+        const string genericPlaylistError = "Could not load the playlist. Check the bot log for details.";
         Task ShowErrorAsync(string body) => Context.Interaction.ModifyOriginalResponseAsync(msg => { msg.Components = ComponentV2Builder.Error("Playlist Error", body); msg.Embed = null; msg.Flags = MessageFlags.ComponentsV2; });
         try
         {
@@ -717,7 +713,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         {
             Logs.Error($"Error in playlist command: {ex.Message}");
             // A queue that is busy, or another PlexBot error, has its own wording; anything else keeps the generic text
-            await ShowErrorAsync(ex is PlexBotException botEx ? botEx.UserFriendlyMessage : genericPlaylistError);
+            await ShowErrorAsync(ErrorText.BodyFor(ex, genericPlaylistError));
             cardFinal = true;
         }
         finally
@@ -800,12 +796,12 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
                     return;
                 }
             }
-            TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Playback Error", "Found results, but couldn't play any tracks."), ephemeral: true));
+            TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Playback Error", "Plex found matches, but none had tracks that could be queued."), ephemeral: true));
         }
         catch (Exception ex)
         {
             Logs.Error($"Error in play command: {ex.Message}");
-            TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Playback Error", "An error occurred while playing. Please try again later."), ephemeral: true));
+            TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Playback Error", ex, "Playback failed. Check the bot log for details."), ephemeral: true));
         }
     }
 
@@ -855,8 +851,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         catch (Exception ex)
         {
             Logs.Error($"Error playing URL: {ex.Message}");
-            string urlError = ex is PlexBotException botEx ? botEx.UserFriendlyMessage : "An error occurred while loading this URL. Please try again.";
-            TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Playback Error", urlError), ephemeral: true));
+            TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Playback Error", ex, "Could not load this URL. Check the bot log for details."), ephemeral: true));
         }
     }
 
@@ -870,7 +865,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         catch (Exception ex)
         {
             Logs.Error($"Error in help command: {ex.Message}");
-            await RespondAsync(components: ComponentV2Builder.Error("Help Error", "An error occurred while generating help information."), ephemeral: true);
+            await RespondAsync(components: ComponentV2Builder.Error("Help Error", ex, "Could not show help. Check the bot log for details."), ephemeral: true);
         }
     }
 
