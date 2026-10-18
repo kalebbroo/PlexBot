@@ -101,7 +101,7 @@ For YouTube, use the switch rather than renaming the folder by hand. Renaming it
 
 </div>
 
-**5. Ask for help.** `/help` opens a menu. Each topic has its own card and screenshot.
+**5. Ask for help.** `/help` opens a menu with a **Show me** button for each topic. Each page has the steps, a screenshot, and Previous and Next buttons to move through the topics.
 
 <div align="center">
 
