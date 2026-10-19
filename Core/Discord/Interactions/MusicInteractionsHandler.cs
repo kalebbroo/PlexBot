@@ -195,7 +195,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
             if (await playerService.GetPlayerAsync(interaction, false) is not CustomLavaLinkPlayer player)
             {
                 MessageComponent errorMsg = ComponentV2Builder.Error(Notices.NoPlayer);
-                await FollowupAsync(components: errorMsg, ephemeral: true);
+                TransientMessages.DeleteLater(await FollowupAsync(components: errorMsg, ephemeral: true));
                 return;
             }
             ButtonContext context = new()
@@ -240,7 +240,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
                     break;
                 default:
                     MessageComponent unknownMsg = ComponentV2Builder.Error("Unknown Action", $"Unrecognized queue action: {action}");
-                    await FollowupAsync(components: unknownMsg, ephemeral: true);
+                    TransientMessages.DeleteLater(await FollowupAsync(components: unknownMsg, ephemeral: true));
                     break;
             }
         }
@@ -250,7 +250,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
             MessageComponent errorMsg = ComponentV2Builder.Error("Queue Error", ex, "Could not update the queue. Check the bot log for details.");
             try
             {
-                await FollowupAsync(components: errorMsg, ephemeral: true);
+                TransientMessages.DeleteLater(await FollowupAsync(components: errorMsg, ephemeral: true));
             }
             catch { /* Ignore if the error response itself fails */ }
         }
@@ -438,6 +438,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
                 msg.Embed = null;
                 msg.Flags = MessageFlags.ComponentsV2;
             });
+            await TransientMessages.DeleteOriginalLaterAsync(Context.Interaction);
             return;
         }
         try
@@ -452,6 +453,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
                     msg.Embed = null;
                     msg.Flags = MessageFlags.ComponentsV2;
                 });
+                await TransientMessages.DeleteOriginalLaterAsync(Context.Interaction);
                 return;
             }
 
@@ -469,6 +471,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
                 msg.Embed = null;
                 msg.Flags = MessageFlags.ComponentsV2;
             });
+            await TransientMessages.DeleteOriginalLaterAsync(Context.Interaction);
             Logs.Info($"Radio started (replace) by {Context.User.Username}: {tracks.Count} tracks from key {ratingKey}");
         }
         catch (Exception ex)
@@ -482,6 +485,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
                     msg.Embed = null;
                     msg.Flags = MessageFlags.ComponentsV2;
                 });
+                await TransientMessages.DeleteOriginalLaterAsync(Context.Interaction);
             }
             catch { /* interaction may be dead */ }
         }
@@ -501,6 +505,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
                 msg.Embed = null;
                 msg.Flags = MessageFlags.ComponentsV2;
             });
+            await TransientMessages.DeleteOriginalLaterAsync(Context.Interaction);
             return;
         }
         try
@@ -515,6 +520,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
                     msg.Embed = null;
                     msg.Flags = MessageFlags.ComponentsV2;
                 });
+                await TransientMessages.DeleteOriginalLaterAsync(Context.Interaction);
                 return;
             }
 
@@ -531,6 +537,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
                 msg.Embed = null;
                 msg.Flags = MessageFlags.ComponentsV2;
             });
+            await TransientMessages.DeleteOriginalLaterAsync(Context.Interaction);
             Logs.Info($"Radio started (append) by {Context.User.Username}: {tracks.Count} tracks from key {ratingKey}");
         }
         catch (Exception ex)
@@ -544,6 +551,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
                     msg.Embed = null;
                     msg.Flags = MessageFlags.ComponentsV2;
                 });
+                await TransientMessages.DeleteOriginalLaterAsync(Context.Interaction);
             }
             catch { /* interaction may be dead */ }
         }
@@ -566,6 +574,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
                     msg.Embed = null;
                     msg.Flags = MessageFlags.ComponentsV2;
                 });
+                await TransientMessages.DeleteOriginalLaterAsync(Context.Interaction);
                 return;
             }
 
@@ -608,6 +617,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
                     msg.Embed = null;
                     msg.Flags = MessageFlags.ComponentsV2;
                 });
+                await TransientMessages.DeleteOriginalLaterAsync(Context.Interaction);
             }
             catch { /* interaction may be dead */ }
         }
@@ -678,6 +688,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
                     msg.Embed = null;
                     msg.Flags = MessageFlags.ComponentsV2;
                 });
+                await TransientMessages.DeleteOriginalLaterAsync(Context.Interaction);
                 return;
             }
             int requested = int.TryParse(page, out int parsed) ? parsed : 1;
@@ -748,6 +759,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
             if (Context.User is not IGuildUser { VoiceChannel: not null } member || playerService.TryGetCachedPlayer(member.Guild.Id) is null)
             {
                 await RespondAsync(components: ComponentV2Builder.Error("No Player", SonicNoPlayerBody), ephemeral: true);
+                await TransientMessages.DeleteOriginalLaterAsync(Context.Interaction);
                 return;
             }
 
@@ -756,7 +768,11 @@ public class MusicInteractionHandler(IPlayerService playerService,
         catch (Exception ex)
         {
             Logs.Error($"Error opening adventure modal: {ex.Message}");
-            try { await RespondAsync(components: ComponentV2Builder.Error("Adventure Error", ex, "Could not open the adventure dialog. Check the bot log for details."), ephemeral: true); }
+            try
+            {
+                await RespondAsync(components: ComponentV2Builder.Error("Adventure Error", ex, "Could not open the adventure dialog. Check the bot log for details."), ephemeral: true);
+                await TransientMessages.DeleteOriginalLaterAsync(Context.Interaction);
+            }
             catch { /* interaction may be dead */ }
         }
     }
@@ -1002,6 +1018,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
                     msg.Embed = null;
                     msg.Flags = MessageFlags.ComponentsV2;
                 });
+                await TransientMessages.DeleteOriginalLaterAsync(Context.Interaction);
             }
             catch { /* Ignore if the error response itself fails */ }
         }
