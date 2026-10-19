@@ -3,6 +3,9 @@ namespace PlexBot.Core.Exceptions;
 /// <summary>Foundation exception class that provides the basis for all application-specific errors with both technical and user-friendly messaging</summary>
 public class PlexBotException : Exception
 {
+    /// <summary>Shown when a throw site gave no user message. It names the log so the user knows where the detail is.</summary>
+    private const string DefaultUserMessage = "An unexpected error stopped this request. Check the bot log for details.";
+
     /// <summary>A simplified, non-technical message that can be safely displayed to end users through Discord or other interfaces</summary>
     public string UserFriendlyMessage { get; set; }
 
@@ -10,7 +13,7 @@ public class PlexBotException : Exception
     public PlexBotException()
         : base("An error occurred in the Plex Bot application.")
     {
-        UserFriendlyMessage = "Something went wrong. Please try again later.";
+        UserFriendlyMessage = DefaultUserMessage;
     }
 
     /// <summary>Creates an exception with a detailed technical message for logging but still uses a generic user-facing message</summary>
@@ -18,7 +21,7 @@ public class PlexBotException : Exception
     public PlexBotException(string message)
         : base(message)
     {
-        UserFriendlyMessage = "Something went wrong. Please try again later.";
+        UserFriendlyMessage = DefaultUserMessage;
     }
 
     /// <summary>Creates an exception with separate messages for technical logging and user interface display</summary>
@@ -36,7 +39,7 @@ public class PlexBotException : Exception
     public PlexBotException(string message, Exception innerException)
         : base(message, innerException)
     {
-        UserFriendlyMessage = "Something went wrong. Please try again later.";
+        UserFriendlyMessage = DefaultUserMessage;
     }
 
     /// <summary>Creates a fully-featured exception with technical message, user-friendly message, and the original exception for complete error handling</summary>

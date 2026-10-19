@@ -1,3 +1,5 @@
+using PlexBot.Core.Discord.Messages;
+
 namespace PlexBot.Core.Exceptions;
 
 /// <summary>Exception thrown when audio playback operations fail.
@@ -16,7 +18,7 @@ public class PlayerException : PlexBotException
     /// Example: throw new PlayerException("Unknown audio error occurred");</summary>
     /// <param name="message">The technical error message for logs</param>
     public PlayerException(string message)
-        : base(message, "An error occurred while playing audio. Please try again.")
+        : base(message, "Playback failed for an unknown reason. Check the bot log for details.")
     {
         Operation = "Unknown";
     }
@@ -86,16 +88,18 @@ public class PlayerException : PlexBotException
     {
         return operation switch
         {
-            "Connect" => "Failed to connect to the voice channel. Please check your permissions and try again.",
-            "Play" => "Failed to play the requested track. The media may be unavailable or in an unsupported format.",
-            "Pause" => "Failed to pause playback. The player may be in an inconsistent state.",
-            "Resume" => "Failed to resume playback. The player may be in an inconsistent state.",
-            "Skip" => "Failed to skip to the next track. The queue may be empty or corrupted.",
-            "Stop" => "Failed to stop playback. The player may be in an inconsistent state.",
-            "Queue" => "Failed to manage the playback queue. The operation could not be completed.",
-            "Volume" => "Failed to adjust the volume. The player may be in an inconsistent state.",
-            "Disconnect" => "Failed to disconnect from the voice channel. The connection may already be closed.",
-            _ => "An error occurred during audio playback. Please try again."
+            "Connect" => "PlexBot could not join the voice channel or reach its audio server. Check that the bot can join this channel "
+                + $"and that Lavalink is running, then try again. [Lavalink help]({DocsLinks.LavalinkConnection})",
+            "Play" => "This track could not be played. Plex may not have a playable file for it, or the stream did not load. "
+                + $"[Track loading help]({DocsLinks.TrackLoadFailures})",
+            "Pause" => "Could not pause or resume playback. Check the bot log for details.",
+            "Resume" => "Could not pause or resume playback. Check the bot log for details.",
+            "Skip" => "Could not skip to the next track. Check the bot log for details.",
+            "Stop" => "Could not stop playback. Check the bot log for details.",
+            "Queue" => "Could not update the queue. Check the bot log for details.",
+            "Volume" => "Could not change the volume. Check the bot log for details.",
+            "Disconnect" => "Could not leave the voice channel. It may already have disconnected.",
+            _ => "Playback failed for an unknown reason. Check the bot log for details."
         };
     }
 }

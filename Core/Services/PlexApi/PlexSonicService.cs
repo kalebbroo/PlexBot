@@ -30,7 +30,8 @@ public class PlexSonicService(IPlexApiService plexApiService, IMemoryCache cache
             JToken? mediaContainer = PlexJsonParser.ParseMediaContainer(response);
             JToken? directories = mediaContainer?["Directory"];
             if (directories is null)
-                throw new PlexApiException("No library sections found on Plex server");
+                throw new PlexApiException("No library sections found on Plex server",
+                    "Your Plex server returned no libraries. Check that it has a music library.");
 
             foreach (JToken dir in directories)
             {
@@ -46,7 +47,8 @@ public class PlexSonicService(IPlexApiService plexApiService, IMemoryCache cache
                     }
                 }
             }
-            throw new PlexApiException("No music library section found on Plex server");
+            throw new PlexApiException("No music library section found on Plex server",
+                "Your Plex server has no music library. Add one in Plex, then try again.");
         }
         catch (Exception ex) when (ex is not PlexApiException)
         {
@@ -338,7 +340,8 @@ public class PlexSonicService(IPlexApiService plexApiService, IMemoryCache cache
             if (metadata is null)
             {
                 // An error, not an empty result: the caller shows "no sonic data" for an empty list
-                throw new PlexApiException($"Could not fetch metadata for seed track {ratingKey}");
+                throw new PlexApiException($"Could not fetch metadata for seed track {ratingKey}",
+                    "Plex could not return details for that track. Try another track.");
             }
 
             // Plex often stores genres on the album or artist, not the track. Without this, radio returns nothing

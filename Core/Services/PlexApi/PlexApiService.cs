@@ -9,6 +9,8 @@ namespace PlexBot.Core.Services.PlexApi
     /// <summary>Implements low-level communication with Plex Media Server API, handling authentication, request formatting, and error management</summary>
     public class PlexApiService : IPlexApiService
     {
+        private const string EmptyReply = "Your Plex server sent an empty reply. Check that it is running, then try again. " + PlexApiException.PlexHelp;
+
         private readonly HttpClientWrapper _httpClient;
         private readonly string _plexUrl;
         private string? _plexToken;
@@ -56,7 +58,7 @@ namespace PlexBot.Core.Services.PlexApi
                 // Check for empty response
                 if (string.IsNullOrEmpty(response))
                 {
-                    throw new PlexApiException("Plex API returned an empty response");
+                    throw new PlexApiException("Plex API returned an empty response", EmptyReply);
                 }
                 Logs.Debug($"Received Plex API response ({response.Length} bytes)");
                 return response;
@@ -149,7 +151,7 @@ namespace PlexBot.Core.Services.PlexApi
                 string response = await _httpClient.SendRequestForStringAsync(HttpMethod.Post, fullUrl, null, headers, cancellationToken);
                 if (string.IsNullOrEmpty(response))
                 {
-                    throw new PlexApiException("Plex API POST returned an empty response");
+                    throw new PlexApiException("Plex API POST returned an empty response", EmptyReply);
                 }
                 Logs.Debug($"Received Plex API POST response ({response.Length} bytes)");
                 return response;
@@ -180,7 +182,7 @@ namespace PlexBot.Core.Services.PlexApi
                 string response = await _httpClient.SendRequestForStringAsync(HttpMethod.Put, fullUrl, null, headers, cancellationToken);
                 if (string.IsNullOrEmpty(response))
                 {
-                    throw new PlexApiException("Plex API PUT returned an empty response");
+                    throw new PlexApiException("Plex API PUT returned an empty response", EmptyReply);
                 }
                 Logs.Debug($"Received Plex API PUT response ({response.Length} bytes)");
                 return response;
@@ -204,7 +206,8 @@ namespace PlexBot.Core.Services.PlexApi
                 string response = await PerformRequestAsync("/", cancellationToken);
                 JToken? mediaContainer = PlexJsonParser.ParseMediaContainer(response);
                 _machineIdentifier = mediaContainer?["machineIdentifier"]?.ToString()
-                    ?? throw new PlexApiException("Could not retrieve machine identifier from Plex server");
+                    ?? throw new PlexApiException("Could not retrieve machine identifier from Plex server",
+                        "PlexBot could not read your Plex server's identity. Check PLEX_URL and PLEX_TOKEN in .env. " + PlexApiException.PlexHelp);
                 Logs.Debug($"Plex machine identifier: {_machineIdentifier}");
                 return _machineIdentifier;
             }

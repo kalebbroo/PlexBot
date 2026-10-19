@@ -58,7 +58,7 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
         if (interaction.User is not IGuildUser user || user.VoiceChannel == null)
         {
             Logs.Warning($"Player lookup: user {interaction.User?.Id} has no voice channel in the gateway cache");
-            return (null, "You must be in a voice channel to use the music player.");
+            return (null, Notices.NotInVoice.Body);
         }
         try
         {
@@ -89,9 +89,9 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
                 Logs.Warning($"Player lookup failed: status={result.Status}, guild={guildId}, userVoice={voiceChannelId}, connect={connectToVoiceChannel}");
                 string friendly = result.Status switch
                 {
-                    PlayerRetrieveStatus.UserNotInVoiceChannel => "You are not connected to a voice channel.",
+                    PlayerRetrieveStatus.UserNotInVoiceChannel => Notices.NotInVoice.Body,
                     PlayerRetrieveStatus.BotNotConnected => "No active player. Start playback first.",
-                    _ => $"The player is unavailable right now ({result.Status}). Please try again."
+                    _ => "The player is unavailable right now. Check the bot log for details."
                 };
                 return (null, friendly);
             }
@@ -441,7 +441,7 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
             }
             else
             {
-                throw new PlayerException("No track is currently playing", "Pause");
+                throw new PlayerException("No track is currently playing", "Pause", Notices.NoTrack.Body);
             }
             if (player is CustomLavaLinkPlayer customPlayer)
             {
@@ -472,7 +472,7 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
         {
             if (player.State != PlayerState.Playing && player.State != PlayerState.Paused)
             {
-                throw new PlayerException("No track is currently playing", "Skip");
+                throw new PlayerException("No track is currently playing", "Skip", Notices.NoTrack.Body);
             }
             // Skip the current track. CustomLavaLinkPlayer resolves the next item first if it is still a placeholder;
             // the player UI updates automatically via NotifyTrackStartedAsync.

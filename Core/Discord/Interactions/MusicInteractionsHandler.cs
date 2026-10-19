@@ -42,6 +42,12 @@ public class MusicInteractionHandler(IPlayerService playerService,
         try
         {
             await DeferAsync(ephemeral: true);
+            // Checked before any Plex lookup or queueing, for every selection type
+            if (Context.User is not IGuildUser { VoiceChannel: not null })
+            {
+                TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error(Notices.NotInVoice), ephemeral: true));
+                return;
+            }
             if (IsOnCooldown(Context.Guild?.Id ?? 0, Context.User.Id, $"search:{providerId}:{type}"))
             {
                 TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Cooldown", "Please wait a moment before selecting another item."), ephemeral: true));
@@ -89,7 +95,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
         catch (Exception ex)
         {
             Logs.Error($"Error handling search selection: {ex.Message}");
-            try { await FollowupAsync(components: ComponentV2Builder.Error("Error", "An error occurred while processing your selection. Please try again later."), ephemeral: true); }
+            try { TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Selection Error", ex, "Could not finish that selection. Check the bot log for details."), ephemeral: true)); }
             catch { /* interaction may be dead */ }
         }
     }
@@ -113,7 +119,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
         catch (Exception ex)
         {
             Logs.Error($"Error handling pause/resume: {ex.Message}");
-            TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Playback Error", "An error occurred while toggling playback. Please try again later."), ephemeral: true));
+            TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Playback Error", ex, "Could not pause or resume playback. Check the bot log for details."), ephemeral: true));
         }
     }
 
@@ -135,7 +141,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
         catch (Exception ex)
         {
             Logs.Error($"Error handling skip: {ex.Message}");
-            TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Skip Error", "An error occurred while skipping the track. Please try again later."), ephemeral: true));
+            TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Skip Error", ex, "Could not skip the track. Check the bot log for details."), ephemeral: true));
         }
     }
 
@@ -159,7 +165,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
         catch (Exception ex)
         {
             Logs.Error($"Error handling back: {ex.Message}");
-            TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Playback Error", "Couldn't go back to the previous track. Please try again."), ephemeral: true));
+            TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Playback Error", ex, "Could not go back to the previous track. Check the bot log for details."), ephemeral: true));
         }
     }
 
@@ -241,7 +247,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
         catch (Exception ex)
         {
             Logs.Error($"Error handling queue options: {ex.Message}");
-            MessageComponent errorMsg = ComponentV2Builder.Error("Queue Error", "An error occurred while managing the queue. Please try again later.");
+            MessageComponent errorMsg = ComponentV2Builder.Error("Queue Error", ex, "Could not update the queue. Check the bot log for details.");
             try
             {
                 await FollowupAsync(components: errorMsg, ephemeral: true);
@@ -284,7 +290,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
         catch (Exception ex)
         {
             Logs.Error($"Error handling volume: {ex.Message}");
-            TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Volume Error", "An error occurred while adjusting volume."), ephemeral: true));
+            TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Volume Error", ex, "Could not change the volume. Check the bot log for details."), ephemeral: true));
         }
     }
 
@@ -318,7 +324,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
         catch (Exception ex)
         {
             Logs.Error($"Error handling repeat: {ex.Message}");
-            TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Repeat Error", "An error occurred while changing repeat mode."), ephemeral: true));
+            TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Repeat Error", ex, "Could not change the repeat mode. Check the bot log for details."), ephemeral: true));
         }
     }
 
@@ -353,7 +359,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
         catch (Exception ex)
         {
             Logs.Error($"Error handling kill: {ex.Message}");
-            TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Playback Error", "An error occurred while stopping playback. Please try again later."), ephemeral: true));
+            TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Playback Error", ex, "Could not stop playback. Check the bot log for details."), ephemeral: true));
         }
     }
 
@@ -397,7 +403,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
             string ratingKey = PlexJsonParser.ExtractRatingKey(currentItem.SourceTrack.SourceKey);
             if (string.IsNullOrEmpty(ratingKey))
             {
-                TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Error", "Could not determine track key for radio."), ephemeral: true));
+                TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Radio Error", "Could not read the Plex ID of that track, so radio cannot start from it."), ephemeral: true));
                 return;
             }
 
@@ -414,7 +420,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
         catch (Exception ex)
         {
             Logs.Error($"Error handling radio start: {ex.Message}");
-            TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Radio Error", "An error occurred while opening radio options."), ephemeral: true));
+            TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Radio Error", ex, "Could not open radio options. Check the bot log for details."), ephemeral: true));
         }
     }
 
@@ -424,6 +430,16 @@ public class MusicInteractionHandler(IPlayerService playerService,
     public async Task HandleRadioReplaceAsync(string ratingKey)
     {
         await DeferAsync(); // Update the ephemeral panel
+        if (Context.User is not IGuildUser { VoiceChannel: not null })
+        {
+            await Context.Interaction.ModifyOriginalResponseAsync(msg =>
+            {
+                msg.Components = ComponentV2Builder.Error(Notices.NotInVoice);
+                msg.Embed = null;
+                msg.Flags = MessageFlags.ComponentsV2;
+            });
+            return;
+        }
         try
         {
             int batchSize = BotConfig.GetInt("plex.radio.batchSize", 30);
@@ -462,7 +478,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
             {
                 await Context.Interaction.ModifyOriginalResponseAsync(msg =>
                 {
-                    msg.Components = ComponentV2Builder.Error("Radio Error", "Failed to start radio. Please try again.");
+                    msg.Components = ComponentV2Builder.Error("Radio Error", ex, "Could not start radio. Check the bot log for details.");
                     msg.Embed = null;
                     msg.Flags = MessageFlags.ComponentsV2;
                 });
@@ -477,6 +493,16 @@ public class MusicInteractionHandler(IPlayerService playerService,
     public async Task HandleRadioAppendAsync(string ratingKey)
     {
         await DeferAsync(); // Update the ephemeral panel
+        if (Context.User is not IGuildUser { VoiceChannel: not null })
+        {
+            await Context.Interaction.ModifyOriginalResponseAsync(msg =>
+            {
+                msg.Components = ComponentV2Builder.Error(Notices.NotInVoice);
+                msg.Embed = null;
+                msg.Flags = MessageFlags.ComponentsV2;
+            });
+            return;
+        }
         try
         {
             int batchSize = BotConfig.GetInt("plex.radio.batchSize", 30);
@@ -514,7 +540,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
             {
                 await Context.Interaction.ModifyOriginalResponseAsync(msg =>
                 {
-                    msg.Components = ComponentV2Builder.Error("Radio Error", "Failed to add radio tracks. Please try again.");
+                    msg.Components = ComponentV2Builder.Error("Radio Error", ex, "Could not add radio tracks to the queue. Check the bot log for details.");
                     msg.Embed = null;
                     msg.Flags = MessageFlags.ComponentsV2;
                 });
@@ -578,7 +604,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
             {
                 await Context.Interaction.ModifyOriginalResponseAsync(msg =>
                 {
-                    msg.Components = ComponentV2Builder.Error("Error", "Failed to find similar tracks. Please try again.");
+                    msg.Components = ComponentV2Builder.Error("Similar Tracks Error", ex, "Could not find similar tracks. Check the bot log for details.");
                     msg.Embed = null;
                     msg.Flags = MessageFlags.ComponentsV2;
                 });
@@ -614,7 +640,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
             string ratingKey = PlexJsonParser.ExtractRatingKey(currentItem.SourceTrack.SourceKey);
             if (string.IsNullOrEmpty(ratingKey))
             {
-                TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Error", "Could not determine track key."), ephemeral: true));
+                TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Similar Tracks Error", "Could not read the Plex ID of that track, so similar tracks cannot be found."), ephemeral: true));
                 return;
             }
 
@@ -632,7 +658,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
         catch (Exception ex)
         {
             Logs.Error($"Error handling similar button: {ex.Message}");
-            TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Error", "Failed to find similar tracks."), ephemeral: true));
+            TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Similar Tracks Error", ex, "Could not find similar tracks. Check the bot log for details."), ephemeral: true));
         }
     }
 
@@ -730,7 +756,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
         catch (Exception ex)
         {
             Logs.Error($"Error opening adventure modal: {ex.Message}");
-            try { await RespondAsync(components: ComponentV2Builder.Error("Error", "Failed to open adventure dialog."), ephemeral: true); }
+            try { await RespondAsync(components: ComponentV2Builder.Error("Adventure Error", ex, "Could not open the adventure dialog. Check the bot log for details."), ephemeral: true); }
             catch { /* interaction may be dead */ }
         }
     }
@@ -764,7 +790,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
             string startRatingKey = PlexJsonParser.ExtractRatingKey(currentItem.SourceTrack.SourceKey);
             if (string.IsNullOrEmpty(startRatingKey))
             {
-                TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Error", "Could not identify the currently playing track."), ephemeral: true));
+                TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Adventure Error", "Could not identify the currently playing track."), ephemeral: true));
                 return;
             }
 
@@ -779,7 +805,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
             string endRatingKey = PlexJsonParser.ExtractRatingKey(endTrack.SourceKey);
             if (string.IsNullOrEmpty(endRatingKey))
             {
-                TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Error", "Could not extract destination track identifier."), ephemeral: true));
+                TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Adventure Error", "Could not read the Plex ID of the destination track."), ephemeral: true));
                 return;
             }
 
@@ -798,7 +824,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
         catch (Exception ex)
         {
             Logs.Error($"Error handling adventure modal: {ex.Message}");
-            try { await FollowupAsync(components: ComponentV2Builder.Error("Error", "Failed to build sonic adventure path."), ephemeral: true); }
+            try { TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Adventure Error", ex, "Could not build the sonic adventure path. Check the bot log for details."), ephemeral: true)); }
             catch { /* interaction may be dead */ }
         }
     }
@@ -809,6 +835,11 @@ public class MusicInteractionHandler(IPlayerService playerService,
     public async Task HandleSonicPlayAllAsync(string sonicType, string keyData)
     {
         await DeferAsync(ephemeral: true);
+        if (Context.User is not IGuildUser { VoiceChannel: not null })
+        {
+            TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error(Notices.NotInVoice), ephemeral: true));
+            return;
+        }
         try
         {
             List<Track> tracks;
@@ -818,7 +849,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
                 string[] keys = keyData.Split('-', 2);
                 if (keys.Length != 2)
                 {
-                    TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Error", "Invalid adventure path data."), ephemeral: true));
+                    TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Play All Error", "This Play All button has no valid path data. Run the search again."), ephemeral: true));
                     return;
                 }
                 tracks = await plexSonicService.GetSonicAdventureAsync(keys[0], keys[1]);
@@ -830,7 +861,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
 
             if (tracks.Count == 0)
             {
-                await FollowupAsync(components: ComponentV2Builder.Warning("No Tracks", "No tracks found to play."), ephemeral: true);
+                TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Warning("No Tracks", "No tracks found to play."), ephemeral: true));
                 return;
             }
 
@@ -841,7 +872,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
         catch (Exception ex)
         {
             Logs.Error($"Error handling sonic play all: {ex.Message}");
-            try { await FollowupAsync(components: ComponentV2Builder.Error("Error", "Failed to add tracks. Please try again."), ephemeral: true); }
+            try { TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Play All Error", ex, "Could not add these tracks to the queue. Check the bot log for details."), ephemeral: true)); }
             catch { /* interaction may be dead */ }
         }
     }
@@ -854,7 +885,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
         List<Track> tracks = await plexSonicService.GetRadioTracksAsync(stationKey, batchSize);
         if (tracks.Count == 0)
         {
-            await FollowupAsync(components: ComponentV2Builder.Warning("No Tracks", "No tracks returned for this station."), ephemeral: true);
+            TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Warning("No Tracks", "No tracks returned for this station."), ephemeral: true));
             return;
         }
 
@@ -875,7 +906,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
         Track? track = await provider.GetTrackDetailsAsync(trackKey);
         if (track is null)
         {
-            TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Track Error", "Failed to retrieve track details."), ephemeral: true));
+            TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Track Error", "That track could not be found any more. Search for it again."), ephemeral: true));
             return;
         }
         await playerService.AddToQueueAsync(Context.Interaction, [track]);
@@ -967,7 +998,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
             {
                 await Context.Interaction.ModifyOriginalResponseAsync(msg =>
                 {
-                    msg.Components = ComponentV2Builder.Error("Queue Error", "An error occurred while showing the queue.");
+                    msg.Components = ComponentV2Builder.Error("Queue Error", ex, "Could not show the queue. Check the bot log for details.");
                     msg.Embed = null;
                     msg.Flags = MessageFlags.ComponentsV2;
                 });
