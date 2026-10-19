@@ -163,6 +163,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         if (provider is null)
         {
             await RespondAsync(components: ComponentV2Builder.Error("Unknown Source", $"Music source '{providerId}' is not available."), ephemeral: true);
+            await TransientMessages.DeleteOriginalLaterAsync(Context.Interaction);
             return;
         }
         string title = $"Search {provider.DisplayName}";
@@ -664,13 +665,18 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         // Set once a final card has gone out. The finally replaces the loading card if none did.
         bool cardFinal = false;
         const string genericPlaylistError = "Could not load the playlist. Check the bot log for details.";
-        Task ShowErrorAsync(string body) => Context.Interaction.ModifyOriginalResponseAsync(msg => { msg.Components = ComponentV2Builder.Error("Playlist Error", body); msg.Embed = null; msg.Flags = MessageFlags.ComponentsV2; });
+        async Task ShowErrorAsync(string body)
+        {
+            await Context.Interaction.ModifyOriginalResponseAsync(msg => { msg.Components = ComponentV2Builder.Error("Playlist Error", body); msg.Embed = null; msg.Flags = MessageFlags.ComponentsV2; });
+            await TransientMessages.DeleteOriginalLaterAsync(Context.Interaction);
+        }
         try
         {
             Logs.Debug($"Loading playlist: {playlist}, shuffle: {shuffle}");
             if (string.IsNullOrWhiteSpace(playlist))
             {
                 await Context.Interaction.ModifyOriginalResponseAsync(msg => { msg.Components = ComponentV2Builder.Error("Invalid Playlist", "Please select a playlist."); msg.Embed = null; msg.Flags = MessageFlags.ComponentsV2; });
+                await TransientMessages.DeleteOriginalLaterAsync(Context.Interaction);
                 cardFinal = true;
                 return;
             }
@@ -686,6 +692,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
                 if (playlistDetails is null)
                 {
                     await Context.Interaction.ModifyOriginalResponseAsync(msg => { msg.Components = ComponentV2Builder.Error("Not Found", "Custom playlist not found."); msg.Embed = null; msg.Flags = MessageFlags.ComponentsV2; });
+                    await TransientMessages.DeleteOriginalLaterAsync(Context.Interaction);
                     cardFinal = true;
                     return;
                 }
@@ -698,6 +705,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
             if (playlistDetails.Tracks.Count == 0)
             {
                 await Context.Interaction.ModifyOriginalResponseAsync(msg => { msg.Components = ComponentV2Builder.Info("Empty Playlist", $"Playlist '{playlistDetails.Title}' is empty."); msg.Embed = null; msg.Flags = MessageFlags.ComponentsV2; });
+                await TransientMessages.DeleteOriginalLaterAsync(Context.Interaction);
                 cardFinal = true;
                 return;
             }
@@ -870,6 +878,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         {
             Logs.Error($"Error in help command: {ex.Message}");
             await RespondAsync(components: ComponentV2Builder.Error("Help Error", ex, "Could not show help. Check the bot log for details."), ephemeral: true);
+            await TransientMessages.DeleteOriginalLaterAsync(Context.Interaction);
         }
     }
 

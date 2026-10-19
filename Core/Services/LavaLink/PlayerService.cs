@@ -237,6 +237,7 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
                     msg.Embed = null;
                     msg.Flags = MessageFlags.ComponentsV2;
                 });
+                await TransientMessages.DeleteOriginalLaterAsync(interaction);
                 return false;
             }
 
@@ -294,6 +295,7 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
                     msg.Embed = null;
                     msg.Flags = MessageFlags.ComponentsV2;
                 });
+                await TransientMessages.DeleteOriginalLaterAsync(interaction);
                 return false;
             }
 
@@ -339,6 +341,7 @@ public class PlayerService(VisualPlayerStateManager stateManager, IAudioService 
                         msg.Embed = null;
                         msg.Flags = MessageFlags.ComponentsV2;
                     });
+                    await TransientMessages.DeleteOriginalLaterAsync(interaction);
                     return false;
                 }
 

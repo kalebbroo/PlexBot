@@ -23,16 +23,15 @@ public static class TransientMessages
 
     /// <summary>Deletes the interaction's own reply after the lifetime, for replies sent with RespondAsync or edited
     /// with ModifyOriginalResponseAsync</summary>
-    public static async Task DeleteOriginalLaterAsync(IDiscordInteraction interaction)
+    public static Task DeleteOriginalLaterAsync(IDiscordInteraction interaction)
     {
-        if (Lifetime <= TimeSpan.Zero) return;
-        try
+        if (Lifetime <= TimeSpan.Zero) return Task.CompletedTask;
+        _ = Task.Run(async () =>
         {
-            DeleteLater(await interaction.GetOriginalResponseAsync().ConfigureAwait(false));
-        }
-        catch (Exception ex)
-        {
-            Logs.Debug($"Could not schedule removal of a status reply: {ex.Message}");
-        }
+            await Task.Delay(Lifetime).ConfigureAwait(false);
+            try { await interaction.DeleteOriginalResponseAsync().ConfigureAwait(false); }
+            catch (Exception ex) { Logs.Debug($"Could not remove a status reply: {ex.Message}"); }
+        });
+        return Task.CompletedTask;
     }
 }
