@@ -95,7 +95,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
         catch (Exception ex)
         {
             Logs.Error($"Error handling search selection: {ex.Message}");
-            try { await FollowupAsync(components: ComponentV2Builder.Error("Selection Error", ex, "Could not finish that selection. Check the bot log for details."), ephemeral: true); }
+            try { TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Selection Error", ex, "Could not finish that selection. Check the bot log for details."), ephemeral: true)); }
             catch { /* interaction may be dead */ }
         }
     }
@@ -824,7 +824,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
         catch (Exception ex)
         {
             Logs.Error($"Error handling adventure modal: {ex.Message}");
-            try { await FollowupAsync(components: ComponentV2Builder.Error("Adventure Error", ex, "Could not build the sonic adventure path. Check the bot log for details."), ephemeral: true); }
+            try { TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Adventure Error", ex, "Could not build the sonic adventure path. Check the bot log for details."), ephemeral: true)); }
             catch { /* interaction may be dead */ }
         }
     }
@@ -861,7 +861,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
 
             if (tracks.Count == 0)
             {
-                await FollowupAsync(components: ComponentV2Builder.Warning("No Tracks", "No tracks found to play."), ephemeral: true);
+                TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Warning("No Tracks", "No tracks found to play."), ephemeral: true));
                 return;
             }
 
@@ -872,7 +872,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
         catch (Exception ex)
         {
             Logs.Error($"Error handling sonic play all: {ex.Message}");
-            try { await FollowupAsync(components: ComponentV2Builder.Error("Play All Error", ex, "Could not add these tracks to the queue. Check the bot log for details."), ephemeral: true); }
+            try { TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Play All Error", ex, "Could not add these tracks to the queue. Check the bot log for details."), ephemeral: true)); }
             catch { /* interaction may be dead */ }
         }
     }
@@ -885,7 +885,7 @@ public class MusicInteractionHandler(IPlayerService playerService,
         List<Track> tracks = await plexSonicService.GetRadioTracksAsync(stationKey, batchSize);
         if (tracks.Count == 0)
         {
-            await FollowupAsync(components: ComponentV2Builder.Warning("No Tracks", "No tracks returned for this station."), ephemeral: true);
+            TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Warning("No Tracks", "No tracks returned for this station."), ephemeral: true));
             return;
         }
 

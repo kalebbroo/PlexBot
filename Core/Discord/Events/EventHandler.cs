@@ -10,6 +10,7 @@ using PlexBot.Utils;
 using PlexBot.Core.Discord.Design;
 using PlexBot.Core.Discord.Embeds;
 using PlexBot.Core.Events;
+using PlexBot.Core.Discord.Messages;
 using PlexBot.Core.Extensions;
 
 namespace PlexBot.Core.Discord.Events;
@@ -386,9 +387,12 @@ public class DiscordEventHandler(DiscordSocketClient client, InteractionService 
         try
         {
             if (interaction.HasResponded)
-                await interaction.FollowupAsync(components: components, ephemeral: true);
+                TransientMessages.DeleteLater(await interaction.FollowupAsync(components: components, ephemeral: true));
             else
+            {
                 await interaction.RespondAsync(components: components, ephemeral: true);
+                await TransientMessages.DeleteOriginalLaterAsync(interaction);
+            }
         }
         catch (Exception responseEx)
         {

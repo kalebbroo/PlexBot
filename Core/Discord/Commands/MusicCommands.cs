@@ -62,7 +62,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         catch (Exception ex)
         {
             Logs.Error($"Error in search command: {ex}");
-            try { await FollowupAsync(components: ComponentV2Builder.Error("Search Error", ex, "Search failed. Check the bot log for details."), ephemeral: true); }
+            try { TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Search Error", ex, "Search failed. Check the bot log for details."), ephemeral: true)); }
             catch { /* interaction may be dead */ }
         }
     }
@@ -110,7 +110,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         catch (Exception ex)
         {
             Logs.Error($"Error in play button: {ex}");
-            try { await FollowupAsync(components: ComponentV2Builder.Error("Playback Error", ex, "Playback failed. Check the bot log for details."), ephemeral: true); }
+            try { TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Playback Error", ex, "Playback failed. Check the bot log for details."), ephemeral: true)); }
             catch { /* interaction may be dead */ }
         }
     }
@@ -147,7 +147,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         catch (Exception ex)
         {
             Logs.Error($"Error in search button: {ex}");
-            try { await FollowupAsync(components: ComponentV2Builder.Error("Search Error", ex, "Search failed. Check the bot log for details."), ephemeral: true); }
+            try { TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Search Error", ex, "Search failed. Check the bot log for details."), ephemeral: true)); }
             catch { /* interaction may be dead */ }
         }
     }
@@ -195,7 +195,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         catch (Exception ex)
         {
             Logs.Error($"Error in provider search ({providerId}): {ex}");
-            try { await FollowupAsync(components: ComponentV2Builder.Error("Search Error", ex, "Search failed. Check the bot log for details."), ephemeral: true); }
+            try { TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Search Error", ex, "Search failed. Check the bot log for details."), ephemeral: true)); }
             catch { /* interaction may be dead */ }
         }
     }
@@ -225,7 +225,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         catch (Exception ex)
         {
             Logs.Error($"Error in idle radio: {ex}");
-            try { await FollowupAsync(components: ComponentV2Builder.Error("Radio Error", ex, "Could not start radio. Check the bot log for details."), ephemeral: true); }
+            try { TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Radio Error", ex, "Could not start radio. Check the bot log for details."), ephemeral: true)); }
             catch { /* interaction may be dead */ }
         }
     }
@@ -292,7 +292,7 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         catch (Exception ex)
         {
             Logs.Error($"Error in idle adventure: {ex}");
-            try { await FollowupAsync(components: ComponentV2Builder.Error("Adventure Error", ex, "Could not build the sonic adventure path. Check the bot log for details."), ephemeral: true); }
+            try { TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Adventure Error", ex, "Could not build the sonic adventure path. Check the bot log for details."), ephemeral: true)); }
             catch { /* interaction may be dead */ }
         }
     }
@@ -658,6 +658,8 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
     string playlist, [Summary("shuffle", "Shuffle the playlist")] bool shuffle = true,
     [Summary("next", "Play after the current track instead of at the end")] bool next = false)
     {
+        if (!await RequireVoiceAsync())
+            return;
         await RespondAsync(components: ComponentV2Builder.Info("Loading", "Loading playlist..."), ephemeral: true);
         // Set once a final card has gone out. The finally replaces the loading card if none did.
         bool cardFinal = false;
@@ -741,6 +743,8 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
         [Summary("next", "Play after the current track instead of at the end")]
         bool next = false)
     {
+        if (!await RequireVoiceAsync())
+            return;
         await DeferAsync(ephemeral: true);
         await PlayQueryAsync(query, next);
     }
@@ -832,8 +836,8 @@ public class MusicCommands(IPlexMusicService plexMusicService, IPlayerService pl
             LavalinkTrack? lavalinkTrack = loadResult.Track;
             if (lavalinkTrack is null)
             {
-                await FollowupAsync(components: ComponentV2Builder.Error("Not Found",
-                    "Could not load a playable track from this URL."), ephemeral: true);
+                TransientMessages.DeleteLater(await FollowupAsync(components: ComponentV2Builder.Error("Not Found",
+                    "Could not load a playable track from this URL."), ephemeral: true));
                 return;
             }
 
