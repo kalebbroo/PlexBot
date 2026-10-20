@@ -68,7 +68,14 @@ apply_switch() {
             fi
             ;;
         *)
-            echo "[extensions] $name: $key is not set or unreadable in config.fds, left as it is"
+            # An older config.fds has no switch at all. A missing folder is cloned so the feature is not silently absent
+            if [ -e "$target" ] || [ -e "$target.disabled" ]; then
+                echo "[extensions] $name: $key is not set or unreadable in config.fds, left as it is"
+                return 0
+            fi
+            echo "[extensions] $name: $key is not set or unreadable in config.fds, cloning because the folder is missing"
+            echo "[extensions] Add a $key switch to config.fds (see RenameMe.config.fds) to control this extension"
+            return 1
             ;;
     esac
     return 0

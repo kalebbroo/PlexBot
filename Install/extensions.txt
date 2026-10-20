@@ -5,5 +5,5 @@
 # With a config key (for example youtube.enabled), the install follows that setting in config.fds:
 #   true   clone the folder if it is missing, or rename <folder>.disabled back to <folder>
 #   false  rename the folder to <folder>.disabled (nothing is deleted)
-#   unset  leave the folder as it is
+#   unset  a missing folder is cloned (an older config.fds may not have the switch); an existing folder is left as it is
 https://github.com/kalebbroo/PlexBot-YouTube-MusicProvider.git PlexBot-YouTube-MusicProvider youtube.enabled

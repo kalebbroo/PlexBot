@@ -101,7 +101,7 @@ The install scripts read this section (`Install/linux-install.sh`, `Install/star
 
 - `enabled: true` clones the folder if it is missing, or renames `PlexBot-YouTube-MusicProvider.disabled` back. The Lavalink plugin is fetched on the next install or start. A folder that already exists is never updated, so pull changes yourself.
 - `enabled: false` renames the folder to `PlexBot-YouTube-MusicProvider.disabled`. Nothing is deleted, and the downloaded plugin jar stays in `Install/Docker/plugins/`.
-- Leave `enabled` out, or the whole section, and the folder stays as it is. A missing folder is not cloned then either.
+- Leave `enabled` out, or the whole section, and an existing folder stays as it is. A missing folder is cloned then, and the install prints a line asking you to add the switch. Older `config.fds` files have no `youtube` section, so this is how they get the extension.
 
 The template ships with `enabled: false`, so a fresh install does not clone YouTube. Set it to `true` before the first install to keep YouTube. If you rename the folder by hand while the switch is `true`, the next install puts it back, so change the switch instead. Run the install script or `Install/start.sh --build` after a change, so the bot and Lavalink restart with it.
 

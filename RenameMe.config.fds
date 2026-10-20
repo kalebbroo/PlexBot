@@ -137,5 +137,5 @@ youtube:
     # true: clone the YouTube extension if its folder is missing, bring it back if it is disabled,
     #       and fetch its Lavalink plugin on the next install or start
     # false: turn it off. The folder is renamed to <name>.disabled. Nothing is deleted
-    # Leave this out and the extension stays exactly as it is
+    # Leave this out: a missing folder is cloned, an existing one is left as it is
     enabled: false

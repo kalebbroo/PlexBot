@@ -305,7 +305,7 @@ it has already queued are not queued again, and each refill continues from the l
 
 | Key | Default | What it does |
 |---|---|---|
-| `youtube.enabled` | `false` | `true` clones the YouTube extension (or restores it from `.disabled`) and fetches its plugin on the next install or start. `false` renames it to `.disabled`. Unset leaves it as it is. See [Extensions](#extensions). |
+| `youtube.enabled` | `false` | `true` clones the YouTube extension (or restores it from `.disabled`) and fetches its plugin on the next install or start. `false` renames it to `.disabled`. Unset clones it only if its folder is missing, and otherwise leaves it as it is. See [Extensions](#extensions). |
 
 ---
 

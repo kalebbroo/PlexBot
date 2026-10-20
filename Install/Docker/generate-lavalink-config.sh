@@ -45,7 +45,11 @@ for ext_dir in "$EXTENSIONS_DIR"/*/; do
     case "$ext_name" in *.disabled) continue ;; esac
 
     fragment="$ext_dir/lavalink.plugin.yml"
-    [ -f "$fragment" ] || continue
+    if [ ! -f "$fragment" ]; then
+        # Usually a folder that is one level too deep (for example an unzipped download inside another folder)
+        echo "[lavalink-config] Skipped $ext_name: no lavalink.plugin.yml directly inside it"
+        continue
+    fi
 
     echo "[lavalink-config] Merging fragment from: $ext_name"
 
