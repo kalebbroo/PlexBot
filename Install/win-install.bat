@@ -8,7 +8,8 @@ echo.
 
 REM Set paths relative to the script location
 set "SCRIPT_DIR=%~dp0"
-set "ROOT_DIR=%SCRIPT_DIR%.."
+REM Resolve the ".." so Docker bind mounts and --env-file get a plain absolute path
+for %%I in ("%SCRIPT_DIR%..") do set "ROOT_DIR=%%~fI"
 set "DOCKER_DIR=%SCRIPT_DIR%Docker"
 set "MANIFEST=%SCRIPT_DIR%extensions.txt"
 set "EXTENSIONS_DIR=%ROOT_DIR%\Extensions"
@@ -42,6 +43,19 @@ if %ERRORLEVEL% NEQ 0 (
 
 echo Using compose command: %COMPOSE%
 
+REM Check .env first, so a missing file stops the install before anything is cloned or downloaded
+if not exist "%ROOT_DIR%\.env" (
+    echo.
+    echo No .env file found at: %ROOT_DIR%\.env
+    if exist "%ROOT_DIR%\.env.txt" echo Found .env.txt instead. Windows hides known extensions, so rename it to exactly .env
+    echo Please create one from the template:
+    echo   copy RenameMe.env.txt .env
+    echo Then fill in your Discord token and Plex server details.
+    echo.
+    pause
+    exit /b 1
+)
+
 REM Create plugins directory if it doesn't exist
 if not exist "%DOCKER_DIR%\plugins" mkdir "%DOCKER_DIR%\plugins"
 
@@ -68,18 +82,6 @@ REM Download any Lavalink plugin the config declares that is missing, before Lav
 call :fetch_plugins
 if errorlevel 1 (
     echo Lavalink cannot start without these plugins. Fix the network or the version, then run this script again.
-    pause
-    exit /b 1
-)
-
-REM Check if .env file exists
-if not exist "%ROOT_DIR%\.env" (
-    echo.
-    echo No .env file found at: %ROOT_DIR%\.env
-    echo Please create one from the template:
-    echo   copy RenameMe.env.txt .env
-    echo Then fill in your Discord token and Plex server details.
-    echo.
     pause
     exit /b 1
 )
@@ -158,8 +160,18 @@ set "switchValue="
 if exist "%CONFIG_FILE%" for /f "usebackq delims=" %%S in (`docker run --rm -v "%CONFIG_FILE%:/config.fds:ro" mikefarah/yq:latest ".%cloneKey%" /config.fds 2^>nul`) do set "switchValue=%%S"
 if "%switchValue%"=="true" goto switch_on
 if "%switchValue%"=="false" goto switch_off
-echo [extensions] %cloneName%: %cloneKey% is not set or unreadable in config.fds, left as it is
-exit /b 0
+echo [extensions] %cloneName%: %cloneKey% is not set or unreadable in config.fds
+if exist "%target%" (
+    echo [extensions] %cloneName%: left as it is
+    exit /b 0
+)
+if exist "%target%.disabled" (
+    echo [extensions] %cloneName%: left as it is
+    exit /b 0
+)
+echo [extensions] %cloneName%: cloning because the folder is missing
+echo [extensions] Add a %cloneKey% switch to config.fds (see RenameMe.config.fds) to control this extension
+exit /b 1
 
 :switch_on
 if exist "%target%" (

@@ -107,7 +107,17 @@ new_case key-missing-no-folder
 printf '%s\n' "$REMOTE $NAME youtube.enabled" > "$MANIFEST"
 printf '%s\n' "plex:" "    maxConcurrentResolves: 2" > "$CONFIG"
 run_clone
-check "missing key, no folder: the folder is not cloned" absent "$EXT/$NAME"
+check "missing key, no folder: exit code is 0" rc_is 0
+check "missing key, no folder: the folder is cloned" cloned "$EXT/$NAME"
+check "missing key, no folder: output says to add the switch" output_has "Add a youtube.enabled switch"
+
+new_case key-missing-disabled
+printf '%s\n' "$REMOTE $NAME youtube.enabled" > "$MANIFEST"
+printf '%s\n' "plex:" "    maxConcurrentResolves: 2" > "$CONFIG"
+make_folder "$EXT/$NAME.disabled" "parked"
+run_clone
+check "missing key, disabled folder: the .disabled folder is left alone" marker_is "$EXT/$NAME.disabled" "parked"
+check "missing key, disabled folder: nothing is cloned" absent "$EXT/$NAME"
 
 new_case no-config
 printf '%s\n' "$REMOTE $NAME youtube.enabled" > "$MANIFEST"
@@ -120,7 +130,7 @@ check "no config.fds: nothing is renamed" absent "$EXT/$NAME.disabled"
 new_case no-config-no-folder
 printf '%s\n' "$REMOTE $NAME youtube.enabled" > "$MANIFEST"
 run_clone
-check "no config.fds, no folder: the folder is not cloned" absent "$EXT/$NAME"
+check "no config.fds, no folder: the folder is cloned, as for an unset switch" cloned "$EXT/$NAME"
 
 new_case no-key-column
 printf '%s\n' "# header comment" "$REMOTE PlexBot-Other-Extension" "$REMOTE $NAME youtube.enabled" "$REMOTE Parked" > "$MANIFEST"
