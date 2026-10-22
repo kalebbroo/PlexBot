@@ -18,10 +18,14 @@ set "PLUGINS_DIR=%DOCKER_DIR%\plugins"
 set "LAVALINK_CONFIG=%DOCKER_DIR%\lavalink.application.yml"
 set "RELEASES_REPO=https://maven.lavalink.dev/releases"
 
-REM Check for Docker
+REM Check for Docker. A terminal opened before Docker Desktop was installed has no docker on PATH,
+REM so fall back to the install folder before deciding Docker is missing.
+docker --version >nul 2>&1
+if %ERRORLEVEL% NEQ 0 if exist "%ProgramFiles%\Docker\Docker\resources\bin\docker.exe" set "PATH=%ProgramFiles%\Docker\Docker\resources\bin;%PATH%"
 docker --version >nul 2>&1
 if %ERRORLEVEL% NEQ 0 (
-    echo Docker is not installed. Please install Docker Desktop for Windows first.
+    echo Docker was not found. Please install Docker Desktop for Windows first.
+    echo If it is already installed, close this window and open a new one, then run the script again.
     echo Visit: https://www.docker.com/products/docker-desktop
     pause
     exit /b 1
@@ -43,6 +47,14 @@ if %ERRORLEVEL% NEQ 0 (
 
 echo Using compose command: %COMPOSE%
 
+REM Docker can be installed but stopped. Catch that here, not halfway through the build
+docker info >nul 2>&1
+if %ERRORLEVEL% NEQ 0 (
+    echo Docker is installed but not running. Start Docker Desktop, wait until it says Running, then run this script again.
+    pause
+    exit /b 1
+)
+
 REM Check .env first, so a missing file stops the install before anything is cloned or downloaded
 if not exist "%ROOT_DIR%\.env" (
     echo.
@@ -62,7 +74,7 @@ if not exist "%DOCKER_DIR%\plugins" mkdir "%DOCKER_DIR%\plugins"
 REM Create config.fds from template if it doesn't exist. The clone step reads its YouTube switch, so this must come first
 if not exist "%ROOT_DIR%\config.fds" (
     if exist "%ROOT_DIR%\RenameMe.config.fds" (
-        echo No config.fds found — creating from template with defaults...
+        echo No config.fds found - creating from template with defaults...
         copy "%ROOT_DIR%\RenameMe.config.fds" "%ROOT_DIR%\config.fds" >nul
         echo Edit config.fds to customize player settings.
     ) else (
@@ -76,7 +88,12 @@ call :clone_extensions
 REM Generate Lavalink config from base template + extension plugin fragments.
 REM Uses mikefarah/yq Docker image. Output is mounted directly into the Lavalink container.
 echo Generating Lavalink configuration from base template + extension fragments...
-docker run --rm -v "%ROOT_DIR%\Extensions:/extensions:ro" -v "%DOCKER_DIR%\lavalink.base.yml:/config/base.yml:ro" -v "%DOCKER_DIR%\generate-lavalink-config.sh:/config/generate.sh:ro" -v "%DOCKER_DIR%:/output" mikefarah/yq:latest sh /config/generate.sh /extensions /output /config/base.yml
+docker run --rm --entrypoint sh -v "%ROOT_DIR%\Extensions:/extensions:ro" -v "%DOCKER_DIR%\lavalink.base.yml:/config/base.yml:ro" -v "%DOCKER_DIR%\generate-lavalink-config.sh:/config/generate.sh:ro" -v "%DOCKER_DIR%:/output" mikefarah/yq:latest /config/generate.sh /extensions /output /config/base.yml
+if %ERRORLEVEL% NEQ 0 (
+    echo Could not generate the Lavalink configuration. Read the messages above, then run this script again.
+    pause
+    exit /b 1
+)
 
 REM Download any Lavalink plugin the config declares that is missing, before Lavalink starts
 call :fetch_plugins
@@ -101,6 +118,13 @@ REM Stop existing containers gracefully (preserve volumes/data)
 
 REM Build and start containers
 %COMPOSE% --env-file "%ROOT_DIR%\.env" -p plexbot up -d --build
+if %ERRORLEVEL% NEQ 0 (
+    echo.
+    echo Docker could not start PlexBot. Read the messages above. For Lavalink details run:
+    echo   %COMPOSE% --env-file "%ROOT_DIR%\.env" -p plexbot logs lavalink
+    pause
+    exit /b 1
+)
 
 echo.
 echo PlexBot installation completed successfully!
@@ -145,6 +169,11 @@ if exist "%target%" (
 )
 if exist "%target%.disabled" (
     echo [extensions] %cloneName%: disabled, left alone
+    exit /b 0
+)
+where git >nul 2>&1
+if errorlevel 1 (
+    echo [extensions] WARNING: git is not installed, so %cloneName% was not cloned. Install Git for Windows from https://git-scm.com/download/win and run this script again. The bot starts without it.
     exit /b 0
 )
 git clone --quiet "%cloneUrl%" "%target%" <nul
